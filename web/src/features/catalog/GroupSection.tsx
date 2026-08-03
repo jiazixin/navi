@@ -44,7 +44,6 @@ export function GroupSection({
         <span className={styles.count} aria-label={`${group.links.length} 个链接`}>
           {group.links.length}
         </span>
-        <span className={styles.rule} aria-hidden="true" />
       </header>
       <motion.div className={styles.grid} layout={enableLayoutMotion && !reduceMotion}>
         <AnimatePresence initial={false} mode="popLayout">

@@ -19,7 +19,7 @@
 .headingRow {
   display: grid;
   min-height: 28px;
-  grid-template-columns: 3px max-content max-content minmax(var(--space-4), 1fr);
+  grid-template-columns: 3px max-content max-content;
   align-items: center;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
@@ -49,13 +49,6 @@
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   line-height: 16px;
-}
-
-.rule {
-  align-self: center;
-  border-top: var(--border-width) solid var(--border);
-  opacity: 0.82;
-  transition: border-color var(--motion-standard) var(--ease-standard);
 }
 
 .grid {

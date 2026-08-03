@@ -13,6 +13,16 @@ test('default desktop navigation', async ({ page }) => {
   });
 });
 
+test('desktop second-page pagination', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '下一页' }).click();
+  await expect(page.getByRole('heading', { name: '精选' })).toBeVisible();
+  await expect(page).toHaveScreenshot('navi-desktop-page2-pagination.png', {
+    animations: 'disabled',
+    fullPage: false,
+  });
+});
+
 test('mobile search overlay', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');

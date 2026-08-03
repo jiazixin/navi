@@ -4,11 +4,14 @@ import { mockCatalog } from './mockCatalog';
 describe('mockCatalog', () => {
   it('provides a fixed, valid and uneven development catalog', () => {
     const catalog = catalogSchema.parse(mockCatalog);
-    const links = catalog.groups.flatMap((group) => group.links);
-    const groupSizes = catalog.groups.map((group) => group.links.length);
+    const primaryPage = catalog.pages[0];
+    if (primaryPage === undefined) throw new Error('Primary mock page is missing');
+    const links = primaryPage.groups.flatMap((group) => group.links);
+    const groupSizes = primaryPage.groups.map((group) => group.links.length);
     const runtimeIDs = links.map((link) => link.runtimeId);
 
-    expect(catalog.groups).toHaveLength(10);
+    expect(catalog.pages).toHaveLength(2);
+    expect(primaryPage.groups).toHaveLength(10);
     expect(links).toHaveLength(83);
     expect(new Set(groupSizes).size).toBeGreaterThan(1);
     expect(new Set(runtimeIDs).size).toBe(runtimeIDs.length);

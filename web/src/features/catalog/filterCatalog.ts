@@ -1,4 +1,4 @@
-import type { Catalog, CatalogLink } from '../../shared/api/catalog';
+import type { CatalogLink, CatalogPage } from '../../shared/api/catalog';
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase();
@@ -15,20 +15,20 @@ function linkMatches(link: CatalogLink, groupName: string, query: string): boole
   return searchableValues.some((value) => normalize(value).includes(query));
 }
 
-export function filterCatalog(catalog: Catalog, searchQuery: string): Catalog {
+export function filterPage(page: CatalogPage, searchQuery: string): CatalogPage {
   const query = normalize(searchQuery);
   if (query.length === 0) {
-    return catalog;
+    return page;
   }
 
-  const groups = catalog.groups.flatMap((group) => {
+  const groups = page.groups.flatMap((group) => {
     const links = group.links.filter((link) => linkMatches(link, group.name, query));
     return links.length > 0 ? [{ ...group, links }] : [];
   });
 
-  return { ...catalog, groups };
+  return { ...page, groups };
 }
 
-export function countLinks(catalog: Catalog): number {
-  return catalog.groups.reduce((total, group) => total + group.links.length, 0);
+export function countLinks(page: CatalogPage): number {
+  return page.groups.reduce((total, group) => total + group.links.length, 0);
 }

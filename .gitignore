@@ -1,9 +1,14 @@
 .DS_Store
 web/node_modules/
+
+data/
+ui/dist/
 web/dist/
 web/coverage/
 web/storybook-static/
 web/storybook-static-test/
-web/playwright-report/
 web/test-results/
+web/playwright-report/
 web/.vite/
+
+navi

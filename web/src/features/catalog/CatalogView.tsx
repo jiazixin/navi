@@ -1,24 +1,24 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { motionTokens } from '../../motion/tokens';
-import type { Catalog } from '../../shared/api/catalog';
+import type { CatalogPage } from '../../shared/api/catalog';
 import { EmptyState } from '../../shared/ui/EmptyState';
 import { countLinks } from './filterCatalog';
 import { GroupSection } from './GroupSection';
 import styles from './CatalogView.module.css';
 
 type CatalogViewProps = {
-  catalog: Catalog;
+  page: CatalogPage;
   searching?: boolean;
   entranceMode?: 'initial' | 'filter';
 };
 
 export function CatalogView({
-  catalog,
+  page,
   searching = false,
   entranceMode = 'initial',
 }: CatalogViewProps): React.JSX.Element {
   const reduceMotion = useReducedMotion();
-  const linkCount = countLinks(catalog);
+  const linkCount = countLinks(page);
   const enableLayoutMotion = linkCount <= 80;
 
   if (linkCount === 0) {
@@ -42,7 +42,7 @@ export function CatalogView({
         transition={{ duration: reduceMotion ? motionTokens.instant : motionTokens.standard }}
       >
         <AnimatePresence initial={false} mode="popLayout">
-          {catalog.groups.map((group, index) => (
+          {page.groups.map((group, index) => (
             <GroupSection
               key={group.name}
               enableLayoutMotion={enableLayoutMotion}

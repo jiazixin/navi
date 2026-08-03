@@ -1,9 +1,11 @@
-import { catalogFixture } from '../../test/fixtures';
-import { countLinks, filterCatalog } from './filterCatalog';
+import { primaryPageFixture } from '../../test/fixtures';
+import { countLinks, filterPage } from './filterCatalog';
 
-describe('filterCatalog', () => {
+describe('filterPage', () => {
+  const page = primaryPageFixture;
+
   it('returns the original catalog for an empty query', () => {
-    expect(filterCatalog(catalogFixture, '  ')).toBe(catalogFixture);
+    expect(filterPage(page, '  ')).toBe(page);
   });
 
   it.each([
@@ -14,19 +16,19 @@ describe('filterCatalog', () => {
     ['开发', 'GitHub'],
     ['code', 'GitHub'],
   ])('matches %s without changing YAML order', (query, expectedName) => {
-    const result = filterCatalog(catalogFixture, query);
+    const result = filterPage(page, query);
     expect(countLinks(result)).toBe(1);
     expect(result.groups[0]?.links[0]?.name).toBe(expectedName);
   });
 
   it('removes empty groups and preserves catalog metadata', () => {
-    const result = filterCatalog(catalogFixture, 'missing');
+    const result = filterPage(page, 'missing');
     expect(result.groups).toEqual([]);
-    expect(result.revision).toBe(catalogFixture.revision);
-    expect(result.site).toBe(catalogFixture.site);
+    expect(result.id).toBe(page.id);
+    expect(result.title).toBe(page.title);
   });
 
   it('counts links across groups', () => {
-    expect(countLinks(catalogFixture)).toBe(2);
+    expect(countLinks(page)).toBe(2);
   });
 });

@@ -1,8 +1,8 @@
 # Navi UI 组件与响应式规范
 
 状态：强制执行基线  
-版本：1.0.0  
-日期：2026-08-01
+版本：1.1.0
+日期：2026-08-03
 
 ## 1. 目的
 
@@ -239,7 +239,7 @@ UniversalSearch 是顶栏和目录之间的开放式外部搜索工作台：
 | 输入材质 | 低透明表面、1px 边界、内高光、有限阴影；支持时 blur 18-24px，不支持时使用不透明 surface fallback |
 | 当前 provider | 左侧 52x52px 圆形稳定徽章，phone 44x44px；核心背景固定 `#f8fafc`、边界固定 `#cbd5e1`，内部只有一个居中的 21-24px 品牌 SVG，不显示名称前缀、小箭头或角标；主题切换时背景、边界和图标不换色、不闪烁 |
 | provider | 网页：百度、Google、Yandex、Bing 国际版、GitHub；模型：ChatGPT、Claude、Gemini |
-| 配置/API | `web_search` / `site.webSearch`；默认 `baidu`；当前会话切换不持久化，刷新回到配置值 |
+| 配置/API | `web_search` / 根级 `webSearch`；默认 `baidu`；当前会话切换不持久化，刷新回到配置值 |
 | 提交 | trim 后非空查询；按钮与 Enter 等价；新标签页打开，使用 `noopener,noreferrer` |
 | 提交配色 | 52x52px/44x44px 圆形单层主题按钮；背景使用 `accent`、放大镜使用 `accent-contrast`，背景、边界、图标、阴影和 transform 使用搜索组件既有短动效；不增加专用主题状态、额外 DOM 或脚本 |
 | 模型降级 | Claude/Gemini 先打开官方页再尝试复制问题；成功/失败均通过固定高度 `role=status` 告知 |
@@ -251,7 +251,7 @@ UniversalSearch 是顶栏和目录之间的开放式外部搜索工作台：
 | 状态 | empty、pointer-held、focused-expanded、menu-open、typing、provider-selected、submitting、copied、clipboard-failed、reduced-motion |
 | 禁止 | 名称宽度改变输入几何、直接动画 width、角色或挂件装饰、随机环境动画、provider 品牌色污染主题、provider SVG 继承主题文字色、把 Google/Gemini 压成单色、在当前 provider 图标上叠放小箭头或角标、provider 徽章执行主题颜色过渡、为单个控件增加专用主题生命周期、装饰性光球、嵌套卡片、胶囊云、自动提交空值、静默丢失查询 |
 
-SearchField 与 SearchOverlay 继续只筛选本地导航内容：
+SearchField 与 SearchOverlay 继续只筛选当前页的本地导航内容：
 
 | 属性 | 规定 |
 | --- | --- |
@@ -267,7 +267,7 @@ SearchField 与 SearchOverlay 继续只筛选本地导航内容：
 | 属性 | 规定 |
 | --- | --- |
 | 配置字段 | `background_pattern`；默认 `meridian-grid` |
-| API 字段 | `site.backgroundPattern`；缺失时前端按 `meridian-grid` 处理 |
+| API 字段 | 根级 `backgroundPattern`；缺失时前端按 `meridian-grid` 处理 |
 | 选项 | 素幕、经纬阵、天游环、双鱼宫、天弓宫、回廊纹、玫瑰窗、八芒阵、星轨幕 |
 | 图层 | `position: fixed`、全视口、顶栏下方、内容背后、`pointer-events: none` |
 | 颜色 | 只消费当前主题 token；主线、辅线、节点至少分 3 个低透明层级 |
@@ -280,18 +280,32 @@ SearchField 与 SearchOverlay 继续只筛选本地导航内容：
 | reduced motion | 停止所有环境位移、旋转、描边和相位运动，并立即完成纹样切换；不提供额外静止配置或菜单开关 |
 | 禁止 | 捕获指针、影响布局、独立色板、图片纹理、随机生成、Canvas/粒子、JS timer/逐帧循环、文字遮挡、横向溢出、所有纹样套用同一个旋转动作 |
 
-### 5.4 GroupSection
+### 5.4 PagePagination
+
+| 属性 | 规定 |
+| --- | --- |
+| 位置 | 固定在视口底部中央，使用独立 `z-pagination` 层级，高于目录正文、低于 sticky 顶栏及其菜单、全屏搜索与对话层；无需滚到文档末尾即可使用。外层只负责定位且不截获空白区域指针，正文必须预留控件高度与安全区 |
+| 控件 | 参考 Morphing Page Dots：无边框、无面板、无卡片阴影；Lucide `ChevronLeft` / `ChevronRight` 裸图标按钮 + 可直达页点；所有目标至少 44x44px |
+| 状态 | 当前页使用 `aria-current="page"`；首尾方向按钮禁用；单页时不渲染分页占位 |
+| 文案 | 图标按钮 accessible name 为“上一页/下一页”；页点包含页码与页面标题，触控不依赖 tooltip |
+| 页点形变 | 非活动页为 6x6px 弱化圆点；活动页为约 22x7px 短横胶囊，使用共享 layout indicator 在目标之间平滑移动；切页时允许一次低透明外扩 ripple |
+| 内容动效 | 根据目标页方向水平移动 24px，并在 220ms 内淡入淡出；进入与退出方向一致，不使用 spring 或回弹 |
+| 指示器动效 | 280ms `cubic-bezier(0.22, 1, 0.36, 1)` tween；ripple 约 520ms，仅响应切页，不持续循环 |
+| reduced motion | 取消内容水平位移、indicator 移动与 ripple，使用 instant token 完成状态切换 |
+| 禁止 | 文字箭头、分页表面或边框、滚动到页尾后才可操作、遮挡最后一排卡片、分页导致正文宽度变化、切页后继续沿用旧页搜索词、只靠颜色表达当前页 |
+
+### 5.5 GroupSection
 
 | 属性 | 规定 |
 | --- | --- |
 | 外层 | 无卡片背景，无额外圆角容器 |
-| 标题行 | 最小 28px，3px 主题刻度、标题与数量对齐，中性分隔线填充剩余宽度 |
+| 标题行 | 最小 28px，3px 主题刻度、标题与数量对齐；不使用横向分隔线 |
 | 标题到 Grid | 使用统一 12/16px token |
 | 分组间距 | 按模式统一 32/40px |
 | 空分组 | YAML 当前模型不产生；若未来支持，必须有独立设计 |
 | 禁止 | 第一个/最后一个分组使用不同内部 spacing、标题左右边缘与卡片不齐 |
 
-### 5.5 LinkCard
+### 5.6 LinkCard
 
 | 属性 | 规定 |
 | --- | --- |
@@ -306,7 +320,7 @@ SearchField 与 SearchOverlay 继续只筛选本地导航内容：
 | 主题表达 | 默认边框保持中性；2px 短边缘刻度与图标底使用主题角色，hover/focus 才增强 |
 | 禁止 | 因无 description 变矮、图标到达改变 padding、hover 改变 border 宽度、默认彩色描边 |
 
-### 5.6 Favicon 与 Monogram
+### 5.7 Favicon 与 Monogram
 
 | 属性 | 规定 |
 | --- | --- |
@@ -317,7 +331,7 @@ SearchField 与 SearchOverlay 继续只筛选本地导航内容：
 | 动效 | 180ms crossfade，不改变容器 geometry |
 | 禁止 | 图片撑破容器、透明图标不可见、失败图标占位尺寸不同 |
 
-### 5.7 IconButton 与 Tooltip
+### 5.8 IconButton 与 Tooltip
 
 | 属性 | 规定 |
 | --- | --- |
@@ -334,7 +348,7 @@ SearchField 与 SearchOverlay 继续只筛选本地导航内容：
 饱和填充或仅靠颜色表达选中状态。主题菜单与背景纹样、provider 菜单共享不透明 floating
 surface、边界和阴影，不使用 backdrop blur。
 
-### 5.8 StatusBanner
+### 5.9 StatusBanner
 
 - 位于顶栏下方的正常文档流或稳定 sticky slot，不覆盖第一组内容。
 - 最小高度 40px，padding 8px 16px，图标/文字/关闭命令垂直对齐。
@@ -342,14 +356,14 @@ surface、边界和阴影，不使用 backdrop blur。
 - 同一状态重复出现不改变页面上下间距。
 - dismissed、degraded、restored、offline 都有 story 和测试。
 
-### 5.9 LoadingSkeleton
+### 5.10 LoadingSkeleton
 
 - 骨架必须复制真实 GroupSection 和 LinkCard 的 geometry。
 - icon、标题、secondary line 的位置与真实内容误差 <= 1 CSS px。
 - 使用低幅 opacity 呼吸；reduced motion 下静止。
 - 加载完成后 CLS 目标为 0，最大允许 0.02。
 
-### 5.10 EmptyState 与 FailurePage
+### 5.11 EmptyState 与 FailurePage
 
 - 不包在装饰性大卡片中。
 - phone 上水平 padding 16px，文字不超过可读宽度。

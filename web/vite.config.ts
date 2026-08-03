@@ -4,8 +4,10 @@ import { mockCatalog } from './src/test/mockCatalog.ts';
 
 function devAPI(): Plugin {
   const linksByRuntimeID = new Map(
-    mockCatalog.groups.flatMap((group) =>
-      group.links.map((link) => [link.runtimeId, link] as const),
+    mockCatalog.pages.flatMap((page) =>
+      page.groups.flatMap((group) =>
+        group.links.map((link) => [link.runtimeId, link] as const),
+      ),
     ),
   );
 
@@ -76,7 +78,7 @@ function devAPI(): Plugin {
 export default defineConfig(({ command }) => ({
   plugins: [react(), ...(command === 'serve' ? [devAPI()] : [])],
   build: {
-    outDir: 'dist',
+    outDir: '../ui/dist',
     emptyOutDir: true,
     sourcemap: true,
     target: 'es2022',

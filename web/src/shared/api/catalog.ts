@@ -32,26 +32,36 @@ const catalogGroupSchema = z
   })
   .strict();
 
-export const catalogSchema = z
+const catalogPageSchema = z
   .object({
-    revision: z.number().int().nonnegative(),
-    site: z
-      .object({
-        title: z.string().min(1).max(40),
-        subtitle: z.string().max(100).optional(),
-        theme: catalogThemeSchema.optional(),
-        backgroundPattern: catalogBackgroundPatternSchema
-          .optional()
-          .default(DEFAULT_BACKGROUND_PATTERN),
-        webSearch: webSearchProviderSchema.optional().default(DEFAULT_WEB_SEARCH_PROVIDER),
-      })
-      .strict(),
+    id: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/),
+    title: z.string().min(1).max(40),
+    subtitle: z.string().max(100).optional(),
     groups: z.array(catalogGroupSchema),
   })
   .strict();
 
+export const catalogSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    theme: catalogThemeSchema.optional(),
+    backgroundPattern: catalogBackgroundPatternSchema
+      .optional()
+      .default(DEFAULT_BACKGROUND_PATTERN),
+    webSearch: webSearchProviderSchema.optional().default(DEFAULT_WEB_SEARCH_PROVIDER),
+    pages: z
+      .array(catalogPageSchema)
+      .min(1)
+      .max(20)
+      .refine((pages) => new Set(pages.map((page) => page.id)).size === pages.length, {
+        message: 'Catalog page IDs must be unique.',
+      }),
+  })
+  .strict();
+
 export type Catalog = z.infer<typeof catalogSchema>;
-export type CatalogGroup = Catalog['groups'][number];
+export type CatalogPage = Catalog['pages'][number];
+export type CatalogGroup = CatalogPage['groups'][number];
 export type CatalogLink = CatalogGroup['links'][number];
 
 export class APIError extends Error {

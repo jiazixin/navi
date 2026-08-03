@@ -34,15 +34,20 @@ describe('catalog API', () => {
   it('rejects unsupported URL protocols', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
-      groups: [
+      pages: [
         {
-          name: '开发',
-          links: [
+          ...catalogFixture.pages[0],
+          groups: [
             {
-              runtimeId: 'invalid',
-              name: 'Invalid',
-              publicUrl: 'ftp://example.com',
-              tags: [],
+              name: '开发',
+              links: [
+                {
+                  runtimeId: 'invalid',
+                  name: 'Invalid',
+                  publicUrl: 'ftp://example.com',
+                  tags: [],
+                },
+              ],
             },
           ],
         },
@@ -55,7 +60,22 @@ describe('catalog API', () => {
   it('rejects a link without either URL', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
-      groups: [{ name: '开发', links: [{ runtimeId: 'invalid', name: 'Invalid', tags: [] }] }],
+      pages: [
+        {
+          ...catalogFixture.pages[0],
+          groups: [
+            { name: '开发', links: [{ runtimeId: 'invalid', name: 'Invalid', tags: [] }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects duplicate page IDs', () => {
+    const result = catalogSchema.safeParse({
+      ...catalogFixture,
+      pages: [catalogFixture.pages[0], { ...catalogFixture.pages[1], id: 'page1' }],
     });
     expect(result.success).toBe(false);
   });
@@ -63,7 +83,7 @@ describe('catalog API', () => {
   it('rejects an unknown configured theme', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
-      site: { ...catalogFixture.site, theme: 'unknown-theme' },
+      theme: 'unknown-theme',
     });
 
     expect(result.success).toBe(false);
@@ -72,13 +92,9 @@ describe('catalog API', () => {
   it('defaults a missing background pattern and accepts every documented value', () => {
     const withoutPattern = catalogSchema.parse({
       ...catalogFixture,
-      site: {
-        title: catalogFixture.site.title,
-        subtitle: catalogFixture.site.subtitle,
-        theme: catalogFixture.site.theme,
-      },
+      backgroundPattern: undefined,
     });
-    expect(withoutPattern.site.backgroundPattern).toBe('meridian-grid');
+    expect(withoutPattern.backgroundPattern).toBe('meridian-grid');
 
     for (const backgroundPattern of [
       'none',
@@ -94,7 +110,7 @@ describe('catalog API', () => {
       expect(
         catalogSchema.safeParse({
           ...catalogFixture,
-          site: { ...catalogFixture.site, backgroundPattern },
+          backgroundPattern,
         }).success,
       ).toBe(true);
     }
@@ -103,7 +119,7 @@ describe('catalog API', () => {
   it('rejects an unknown configured background pattern', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
-      site: { ...catalogFixture.site, backgroundPattern: 'random-lines' },
+      backgroundPattern: 'random-lines',
     });
 
     expect(result.success).toBe(false);
@@ -112,14 +128,9 @@ describe('catalog API', () => {
   it('defaults a missing web search provider and accepts every documented value', () => {
     const withoutProvider = catalogSchema.parse({
       ...catalogFixture,
-      site: {
-        title: catalogFixture.site.title,
-        subtitle: catalogFixture.site.subtitle,
-        theme: catalogFixture.site.theme,
-        backgroundPattern: catalogFixture.site.backgroundPattern,
-      },
+      webSearch: undefined,
     });
-    expect(withoutProvider.site.webSearch).toBe('baidu');
+    expect(withoutProvider.webSearch).toBe('baidu');
 
     for (const webSearch of [
       'baidu',
@@ -134,7 +145,7 @@ describe('catalog API', () => {
       expect(
         catalogSchema.safeParse({
           ...catalogFixture,
-          site: { ...catalogFixture.site, webSearch },
+          webSearch,
         }).success,
       ).toBe(true);
     }
@@ -143,7 +154,7 @@ describe('catalog API', () => {
   it('rejects an unknown configured web search provider', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
-      site: { ...catalogFixture.site, webSearch: 'unknown-search' },
+      webSearch: 'unknown-search',
     });
 
     expect(result.success).toBe(false);

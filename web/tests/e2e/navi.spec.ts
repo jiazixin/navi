@@ -555,7 +555,7 @@ test('configured search provider is restored after a session-only choice', async
     await route.fulfill({
       body: JSON.stringify({
         ...mockCatalog,
-        site: { ...mockCatalog.site, webSearch: 'github' },
+        webSearch: 'github',
       }),
       contentType: 'application/json',
       status: 200,
@@ -617,6 +617,66 @@ test('search preserves group context and restores YAML order when cleared', asyn
   await search.press('Escape');
   await expect(page.getByRole('link', { name: '打开 Grafana' })).toBeVisible();
   await expect(page.getByRole('link', { name: '打开 GitHub' })).toBeVisible();
+});
+
+test('bottom icon pagination switches page content and clears the old page search', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const search = page.getByRole('searchbox', { name: '搜索导航' });
+  await search.fill('Grafana');
+
+  const previous = page.getByRole('button', { name: '上一页' });
+  const next = page.getByRole('button', { name: '下一页' });
+  await expect(previous).toBeDisabled();
+  await expect(page.getByRole('button', { name: '第 1 页：我的导航' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+
+  const pagination = page.getByRole('navigation', { name: '导航分页' });
+  const initialPaginationBox = await pagination.boundingBox();
+  const viewport = page.viewportSize();
+  if (initialPaginationBox === null || viewport === null) {
+    throw new Error('Pagination or viewport geometry is unavailable');
+  }
+  expect(initialPaginationBox.y + initialPaginationBox.height).toBeLessThanOrEqual(
+    viewport.height,
+  );
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const scrolledPaginationBox = await pagination.boundingBox();
+  if (scrolledPaginationBox === null) {
+    throw new Error('Pagination geometry is unavailable after scrolling');
+  }
+  expect(scrolledPaginationBox.y).toBeCloseTo(initialPaginationBox.y, 0);
+  await expect
+    .poll(() =>
+      pagination.evaluate((element) => {
+        const slot = element.parentElement;
+        if (slot === null) return { position: 'missing', zIndex: Number.NaN };
+        return {
+          position: getComputedStyle(slot).position,
+          zIndex: Number(getComputedStyle(slot).zIndex),
+        };
+      }),
+    )
+    .toEqual({ position: 'fixed', zIndex: 9 });
+
+  await next.click();
+  await expect(page).toHaveTitle('灵感收藏 · Navi');
+  await expect(page.getByRole('heading', { name: '精选' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '打开 Are.na' })).toBeVisible();
+  await expect(search).toHaveValue('');
+  await expect(next).toBeDisabled();
+  await expect(page.getByRole('button', { name: '第 2 页：灵感收藏' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+
+  await previous.click();
+  await expect(page).toHaveTitle('我的导航 · Navi');
+  await expect(page.getByRole('link', { name: '打开 Grafana' })).toBeVisible();
 });
 
 test('mobile search uses a single-scroll overlay and preserves the query', async ({ page }) => {
@@ -891,7 +951,24 @@ test('star trails keep their visual origin just outside the lower-left viewport'
 test('has no serious or critical automated accessibility violations', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByRole('link', { name: '打开 Grafana' })).toBeVisible();
+  const grafana = page.getByRole('link', { name: '打开 Grafana' });
+  await expect(grafana).toBeVisible();
+  await expect
+    .poll(() =>
+      grafana.evaluate((card) => {
+        const secondary = card.querySelector<HTMLElement>('[title="Metrics and dashboards"]');
+        const context = document.createElement('canvas').getContext('2d');
+        if (secondary === null || context === null) return false;
+
+        context.fillStyle = getComputedStyle(document.documentElement)
+          .getPropertyValue('--text-secondary')
+          .trim();
+        const targetColor = context.fillStyle;
+        context.fillStyle = getComputedStyle(secondary).color;
+        return context.fillStyle === targetColor;
+      }),
+    )
+    .toBe(true);
 
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])

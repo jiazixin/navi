@@ -1,8 +1,8 @@
 # Navi 验收文档
 
 状态：实现验收基线  
-版本：1.3.0  
-日期：2026-08-01
+版本：1.4.0
+日期：2026-08-03
 
 ## 1. 验收规则
 
@@ -72,15 +72,20 @@ configpath=/tmp/navi/config.yaml ./navi
 
 ```yaml
 version: 1
-site:
-  title: Order Test
-urls:
-  - {name: A1, group: A, private_url: "http://a1.test"}
-  - {name: B1, group: B, private_url: "http://b1.test"}
-  - {name: A2, group: A, private_url: "http://a2.test"}
+pages:
+  - id: page1
+    title: Order Test
+    urls:
+      - {name: A1, group: A, private_url: "http://a1.test"}
+      - {name: B1, group: B, private_url: "http://b1.test"}
+      - {name: A2, group: A, private_url: "http://a2.test"}
+  - id: page2
+    title: Second Page
+    urls: []
 ```
 
-预期：分组顺序为 A、B；A 内顺序为 A1、A2；B 内为 B1。刷新后不变化。
+预期：分页顺序为 page1、page2；page1 的分组顺序为 A、B；A 内顺序为 A1、A2；B 内为 B1。
+刷新后不变化。旧版顶层 `site/urls` 必须严格校验失败。
 
 ### AC-P0-008 合法 YAML 热加载
 
@@ -285,7 +290,7 @@ background、border 或 color 的主题动画。搜索提交按钮保持单个 b
 对 TopBar、SearchField、GroupSection、LinkCard、Favicon、IconButton、StatusBanner、
 Skeleton、EmptyState 和 FailurePage 执行 Storybook 与 computed-style 检查。  
 预期：尺寸、padding、gap、radius、font、line-height、icon box、状态反馈完全符合
-`docs/UI_SPEC.md`；同层级重复间距误差不超过 1 CSS px。
+`docs/UI_SPEC.md`；GroupSection 标题行不渲染横向分隔线；同层级重复间距误差不超过 1 CSS px。
 
 ### AC-P0-115 文字与内容边界
 
@@ -355,7 +360,7 @@ Bing、GitHub、ChatGPT、Claude 和 Gemini，输入中英文混合查询后用�
   `menuitemradio`，具备至少 44x44 target、清晰焦点、非纯色选中反馈，并支持方向键、Home/End、
   Enter、Escape、Tab 与外部点击关闭；
   外部搜索与现有“搜索导航”筛选框具有不同 accessible name，不发生测试或操作歧义。
-- `web_search` 缺失时使用 `baidu`，8 个合法值均可解析，未知值失败；API 的 `site.webSearch`
+- `web_search` 缺失时使用 `baidu`，8 个合法值均可解析，未知值失败；API 的根级 `webSearch`
   决定初始入口。当前会话手动切换不持久化，刷新回到配置值。
 - desktop 搜索器静止约 640px；mouse pointer-enter 后在 220ms 内通过 FLIP 舒展到约 820px，
   pointer-leave 后仍保持展开，8000ms 窗口结束且无 focus/menu-open 时在 180ms 内自动收回；
@@ -451,6 +456,29 @@ Bing、GitHub、ChatGPT、Claude 和 Gemini，输入中英文混合查询后用�
   provider 选择、键盘菜单、搜索 URL、剪贴板降级、伸缩几何或浮层表面契约。
 - Vitest 精确验证 Google path fill、Gemini gradient stop/实例 id 和单 SVG 结构；Playwright
   覆盖三浏览器、主题稳定性、desktop/mobile 几何、console、overflow 与视觉回归。
+
+### AC-P0-126 多页目录与底部分页
+
+准备至少两个页面，分别包含不同标题、分组和链接，在 1440x900、768x1024、390x844 与
+reduced motion 下完成上一页、下一页和页点直达操作。
+
+预期：
+
+- `/api/catalog` 返回根级公开外观字段和按 YAML 顺序排列的 `pages`；每页包含稳定唯一 ID、
+  标题、副标题和分组。旧版顶层 `site/urls` 启动时严格失败，不存在兼容或迁移分支。
+- 顶栏标题、浏览器标题、目录内容和移动搜索结果始终属于当前页；本地搜索不跨页，主动切页会
+  清空旧页查询并关闭移动搜索浮层。
+- 分页固定在视口底部中央且高于正文，滚动到任意位置仍保持相同视口坐标；外层空白区域不拦截
+  正文操作，正文底部预留足够空间，最后一排卡片不被遮挡，并正确叠加左右/底部 safe area。
+- 分页采用无边框、无面板的 Morphing Page Dots：Lucide Chevron 裸图标按钮、6x6px 非活动页点
+  和约 22x7px 活动胶囊；每个目标至少 44x44px，当前页具有 `aria-current="page"`，首尾方向按钮
+  禁用，单页不渲染分页或底部占位。
+- 活动 indicator 在页点之间以 280ms ease-out tween 平滑形变移动，并触发一次约 520ms 的低透明
+  ripple；不使用 spring、回弹或循环动画。reduced motion 下 indicator 立即切换且不渲染 ripple。
+- 前进时新页从右侧进入、旧页向左退出；后退方向相反。位移约 24px、时长 220ms，透明度与位移
+  连续且不回弹。reduced motion 下无水平位移并使用 instant token。
+- desktop 与 mobile 不出现水平溢出、固定分页遮挡卡片、文字重叠、safe-area 冲突或页面切换后的
+  残留旧内容；热加载保留仍存在的当前页 ID，删除当前页时回到第一项。
 
 ## 5. 性能验收
 

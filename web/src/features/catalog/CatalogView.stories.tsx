@@ -1,12 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { catalogFixture } from '../../test/fixtures';
+import { primaryPageFixture } from '../../test/fixtures';
 import { CatalogView } from './CatalogView';
 
 const meta = {
   title: 'Catalog/CatalogView',
   component: CatalogView,
   args: {
-    catalog: catalogFixture,
+    page: primaryPageFixture,
   },
   decorators: [
     (Story) => (
@@ -24,7 +24,7 @@ export const Default: Story = {};
 
 export const NoResults: Story = {
   args: {
-    catalog: { ...catalogFixture, groups: [] },
+    page: { ...primaryPageFixture, groups: [] },
     searching: true,
   },
 };

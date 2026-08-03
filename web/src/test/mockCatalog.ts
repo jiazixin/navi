@@ -3,14 +3,15 @@ import type { Catalog } from '../shared/api/catalog.ts';
 // Development-only catalog used by the Vite API mock. Production data still comes from urls.yaml.
 export const mockCatalog: Catalog = {
   revision: 10,
-  site: {
-    title: '我的导航',
-    subtitle: '工作、学习、服务与常用资源',
-    theme: 'default',
-    backgroundPattern: 'meridian-grid',
-    webSearch: 'baidu',
-  },
-  groups: [
+  theme: 'default',
+  backgroundPattern: 'meridian-grid',
+  webSearch: 'baidu',
+  pages: [
+    {
+      id: 'page1',
+      title: '我的导航',
+      subtitle: '工作、学习、服务与常用资源',
+      groups: [
     {
       name: '基础设施',
       links: [
@@ -642,6 +643,34 @@ export const mockCatalog: Catalog = {
           description: '网页、书籍、音频与软件数字档案',
           publicUrl: 'https://archive.org/',
           tags: ['archive', 'history', 'tool'],
+        },
+      ],
+    },
+      ],
+    },
+    {
+      id: 'page2',
+      title: '灵感收藏',
+      subtitle: '阅读、设计与稍后探索',
+      groups: [
+        {
+          name: '精选',
+          links: [
+            {
+              runtimeId: 'page2-are-na',
+              name: 'Are.na',
+              description: 'Collect references and connect ideas',
+              publicUrl: 'https://www.are.na/',
+              tags: ['inspiration', 'research'],
+            },
+            {
+              runtimeId: 'page2-readwise',
+              name: 'Readwise',
+              description: 'Review and revisit reading highlights',
+              publicUrl: 'https://readwise.io/',
+              tags: ['reading', 'notes'],
+            },
+          ],
         },
       ],
     },

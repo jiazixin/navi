@@ -23,6 +23,7 @@
   --content-max-width: 1440px;
 
   --z-base: 0;
+  --z-pagination: 9;
   --z-sticky: 10;
   --z-banner: 20;
   --z-overlay: 30;

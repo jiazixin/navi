@@ -1,0 +1,28 @@
+version: 1
+
+pages:
+  - id: page1
+    title: My Navigator
+    subtitle: Work, services, and frequently used resources
+    urls:
+      - name: Grafana
+        group: Infrastructure
+        description: Metrics and dashboards
+        private_url: http://grafana.lan:3000
+        public_url: https://grafana.example.com
+        tags: [monitoring, metrics]
+      - name: GitHub
+        group: Development
+        description: Source code and collaboration
+        public_url: https://github.com
+        tags: [code]
+
+  - id: page2
+    title: Reading and Inspiration
+    subtitle: References to revisit later
+    urls:
+      - name: Are.na
+        group: Inspiration
+        description: Collect references and connect ideas
+        public_url: https://www.are.na
+        tags: [research, inspiration]

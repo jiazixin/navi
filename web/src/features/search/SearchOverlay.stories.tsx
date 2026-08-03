@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { catalogFixture } from '../../test/fixtures';
+import { primaryPageFixture } from '../../test/fixtures';
 import { SearchOverlay } from './SearchOverlay';
 
 function SearchOverlayDemo(): React.JSX.Element {
   const [query, setQuery] = useState('');
   return (
     <SearchOverlay
-      catalog={catalogFixture}
+      page={primaryPageFixture}
       onChange={setQuery}
       onClose={() => undefined}
       query={query}
@@ -19,7 +19,7 @@ const meta = {
   title: 'Search/SearchOverlay',
   component: SearchOverlay,
   args: {
-    catalog: catalogFixture,
+    page: primaryPageFixture,
     query: '',
     onChange: () => undefined,
     onClose: () => undefined,

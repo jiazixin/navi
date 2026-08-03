@@ -8,10 +8,9 @@ file changes, and resolves private/public destinations. The React frontend is
 embedded into the Go binary and focuses on fast search, responsive layout,
 accessibility, and polished monochrome presentation.
 
-> Project status: the React UI/UX, responsive behavior, accessibility,
-> component state library, and cross-browser test suite are complete and released as the
-> `0.1` frontend milestone. The current Vite development server provides deterministic mock APIs;
-> the Go backend, real YAML/favicon/navigation flows, and single-binary embedding begin next.
+> Project status: the `0.1` frontend milestone is complete. The Go backend now loads real YAML,
+> watches valid updates, caches derived favicons, resolves private/public destinations, exposes the
+> read-only API, and embeds the production frontend into the `navi` binary.
 
 [中文说明](README.zh-CN.md)
 
@@ -107,27 +106,30 @@ favicon:
 ```yaml
 version: 1
 
-site:
-  title: My Navigator
-  subtitle: Work, services, and frequently used resources
+pages:
+  - id: page1
+    title: My Navigator
+    subtitle: Work, services, and frequently used resources
+    urls:
+      - name: Grafana
+        group: Infrastructure
+        description: Metrics and dashboards
+        private_url: http://grafana.lan:3000
+        public_url: https://grafana.example.com
+        tags: [monitoring, metrics]
 
-urls:
-  - name: Grafana
-    group: Infrastructure
-    description: Metrics and dashboards
-    private_url: http://grafana.lan:3000
-    public_url: https://grafana.example.com
-    tags: [monitoring, metrics]
-
-  - name: GitHub
-    group: Development
-    description: Source code and collaboration
-    public_url: https://github.com
-    tags: [code]
+  - id: page2
+    title: Reading and Inspiration
+    urls:
+      - name: Are.na
+        group: Inspiration
+        public_url: https://www.are.na
+        tags: [research]
 ```
 
 At least one of `private_url` and `public_url` is required. Only HTTP and HTTPS
-destinations are accepted.
+destinations are accepted. Page and link order follow the `pages` and `urls`
+arrays exactly. The bottom icon pagination switches between pages.
 
 Navi discovers `link rel="icon"` declarations and falls back to `/favicon.ico`.
 Validated images are stored under `datadir/favicons` and served locally. This
@@ -178,17 +180,31 @@ The development server uses the deterministic read-only fixture in `web/vite.con
 the backend contract. It exists only for frontend development and acceptance, is not a second catalog
 source of truth, and is excluded from the production bundle.
 
-## Planned Single-Binary Build
+## Single-Binary Build
 
 ```bash
 make verify
 make build
 ./navi -f ./config.yaml
+./navi --version
 ```
 
-These commands define the Go backend delivery interface and will become available during backend and
-frontend-embedding implementation. Production will not require Node; Node is only used to generate the
-frontend assets embedded into the Go binary.
+`make build` generates the frontend bundle, embeds it into `navi`, and injects the version, commit, and
+build time. Production does not require Node; Node is only used to produce the embedded frontend assets.
+
+## Container Build
+
+```bash
+docker build -t navi:local .
+docker run --rm -p 8080:8080 \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  -v "$(pwd)/urls.yaml:/app/urls.yaml:ro" \
+  -v navi-data:/data \
+  navi:local -f /app/config.yaml
+```
+
+The container runs as a non-root user. Mount `config.yaml` and `urls.yaml` read-only; keep `datadir` on the
+separate writable volume by setting `datadir: /data` in the mounted configuration.
 
 ## Deployment Note
 

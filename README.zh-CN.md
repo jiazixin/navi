@@ -6,9 +6,8 @@ Navi 是一个文档优先的个人导航系统。它只有一个核心目标：
 Go 后端读取 `urls.yaml`，提供只读目录、合法配置热加载和内外网链接选择；React 前端
 嵌入 Go 二进制，重点实现快速搜索、响应式布局、可访问性和有高级质感的黑白界面。
 
-> 项目状态：React 前端 UI/UX、响应式、可访问性、组件状态库及跨浏览器测试已经完成，
-> 并作为 `0.1` 前端里程碑发布。当前页面由 Vite 开发 fixture 提供模拟 API；Go 后端、真实
-> YAML/Favicon/跳转链路和单二进制嵌入从下一阶段开始实施。
+> 项目状态：`0.1` 前端里程碑已经完成。Go 后端现已加载真实 YAML、监听合法热更新、缓存可重建
+> favicon、解析 private/public 链接、提供只读 API，并将生产前端嵌入 `navi` 二进制。
 
 [English README](README.md)
 
@@ -105,27 +104,30 @@ favicon:
 ```yaml
 version: 1
 
-site:
-  title: 我的导航
-  subtitle: 工作、服务与常用资源
+pages:
+  - id: page1
+    title: 我的导航
+    subtitle: 工作、服务与常用资源
+    urls:
+      - name: Grafana
+        group: 基础设施
+        description: Metrics and dashboards
+        private_url: http://grafana.lan:3000
+        public_url: https://grafana.example.com
+        tags: [monitoring, metrics]
 
-urls:
-  - name: Grafana
-    group: 基础设施
-    description: Metrics and dashboards
-    private_url: http://grafana.lan:3000
-    public_url: https://grafana.example.com
-    tags: [monitoring, metrics]
-
-  - name: GitHub
-    group: 开发
-    description: Source code and collaboration
-    public_url: https://github.com
-    tags: [code]
+  - id: page2
+    title: 阅读与灵感
+    urls:
+      - name: Are.na
+        group: 灵感
+        public_url: https://www.are.na
+        tags: [research]
 ```
 
 `private_url` 和 `public_url` 至少填写一个，只接受 HTTP 和 HTTPS 地址。
-`urls` 数组顺序就是页面顺序，不会被程序重新排序或回写。
+`pages` 数组顺序就是分页顺序，每页的 `urls` 数组保持链接顺序；程序不会重新排序或回写。
+页面底部使用图标分页控件切换页面。
 
 Navi 会先解析目标页面的 `link rel="icon"` 声明，找不到时尝试站点根目录的
 `/favicon.ico`。校验通过的图标保存到 `datadir/favicons` 并由 Navi 本地提供。
@@ -170,16 +172,31 @@ npm --prefix web run test:e2e
 当前开发服务器使用 `web/vite.config.ts` 中的确定性只读 fixture 模拟后端协议；它只用于前端
 开发与验收，不是第二份导航数据源，也不会进入生产构建。
 
-## 计划中的单二进制构建
+## 单二进制构建
 
 ```bash
 make verify
 make build
 ./navi -f ./config.yaml
+./navi --version
 ```
 
-以上命令是已经确定的 Go 后端交付接口，将在后端与前端嵌入阶段实现。生产运行不需要 Node；
-Node 只用于生成随后嵌入 Go 二进制的前端静态产物。
+`make build` 会构建前端、嵌入产物并生成 `navi`，同时注入版本、提交与构建时间。生产运行不需要
+Node；Node 只用于生成嵌入二进制的前端静态产物。
+
+## 容器构建
+
+```bash
+docker build -t navi:local .
+docker run --rm -p 8080:8080 \
+  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
+  -v "$(pwd)/urls.yaml:/app/urls.yaml:ro" \
+  -v navi-data:/data \
+  navi:local -f /app/config.yaml
+```
+
+容器以非 root 用户运行。`config.yaml` 和 `urls.yaml` 应以只读方式挂载，`datadir` 使用独立的可写
+volume；容器中的挂载配置应设置 `datadir: /data`。
 
 ## 部署提醒
 

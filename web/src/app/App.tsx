@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { BackgroundPattern } from '../features/background-pattern/BackgroundPattern';
 import { useBackgroundPattern } from '../features/background-pattern/useBackgroundPattern';
 import { CatalogView } from '../features/catalog/CatalogView';
-import { filterCatalog } from '../features/catalog/filterCatalog';
+import { filterPage } from '../features/catalog/filterCatalog';
 import { LoadingCatalog } from '../features/catalog/LoadingCatalog';
+import { PagePagination } from '../features/catalog/PagePagination';
 import { SearchOverlay } from '../features/search/SearchOverlay';
 import { StatusBanner, type StatusBannerKind } from '../features/status/StatusBanner';
 import { useCatalogEvents } from '../features/status/useCatalogEvents';
 import { useTheme } from '../features/theme/useTheme';
 import { UniversalSearch } from '../features/web-search/UniversalSearch';
+import { motionTokens } from '../motion/tokens';
 import { getCatalog } from '../shared/api/catalog';
 import { getServiceStatus } from '../shared/api/status';
 import { FailurePage } from '../shared/ui/EmptyState';
@@ -34,6 +36,9 @@ export function App(): React.JSX.Element {
   const [hasSearched, setHasSearched] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dismissedBanner, setDismissedBanner] = useState<string | null>(null);
+  const [currentPageID, setCurrentPageID] = useState<string | null>(null);
+  const [pageDirection, setPageDirection] = useState<1 | -1>(1);
+  const reduceMotion = useReducedMotion();
 
   const catalogQuery = useQuery({
     queryKey: ['catalog'],
@@ -44,9 +49,9 @@ export function App(): React.JSX.Element {
     queryFn: ({ signal }) => getServiceStatus(signal),
     retry: 1,
   });
-  const { preference, selectTheme } = useTheme(catalogQuery.data?.site.theme ?? 'default');
+  const { preference, selectTheme } = useTheme(catalogQuery.data?.theme ?? 'default');
   const { preference: backgroundPatternPreference, selectBackgroundPattern } =
-    useBackgroundPattern(catalogQuery.data?.site.backgroundPattern ?? 'meridian-grid');
+    useBackgroundPattern(catalogQuery.data?.backgroundPattern ?? 'meridian-grid');
 
   const refreshCatalog = useCallback((): void => {
     void Promise.all([
@@ -64,15 +69,21 @@ export function App(): React.JSX.Element {
     onCatalogError: handleCatalogError,
   });
 
-  const filteredCatalog = useMemo(
-    () => (catalogQuery.data === undefined ? undefined : filterCatalog(catalogQuery.data, searchQuery)),
-    [catalogQuery.data, searchQuery],
+  const pages = useMemo(() => catalogQuery.data?.pages ?? [], [catalogQuery.data?.pages]);
+  const currentPageIndex = Math.max(
+    0,
+    pages.findIndex((page) => page.id === currentPageID),
+  );
+  const currentPage = pages[currentPageIndex];
+  const filteredPage = useMemo(
+    () => (currentPage === undefined ? undefined : filterPage(currentPage, searchQuery)),
+    [currentPage, searchQuery],
   );
 
   useEffect(() => {
-    const title = catalogQuery.data?.site.title;
+    const title = currentPage?.title;
     document.title = title === undefined ? 'Navi' : `${title} · Navi`;
-  }, [catalogQuery.data?.site.title]);
+  }, [currentPage?.title]);
 
   const banner = useMemo<BannerState | null>(() => {
     if (catalogQuery.isError && catalogQuery.data !== undefined) {
@@ -123,6 +134,19 @@ export function App(): React.JSX.Element {
     }
   }, []);
 
+  const handlePageChange = useCallback(
+    (nextIndex: number): void => {
+      const nextPage = pages[nextIndex];
+      if (nextPage === undefined || nextIndex === currentPageIndex) return;
+      setPageDirection(nextIndex > currentPageIndex ? 1 : -1);
+      setCurrentPageID(nextPage.id);
+      setSearchQuery('');
+      setHasSearched(false);
+      setSearchOpen(false);
+    },
+    [currentPageIndex, pages],
+  );
+
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent): void {
       const commandSearch = (event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k';
@@ -154,7 +178,11 @@ export function App(): React.JSX.Element {
     <div className={styles.app}>
       <BackgroundPattern pattern={backgroundPatternPreference} />
 
-      <div className={styles.shell} id="navi-shell">
+      <div
+        className={styles.shell}
+        data-has-pagination={pages.length > 1 ? 'true' : 'false'}
+        id="navi-shell"
+      >
         <TopBar
           backgroundPatternPreference={backgroundPatternPreference}
           connection={connection}
@@ -169,9 +197,9 @@ export function App(): React.JSX.Element {
           onThemeChange={selectTheme}
           query={searchQuery}
           searchInputRef={searchInputRef}
-          subtitle={catalogQuery.data?.site.subtitle}
+          subtitle={currentPage?.subtitle}
           themePreference={preference}
-          title={catalogQuery.data?.site.title ?? 'Navi'}
+          title={currentPage?.title ?? 'Navi'}
         />
 
         <AnimatePresence initial={false}>
@@ -187,7 +215,7 @@ export function App(): React.JSX.Element {
         </AnimatePresence>
 
         <UniversalSearch
-          configuredProviderID={catalogQuery.data?.site.webSearch ?? 'baidu'}
+          configuredProviderID={catalogQuery.data?.webSearch ?? 'baidu'}
         />
 
         <main className={styles.main}>
@@ -195,23 +223,47 @@ export function App(): React.JSX.Element {
           {catalogQuery.isError && catalogQuery.data === undefined ? (
             <FailurePage onRetry={refreshCatalog} />
           ) : null}
-          {filteredCatalog === undefined ? null : (
-            <CatalogView
-              catalog={filteredCatalog}
-              entranceMode={hasSearched ? 'filter' : 'initial'}
-              searching={searchQuery.length > 0}
-            />
-          )}
+          <AnimatePresence custom={pageDirection} initial={false} mode="wait">
+            {filteredPage === undefined ? null : (
+              <motion.div
+                animate={{ opacity: 1, x: 0 }}
+                className={styles.pagePanel}
+                exit={{ opacity: 0, x: reduceMotion ? 0 : pageDirection * -24 }}
+                initial={{ opacity: 0, x: reduceMotion ? 0 : pageDirection * 24 }}
+                key={filteredPage.id}
+                transition={{
+                  duration: reduceMotion ? motionTokens.instant : motionTokens.standard,
+                  ease: [0.2, 0, 0, 1],
+                }}
+              >
+                <CatalogView
+                  entranceMode={hasSearched ? 'filter' : 'initial'}
+                  page={filteredPage}
+                  searching={searchQuery.length > 0}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
+
+        {pages.length > 1 ? (
+          <footer className={styles.paginationSlot}>
+            <PagePagination
+              currentIndex={currentPageIndex}
+              onChange={handlePageChange}
+              pages={pages}
+            />
+          </footer>
+        ) : null}
       </div>
 
       <AnimatePresence>
-        {searchOpen && filteredCatalog !== undefined ? (
+        {searchOpen && filteredPage !== undefined ? (
           <SearchOverlay
-            catalog={filteredCatalog}
             key="search-overlay"
             onChange={handleQueryChange}
             onClose={() => setSearchOpen(false)}
+            page={filteredPage}
             query={searchQuery}
           />
         ) : null}

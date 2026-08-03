@@ -2,14 +2,14 @@ import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { motionTokens } from '../../motion/tokens';
-import type { Catalog } from '../../shared/api/catalog';
+import type { CatalogPage } from '../../shared/api/catalog';
 import { IconButton } from '../../shared/ui/IconButton';
 import { CatalogView } from '../catalog/CatalogView';
 import { SearchField } from './SearchField';
 import styles from './SearchOverlay.module.css';
 
 type SearchOverlayProps = {
-  catalog: Catalog;
+  page: CatalogPage;
   query: string;
   onChange: (query: string) => void;
   onClose: () => void;
@@ -23,7 +23,7 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   ).filter((element) => !element.hasAttribute('hidden'));
 }
 
-export function SearchOverlay({ catalog, query, onChange, onClose }: SearchOverlayProps): React.JSX.Element {
+export function SearchOverlay({ page, query, onChange, onClose }: SearchOverlayProps): React.JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
@@ -115,7 +115,7 @@ export function SearchOverlay({ catalog, query, onChange, onClose }: SearchOverl
         </IconButton>
       </div>
       <main className={styles.results}>
-        <CatalogView catalog={catalog} entranceMode="filter" searching={query.length > 0} />
+        <CatalogView page={page} entranceMode="filter" searching={query.length > 0} />
       </main>
     </motion.div>
   );

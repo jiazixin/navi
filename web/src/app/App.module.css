@@ -11,8 +11,19 @@
 }
 
 .shell {
+  --pagination-reserve: 0px;
+  --main-bottom-space: var(--space-10);
   position: relative;
   z-index: 1;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+.shell[data-has-pagination='true'] {
+  --pagination-reserve: calc(
+    var(--touch-target) + var(--space-6) + max(var(--space-3), env(safe-area-inset-bottom))
+  );
 }
 
 @supports (min-height: 100dvh) {
@@ -32,9 +43,36 @@
 .main {
   width: min(100%, var(--content-max-width));
   min-width: 0;
+  flex: 1;
   margin-inline: auto;
-  padding: var(--space-6) var(--page-gutter) max(var(--space-10), env(safe-area-inset-bottom));
+  padding: var(--space-6) var(--page-gutter)
+    calc(var(--main-bottom-space) + var(--pagination-reserve));
   background: transparent;
+  overflow: clip;
+}
+
+.pagePanel {
+  min-width: 0;
+}
+
+.paginationSlot {
+  position: fixed;
+  z-index: var(--z-pagination);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 max(var(--page-gutter), env(safe-area-inset-right))
+    max(var(--space-3), env(safe-area-inset-bottom))
+    max(var(--page-gutter), env(safe-area-inset-left));
+  pointer-events: none;
+}
+
+.paginationSlot > * {
+  pointer-events: auto;
 }
 
 @media (min-width: 768px) {
@@ -43,8 +81,8 @@
   }
 
   .main {
+    --main-bottom-space: var(--space-12);
     padding-top: var(--space-8);
-    padding-bottom: max(var(--space-16), env(safe-area-inset-bottom));
   }
 }
 
@@ -53,9 +91,6 @@
     --page-gutter: var(--space-8);
   }
 
-  .main {
-    padding-bottom: max(var(--space-16), env(safe-area-inset-bottom));
-  }
 }
 
 @media (min-width: 1920px) {

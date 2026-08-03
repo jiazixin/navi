@@ -1,4 +1,4 @@
-import type { Catalog, CatalogGroup, CatalogLink } from '../shared/api/catalog';
+import type { Catalog, CatalogGroup, CatalogLink, CatalogPage } from '../shared/api/catalog';
 
 export const fixtureIcon =
   'data:image/svg+xml;charset=utf-8,' +
@@ -42,14 +42,24 @@ export const developmentGroup: CatalogGroup = {
   links: [githubLink],
 };
 
+export const primaryPageFixture: CatalogPage = {
+  id: 'page1',
+  title: '我的导航',
+  subtitle: '工作、服务与常用资源',
+  groups: [infrastructureGroup, developmentGroup],
+};
+
+export const secondaryPageFixture: CatalogPage = {
+  id: 'page2',
+  title: '灵感收藏',
+  subtitle: '阅读、设计与稍后探索',
+  groups: [{ name: '收藏', links: [{ ...githubLink, runtimeId: 'github-page2' }] }],
+};
+
 export const catalogFixture: Catalog = {
   revision: 1,
-  site: {
-    title: '我的导航',
-    subtitle: '工作、服务与常用资源',
-    theme: 'default',
-    backgroundPattern: 'meridian-grid',
-    webSearch: 'baidu',
-  },
-  groups: [infrastructureGroup, developmentGroup],
+  theme: 'default',
+  backgroundPattern: 'meridian-grid',
+  webSearch: 'baidu',
+  pages: [primaryPageFixture, secondaryPageFixture],
 };

@@ -31,6 +31,8 @@
 - Go 单进程、前端资源嵌入单二进制。
 - `config.yaml` 管理程序运行参数并指向 `urls.yaml`。
 - `urls.yaml` 是导航内容、分组和顺序的唯一事实来源。
+- `urls.yaml` 使用严格的有序 `pages` 数组定义 `page1`、`page2` 等页面，不接受旧版顶层
+  `site/urls` 结构。
 - 系统只读，不含登录、数据库、拖拽、Web 编辑或 YAML 回写。
 - 唯一核心目标是高质量 UI/UX；YAML 渲染、搜索、热加载和内外网自动选择均服务于体验。
 - 站点 favicon 自动发现并作为派生缓存存入主配置指定的 `datadir`。
@@ -39,6 +41,148 @@
 - 所有组件、响应式布局和视觉测试必须遵守 `docs/UI_SPEC.md`。
 
 ## 3. 变更记录
+
+### CHG-20260803-036 移除分组标题横向分隔线
+
+- 日期：2026-08-03
+- 状态：implemented
+- 类型：frontend / UI / UX / documentation / testing
+- 原行为：每个 GroupSection 标题行在主题刻度、标题与链接数量后渲染一条中性横向分隔线。
+- 新行为：GroupSection 标题行只保留 3px 主题刻度、标题和链接数量，不渲染横向分隔线。
+- 原因：用户确认该线条属于冗余视觉元素；目录用既有标题至 Grid 间距和分组间距表达层级。
+- 影响：`GroupSection` JSX/CSS、组件回归测试、`docs/DESIGN.md`、`docs/UI_SPEC.md` 与
+  `docs/ACCEPTANCE.md`。
+- 验证：
+  - `npm --prefix web run lint`、`typecheck`、`test`、`build`：通过；Vitest 19 个文件、70 项通过，
+    statements 96.55%、branches 77.56%、functions 94.00%、lines 96.97%。
+  - `npm --prefix web run test:visual -- --update-snapshots` 后再次运行 `test:visual`：26/26 通过，
+    最新视觉基线已写入版本控制。
+  - `npm --prefix web run test:e2e -- --workers=1`：Chromium、Firefox、WebKit 共 51/51 通过；
+    `go test -race ./...` 与 `go vet ./...` 通过。
+  - Codex in-app Browser：`http://127.0.0.1:10090/` 在 1280px 宽桌面与 390x844px 手机视口均检测
+    10 个 GroupSection 标题行、0 条横向分隔线、`scrollWidth === clientWidth`；本地搜索 “Grafana”
+    收敛至单个链接，控制台无 error 或 warn。
+
+### CHG-20260803-035 分页改为固定 Morphing Page Dots
+
+- 日期：2026-08-03
+- 状态：implemented
+- 类型：frontend / UI / UX / motion / accessibility / documentation
+- 原行为：分页位于文档流末尾，长页面需要滚到底部才能操作；圆点只有普通选中态，整体视觉偏重
+  标准分页控件。
+- 新行为：分页固定在视口底部中央并保持在目录正文之上、sticky 顶栏及其菜单之下，无需滚动即可
+  切页；定位层空白区域不捕获指针，正文根据 44px 触控高度、底部偏移和 safe area 预留空间，
+  避免遮挡末尾卡片。单页不渲染固定层或额外底部留白。
+- 视觉：按 21st.dev Ruixen UI Morphing Page Dots 的行为重新实现，无边框、无面板；Chevron 为
+  低对比裸图标，非活动页为 6x6px 圆点，活动页为约 22x7px 短横胶囊。
+- 动效：共享 Motion layout indicator 使用 280ms ease-out tween 在页点间形变移动，每次切页附带
+  一次约 520ms 的低透明 ripple；内容继续使用方向相关的 24px/220ms 线性过渡。reduced motion
+  下取消 indicator 移动、ripple 与内容水平位移。
+- 文档：同步更新 `docs/DESIGN.md`、`docs/UI_SPEC.md`、`docs/IMPLEMENTATION.md`、
+  `docs/ACCEPTANCE.md` 与 `docs/CHANGELOG.md`。
+- 验证：
+  - `npm --prefix web run lint`、`typecheck`、`build`：通过；生产 CSS gzip 10.56 KiB、JS gzip
+    148.76 KiB，继续低于 300 KiB 门禁。
+  - `npm --prefix web run test`：19 个文件、69 项通过；statements 96.55%、branches 77.56%、
+    functions 94.00%、lines 96.97%。
+  - `npm --prefix web run storybook:test`：通过；PagePagination 的 Interactive 与 LastPage story
+    正常构建。仅保留 Storybook 上游 `module.register()` deprecation 与 chunk size warning。
+  - `npm --prefix web run test:visual -- --update-snapshots` 后再次运行 `test:visual`：26/26 通过；
+    固定分页影响的 desktop、mobile、主题和菜单基线已更新并稳定复跑。
+  - `npx playwright test --project=chromium --project=firefox --project=webkit --workers=1`：51/51
+    通过；覆盖 44x44px 触控区、滚动前后固定坐标、分页层级、菜单可操作性、overflow 与 axe。
+  - Codex in-app Browser：1440x900 与 390x844 人工复核；最终分页为 176x44px，四个按钮均为
+    44x44px，活动 indicator 为 22x7px；mobile 固定在 `y=788`、滚动 1500px 后不漂移，
+    `scrollWidth === clientWidth`、`z-pagination=9`、顶栏背景菜单可覆盖分页，console 无错误或警告。
+
+### CHG-20260803-034 引入严格多页目录与图标分页
+
+- 日期：2026-08-03
+- 状态：implemented
+- 类型：configuration / backend / API / frontend / UI / UX / motion / accessibility / documentation
+- 原行为：`urls.yaml` 只定义一组顶层 `site/urls`，API 返回单个站点标题与分组，UI 没有页面概念。
+- 新行为：`urls.yaml` 改为严格有序 `pages` 数组，每页以 `id: page1/page2` 等稳定标识定义自己的
+  标题、副标题和链接；旧结构直接校验失败，不实现兼容。API 使用根级公开外观设置与 `pages`。
+- UI：底部新增 Lucide Chevron 图标按钮与圆点页标；当前页驱动顶栏、浏览器标题、目录和本地搜索。
+  切页按方向执行 24px、220ms 的水平位移与淡入淡出，reduced motion 下取消位移。
+- 数据：页面与页内链接均保持 YAML 数组顺序；页面 ID 纳入运行时链接 ID，允许跨页复用目标而不
+  冲突；主动切页清空旧页搜索，热加载保留仍存在的当前页 ID。
+- 影响：目录模型、严格加载器、favicon 调度、HTTP catalog 响应、前端 schema、fixture、Vite mock、
+  App 状态、搜索、分页组件、单元/E2E/视觉测试和全部配置说明。
+- 文档：`docs/DESIGN.md`、`docs/UI_SPEC.md`、`docs/IMPLEMENTATION.md`、
+  `docs/ACCEPTANCE.md`、`docs/CHANGELOG.md`、中英文 README、`urls.example.yaml`。
+- 验收：`AC-P0-007`、`AC-P0-008`、`AC-P0-126` 及既有响应式、键盘、reduced motion、性能门禁。
+- 验证：
+  - `go test -race ./...`、`go vet ./...`：通过；严格加载器覆盖页面顺序、重复 ID、旧结构拒绝、
+    跨页运行时 ID 和热加载快照。
+  - `npm --prefix web run lint`、`typecheck`、`build`：通过；生产 CSS gzip 10.25 KiB、JS gzip
+    148.62 KiB，继续低于 300 KiB 门禁。
+  - `npm --prefix web run test`：19 个文件、69 项通过；statements 96.55%、branches 78.02%、
+    functions 94.00%、lines 96.97%。
+  - `npm --prefix web run storybook:test`：通过；新增 PagePagination 交互与末页 Story。仅保留
+    Storybook 上游 `module.register()` deprecation warning。
+  - `npm --prefix web run test:visual`：26/26 通过；新增第二页分页基线，并更新受底部控件影响的
+    full-page 基线。
+  - `npx playwright test --project=chromium --project=firefox --project=webkit --workers=1`：51/51
+    通过；分页切换、当前页搜索清理、标题同步、移动端、overflow 和 axe 均通过。高并发复跑曾使
+    既有 provider 菜单用例资源竞争超时，隔离复跑 4/4 与全套串行复跑均通过。
+  - Codex in-app Browser：1440x900 和 390x844 人工复核第二页；分页为 182x50px，桌面/手机
+    `scrollWidth === clientWidth`，当前页、首尾禁用状态、safe area 和 console 均正常。
+  - `make build` 后以临时端口 `127.0.0.1:18080` 启动真实二进制；`/health` 返回 `ok`，
+    `/api/catalog` 返回 page1/page2 新协议，嵌入式 `/` 返回 200；smoke 进程已停止。
+
+### CHG-20260803-031 固定 Navi 监听端口为 9999
+
+- 日期：2026-08-03
+- 状态：rejected
+- 类型：backend / configuration / deployment / documentation
+- 原行为：`server.port` 接受 `1-65535` 的任意合法端口，示例与验收默认使用 `8080`。
+- 提议行为：Navi 只接受并只监听 `9999`。
+- 拒绝原因：项目负责人随后澄清 `9999` 只用于本次二进制测试，不是长期产品或配置契约。
+- 结论：保留 `server.port` 的原有范围和示例默认值 `8080`；最终测试将临时以 `9999` 启动，
+  不修改设计、验收或部署默认值。
+
+### CHG-20260803-032 完成 Go 后端与单二进制交付链路
+
+- 日期：2026-08-03
+- 状态：implemented
+- 类型：backend / API / caching / lifecycle / build / container / documentation
+- 原行为：前端通过 Vite fixture 模拟目录、状态、SSE 与跳转接口；项目没有 Go module、实际 YAML
+  加载、文件热更新、favicon 派生缓存、目的地解析、HTTP API、嵌入式前端或二进制交付物。
+- 新行为：Navi 使用 Go 读取严格校验的 `config.yaml` 与 `urls.yaml`，发布不可变目录快照并在合法
+  文件变更后通过 SSE 通知页面；后台受限发现/缓存 favicon；private 探测失败后回退 public；提供
+  只读 catalog、status、events、icons、health 与 `/go/{id}` 路由；生产前端嵌入 `navi`。
+- 构建与运行：`make build` 构建嵌入式二进制并注入版本信息；`navi --version` 不读取配置；新增
+  非 root 多阶段 Dockerfile、Docker 忽略规则与中英文运行说明。`9999` 只作为本次临时 smoke
+  test 端口，不改变默认配置或端口契约。
+- 影响：实现 `docs/IMPLEMENTATION.md` 的 Task 1-9、14 和 16 的后端范围；Task 15 的既有前端
+  浏览器与视觉测试继续保留，新增 Go API/SSE/图标缓存测试。没有新增数据库、写 API、登录或 YAML
+  回写。
+- 验收：`AC-P0-001` 至 `AC-P0-021`、`AC-P0-301` 至 `AC-P0-304`、`AC-P0-401` 至
+  `AC-P0-404` 的实现基础；完整跨平台、真实设备、Docker 与外部网络 fixture 验收仍按发布环境
+  执行。
+- 验证：
+  - `make build`：通过，生成嵌入前端的 `navi`；`./navi --version` 输出 `dev`、当前提交与构建时间。
+  - `go test -race ./...`、`go vet ./...`：通过。
+  - `npm --prefix web run lint`、`typecheck`、`test`、`build`：通过；Vitest 18 个文件、66 个测试。
+  - 使用临时 fixture 在 `2026-08-03` 启动 `navi -f <temporary-config>`，监听
+    `127.0.0.1:9999`；`/health` 返回 `ok`，`/api/catalog` 返回真实 YAML 目录，`/` 返回嵌入前端，
+    `POST /api/catalog` 返回 `405`。
+  - 本机无 Docker daemon、`staticcheck` 和 `govulncheck` 可执行文件，因此容器构建、静态检查与
+  漏洞扫描未在本机执行，保留为发布门禁。
+
+### CHG-20260803-033 修复 SSE 被全局写超时中断
+
+- 日期：2026-08-03
+- 状态：implemented
+- 类型：backend / SSE / reliability / testing
+- 原行为：HTTP server 的全局 `write_timeout` 同样作用于 `/api/events` 长连接；连接超过该时限后
+  会被服务端关闭，前端因此间歇显示“实时更新暂停”。
+- 新行为：SSE handler 在建立流后清除该响应的写入 deadline，并继续每 15 秒发送心跳；普通 API、
+  静态资源与跳转路由仍使用主配置的 `write_timeout`。
+- 影响：只修复既有 SSE 连通性契约，不改变事件名称、事件数据、重连策略、健康状态或超时配置。
+- 验证：新增回归测试使用 `30ms` HTTP `WriteTimeout` 与 `10ms` 心跳，持续读取五个心跳仍保持连接；
+  `go test ./internal/httpapi` 通过。
 
 ### CHG-20260801-001 初始需求基线
 

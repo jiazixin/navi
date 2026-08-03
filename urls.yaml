@@ -1,0 +1,32 @@
+version: 1
+
+pages:
+  - id: page1
+    title: 我的导航
+    subtitle: 工作、服务与常用资源
+    urls:
+      - name: GitHub
+        group: 开发
+        description: Source code and collaboration
+        public_url: https://github.com
+        tags: [code, git]
+      - name: Go
+        group: 开发
+        description: Go programming language
+        public_url: https://go.dev
+        tags: [code, golang]
+
+  - id: page2
+    title: 阅读与灵感
+    subtitle: 稍后继续探索的内容
+    urls:
+      - name: Are.na
+        group: 灵感
+        description: Collect references and connect ideas
+        public_url: https://www.are.na
+        tags: [research, inspiration]
+      - name: MDN Web Docs
+        group: 阅读
+        description: Web platform documentation
+        public_url: https://developer.mozilla.org
+        tags: [docs, web]

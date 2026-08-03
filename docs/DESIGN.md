@@ -1,8 +1,8 @@
 # Navi 设计文档
 
 状态：已批准的实现基线  
-版本：1.3.0  
-日期：2026-08-01
+版本：1.4.0
+日期：2026-08-03
 
 ## 1. 文档约束
 
@@ -24,18 +24,18 @@
 ## 2. 产品定义
 
 Navi 是一个以 UI/UX 为唯一核心目标的只读个人导航系统。Go 服务读取 `urls.yaml`，
-将其中的链接按文件内顺序和分组渲染为高质感、响应式的 Web 导航界面。产品不以功能数量
+将其中的页面、分组和链接按文件内顺序渲染为高质感、响应式的 Web 导航界面。产品不以功能数量
 衡量成功，而以视觉完成度、交互自然度、感知速度和长期使用舒适度衡量成功。
 
 系统不提供登录、用户、数据库、拖拽排序、Web 编辑或 Web 回写 YAML。
-`urls.yaml` 是导航内容、分组和顺序的唯一事实来源。浏览器和服务内存中的数据只允许作为
+`urls.yaml` 是导航页面、内容、分组和顺序的唯一事实来源。浏览器和服务内存中的数据只允许作为
 运行时缓存，不得成为第二份持久化事实。
 
 ### 2.1 核心目标
 
 - 高品质、克制的黑白 UI，信息密度适中，适合每天高频使用。
 - UI/UX 质量拥有发布否决权；功能正确但视觉粗糙、动效僵硬或操作费力时不得发布。
-- 严格按照 `urls.yaml` 展示内容、分组和顺序。
+- 严格按照 `urls.yaml` 展示页面、分组、链接和顺序。
 - YAML 修改后自动热加载，页面无需手动刷新即可更新。
 - 自动发现目标站点 favicon，下载到 `datadir` 并由本站稳定提供。
 - 点击链接时优先使用 `private_url`；不可达时自动切换 `public_url`。
@@ -60,8 +60,9 @@ Navi 是一个以 UI/UX 为唯一核心目标的只读个人导航系统。Go �
 ### 3.1 YAML 单一事实源
 
 - 导航内容只来自当前主配置指向的 `urls.yaml`。
-- 链接顺序就是 YAML 中 `urls` 数组的顺序。
-- 分组顺序由该分组第一次出现在 `urls` 数组中的位置决定。
+- 页面顺序就是 YAML 中 `pages` 数组的顺序。
+- 每页链接顺序就是该页 `urls` 数组的顺序。
+- 分组顺序由该分组第一次出现在当前页 `urls` 数组中的位置决定。
 - 同一分组内的链接保持它们在 `urls` 数组中的相对顺序。
 - 服务不得生成、修改或重写 `urls.yaml`。
 - 热加载失败时可短暂保留内存中的最后有效快照，但必须标记为降级状态；
@@ -220,23 +221,26 @@ favicon:
 ```yaml
 version: 1
 
-site:
-  title: 我的导航
-  subtitle: 工作、服务与常用资源
+pages:
+  - id: page1
+    title: 我的导航
+    subtitle: 工作、服务与常用资源
+    urls:
+      - name: Grafana
+        group: 基础设施
+        description: Metrics and dashboards
+        private_url: http://grafana.lan:3000
+        public_url: https://grafana.example.com
+        tags: [monitoring, metrics]
 
-urls:
-  - name: Grafana
-    group: 基础设施
-    description: Metrics and dashboards
-    private_url: http://grafana.lan:3000
-    public_url: https://grafana.example.com
-    tags: [monitoring, metrics]
-
-  - name: GitHub
-    group: 开发
-    description: Source code and collaboration
-    public_url: https://github.com
-    tags: [code]
+  - id: page2
+    title: 阅读与灵感
+    subtitle: 稍后继续探索的内容
+    urls:
+      - name: Are.na
+        group: 灵感
+        public_url: https://www.are.na
+        tags: [research]
 ```
 
 字段约束：
@@ -244,9 +248,11 @@ urls:
 | 字段 | 必填 | 规则 |
 | --- | --- | --- |
 | `version` | 是 | 第一版只接受整数 `1` |
-| `site.title` | 是 | 去除首尾空格后 1-40 个 Unicode 字符 |
-| `site.subtitle` | 否 | 最多 100 个 Unicode 字符 |
-| `urls` | 是 | 数组，允许为空，最大 1000 项 |
+| `pages` | 是 | 有序数组，1-20 页；旧版顶层 `site/urls` 不接受 |
+| `pages[].id` | 是 | 唯一；小写字母开头，只含小写字母、数字和连字符，最长 32 字符 |
+| `pages[].title` | 是 | 去除首尾空格后 1-40 个 Unicode 字符 |
+| `pages[].subtitle` | 否 | 最多 100 个 Unicode 字符 |
+| `pages[].urls` | 是 | 数组，允许为空；所有页面合计最大 1000 项 |
 | `name` | 是 | 1-60 个 Unicode 字符 |
 | `group` | 是 | 1-40 个 Unicode 字符 |
 | `description` | 否 | 最多 120 个 Unicode 字符 |
@@ -254,10 +260,18 @@ urls:
 | `public_url` | 条件必填 | 与 `private_url` 至少存在一个 |
 | `tags` | 否 | 最多 10 项，每项 1-24 个字符，用于搜索 |
 
-URL 仅允许 `http` 和 `https`。同一文件中完全相同的
-`group + name + private_url + public_url` 组合视为重复并拒绝加载。
+URL 仅允许 `http` 和 `https`。同一页面中完全相同的
+`group + name + private_url + public_url` 组合视为重复并拒绝加载；不同页面可以复用同一目标。
+运行时链接 ID 包含页面 ID，因此跨页复用不会共享导航或 favicon 键。
 图标不在 `urls.yaml` 中配置，由 favicon 管理器自动发现。加载失败时，UI 使用链接名称
 首字符的中性字标，不依赖第三方图标服务。
+
+多页 UI 使用固定在视口底部中央的 Morphing Page Dots。独立分页层高于目录正文、低于 sticky
+顶栏、顶栏菜单、全屏搜索和对话层，空白区域不捕获指针；正文为 44px 触控目标、底部偏移和
+safe area 预留空间，因此长页
+无需滚到底即可切换，最后一排链接也不会被遮挡。非活动页为小圆点，当前页为短横胶囊，共享
+indicator 在页点之间线性形变移动并触发一次轻微外扩反馈；页面内容仍按前进/后退方向水平过渡。
+reduced motion 下取消 indicator 移动、外扩反馈和内容水平位移。
 
 ## 6. 目录加载与热更新
 
@@ -379,7 +393,7 @@ Navi 不复制任何品牌的页面，但以成熟设计系统的以下原则作
 - `default`（默认）保留现有中性黑白语言并跟随系统深浅模式：深色背景 `#0A0A0A`、
   浅色背景 `#FFFFFF`。用户从主题菜单进行的选择只保存在浏览器 `localStorage`，
   该偏好不是导航事实，且优先于主配置的默认主题。
-- 主配置 `theme` 决定没有本地偏好时的初始主题，并通过 `/api/catalog` 的 `site.theme`
+- 主配置 `theme` 决定没有本地偏好时的初始主题，并通过 `/api/catalog` 的根级 `theme`
   提供给前端；它是运行外观配置，不属于 `urls.yaml` 导航内容。
 - 彩色主题使用以下稳定标识、展示名称与核心色；核心色不再直接铺满页面画布或复制到每条
   卡片边框，而是映射到 group accent、icon background/foreground、selected、focus、hover
@@ -508,7 +522,7 @@ Navi 不复制任何品牌的页面，但以成熟设计系统的以下原则作
 主内容：
 
 - 最大内容宽度 1440px，左右安全间距在桌面为 32px、移动端为 16px。
-- 分组使用 3px 主题刻度、清晰标题、链接数量和中性细分隔线，不包裹在外层卡片中；相邻
+- 分组使用 3px 主题刻度、清晰标题和链接数量，不使用横向分隔线，也不包裹在外层卡片中；相邻
   分组可在同一主题的三组校准强调色间轮换，但不得改变信息语义。
 - 链接使用内容驱动的响应式 CSS Grid：
   `repeat(auto-fill, minmax(min(100%, 272px), 1fr))`。列数由实际容器宽度决定，
@@ -624,7 +638,7 @@ Navi 不复制任何品牌的页面，但以成熟设计系统的以下原则作
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `GET` | `/` 及前端路由 | 提供嵌入式 SPA |
-| `GET` | `/api/catalog` | 返回站点信息、分组、链接和 revision |
+| `GET` | `/api/catalog` | 返回公开外观设置、有序页面、分组、链接和 revision |
 | `GET` | `/api/events` | SSE：目录更新与错误事件 |
 | `GET` | `/api/status` | 返回目录 revision、热加载和探测摘要 |
 | `GET` | `/api/icons/{runtime_id}` | 提供经过校验的本地 favicon 缓存 |
@@ -634,9 +648,9 @@ Navi 不复制任何品牌的页面，但以成熟设计系统的以下原则作
 除 `GET`、`HEAD` 和 `OPTIONS` 外，服务对业务路径返回 `405 Method Not Allowed`。
 不存在创建、修改、删除、排序或上传接口。
 
-`/api/catalog` 不返回主机文件路径、探测错误细节或其他运行配置。响应的 `site.theme`、
-`site.backgroundPattern` 和 `site.webSearch` 只包含已校验的公开标识，分别用于客户端初始
-主题、背景纹样和外部搜索入口。响应包含 `ETag`，支持
+`/api/catalog` 不返回主机文件路径、探测错误细节或其他运行配置。响应的根级 `theme`、
+`backgroundPattern` 和 `webSearch` 只包含已校验的公开标识，分别用于客户端初始主题、背景纹样
+和外部搜索入口；`pages` 保持 YAML 顺序并包含各页 `id/title/subtitle/groups`。响应包含 `ETag`，支持
 `If-None-Match` 和 gzip/brotli（由反向代理或 Go 中间件提供）。
 
 ## 10. 安全与部署

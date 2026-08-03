@@ -328,16 +328,25 @@ transform、opacity 或 stroke-dashoffset，禁止随机数、Canvas 粒子、JS
 
 ### Task 12：实现目录渲染与搜索
 
-**创建：** `CatalogPage`、`GroupSection`、`LinkCard`、`UniversalSearch`、provider URL builder、
+**创建：** `CatalogView`、`PagePagination`、`GroupSection`、`LinkCard`、`UniversalSearch`、provider URL builder、
 `SearchField`、`EmptyState`、API client 与 hooks。
 
 测试先覆盖：
 
 - API 顺序与 DOM 顺序完全一致。
+- `pages` 顺序决定分页顺序；当前页使用页面 ID 跟随热加载，页面被删除时回到第一项。
+- 固定底部的 Chevron 图标按钮和 Morphing Page Dots 支持上一页、下一页与直达；端点按钮禁用且
+  状态可访问。独立 `z-pagination` 定位层高于正文、低于 sticky 顶栏与 overlay，空白区域
+  `pointer-events: none`，正文按控件高度和
+  safe area 预留底部空间，单页不产生分页或额外留白。
+- 非活动页点为 6x6px 圆点，活动页为约 22x7px 共享 layout indicator；280ms tween 完成形变移动，
+  每次切页只触发一次约 520ms 的低透明 ripple，reduced motion 下二者立即切换且不渲染 ripple。
+- 切页按方向执行 220ms 水平位移与淡入淡出；reduced motion 下取消位移并缩短过渡。
 - 搜索匹配 name、group、description、tags。
+- 本地搜索只作用于当前页；主动切页时清空查询并关闭移动端搜索浮层。
 - 搜索不区分大小写并正确处理中文。
 - `/`、`Ctrl/Cmd+K`、`Escape` 行为。
-- 外部搜索默认值来自 `site.webSearch`，缺失时百度；Google/Yandex/Bing/GitHub URL 使用
+- 外部搜索默认值来自根级 `webSearch`，缺失时百度；Google/Yandex/Bing/GitHub URL 使用
   `URLSearchParams` 正确编码。异步 catalog 到达时更新默认值，但用户本会话已手动选择后不覆盖。
 - Bing host 固定为 `www.bing.com` 并使用国际市场参数；GitHub 固定 repository 类型。
 - 外部搜索按钮与 Enter 等价，空查询不打开页面；ChatGPT 携带查询，Claude/Gemini 覆盖
