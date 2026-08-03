@@ -1,0 +1,37 @@
+.banner {
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 18px minmax(0, 1fr) var(--touch-target);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--text) 5%, transparent);
+  color: var(--text-secondary);
+}
+
+.banner p {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.statusIcon {
+  color: var(--status-warning);
+}
+
+.banner[data-kind='offline'] .statusIcon {
+  color: var(--status-danger);
+}
+
+.banner[data-kind='restored'] .statusIcon {
+  color: var(--status-success);
+}
+
+.dismiss {
+  align-self: start;
+}

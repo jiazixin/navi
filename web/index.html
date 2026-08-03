@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>Navi</title>
+    <script>
+      (() => {
+        const themes = new Set([
+          'default',
+          'navy-blossom',
+          'mint-tide',
+          'moss-court',
+          'tea-mist',
+          'amber-tide',
+          'sunny-coast',
+          'violet-lime',
+        ]);
+        const metaColors = {
+          'navy-blossom': '#063c85',
+          'mint-tide': '#a1feef',
+          'moss-court': '#d3f2de',
+          'tea-mist': '#faf3e9',
+          'amber-tide': '#fff1c6',
+          'sunny-coast': '#eaf5ff',
+          'violet-lime': '#f3edff',
+        };
+        const stored = localStorage.getItem('navi.theme');
+        const theme = themes.has(stored) ? stored : 'default';
+        const resolved = theme === 'default'
+          ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : theme;
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.dataset.themePreference = theme;
+        document.querySelector('meta[name="theme-color"]').content =
+          resolved === 'dark' ? '#0a0a0a' : resolved === 'light' ? '#ffffff' : metaColors[resolved];
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

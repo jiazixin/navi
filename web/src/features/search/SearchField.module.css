@@ -1,0 +1,64 @@
+.field {
+  display: grid;
+  width: min(100%, 520px);
+  height: var(--control-height);
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  transition: background-color var(--motion-fast) var(--ease-out), border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out);
+}
+
+.field:hover {
+  border-color: var(--border);
+  background: var(--surface-hover);
+}
+
+.field:focus-within {
+  border-color: var(--accent-muted);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.icon {
+  color: var(--text-tertiary);
+}
+
+.field:focus-within .icon {
+  color: var(--accent);
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.field input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.field input::-webkit-search-cancel-button {
+  display: none;
+}
+
+@media (forced-colors: active) {
+  .field:focus-within {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+    box-shadow: none;
+  }
+}

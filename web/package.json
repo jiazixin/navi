@@ -1,0 +1,55 @@
+{
+  "name": "navi-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 10090 --strictPort",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc -b --pretty false",
+    "test": "vitest run --coverage",
+    "test:e2e": "playwright test --project=chromium --project=firefox --project=webkit",
+    "test:visual": "playwright test --project=visual",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "storybook:build": "storybook build",
+    "storybook:test": "storybook build --test --output-dir storybook-static-test"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.101.4",
+    "lucide-react": "1.28.0",
+    "motion": "12.43.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "simple-icons": "16.27.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
+    "@eslint/js": "9.39.5",
+    "@playwright/test": "1.62.1",
+    "@storybook/addon-a11y": "10.5.5",
+    "@storybook/react-vite": "10.5.5",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@testing-library/user-event": "14.6.1",
+    "@types/node": "26.0.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.0.5",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "9.39.5",
+    "eslint-plugin-react-hooks": "7.0.1",
+    "eslint-plugin-react-refresh": "0.5.2",
+    "jsdom": "30.0.1",
+    "storybook": "10.5.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vite": "8.2.0",
+    "vitest": "4.1.10"
+  }
+}

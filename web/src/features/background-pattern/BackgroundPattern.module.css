@@ -1,0 +1,39 @@
+.layer {
+  position: fixed;
+  z-index: var(--z-base);
+  top: calc(var(--topbar-height) + env(safe-area-inset-top));
+  right: 0;
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
+  contain: strict;
+  pointer-events: none;
+}
+
+.frame {
+  position: absolute;
+  inset: 0;
+}
+
+.artwork {
+  width: 100%;
+  height: 100%;
+}
+
+.artwork[data-pattern-artwork='roman-meander'] {
+  opacity: 0.68;
+}
+
+.artwork[data-pattern-artwork='eight-point-star'] {
+  opacity: 0.62;
+}
+
+.artwork[data-pattern-artwork='star-trails'] {
+  opacity: 0.86;
+}
+
+@media (forced-colors: active) {
+  .layer {
+    display: none;
+  }
+}
