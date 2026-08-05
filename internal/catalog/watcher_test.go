@@ -140,6 +140,46 @@ func TestSubscriptionDropsStaleEventsForSlowConsumers(t *testing.T) {
 	}
 }
 
+func TestWatcherStopBeforeStartIsSafeAndPreventsReuse(t *testing.T) {
+	t.Parallel()
+
+	path := writeCatalog(t, catalogWithTitle("Initial"))
+	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore())
+	stopped := make(chan struct{})
+	go func() {
+		watcher.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("Stop() blocked before Start()")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := watcher.Start(ctx); err == nil {
+		t.Fatal("Start() after Stop() should fail")
+	}
+	watcher.Stop()
+}
+
+func TestWatcherStartRejectsSecondStart(t *testing.T) {
+	t.Parallel()
+
+	path := writeCatalog(t, catalogWithTitle("Initial"))
+	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := watcher.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer watcher.Stop()
+	if err := watcher.Start(ctx); err == nil {
+		t.Fatal("second Start() should fail")
+	}
+}
+
 func writeWatchedCatalog(t *testing.T, path, title string, atomicRename bool) {
 	t.Helper()
 	contents := []byte(catalogWithTitle(title))

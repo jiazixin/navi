@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,6 +43,52 @@ func TestServerCatalogETagStatusAndReadOnlyMethods(t *testing.T) {
 	server.ServeHTTP(method, httptest.NewRequest(http.MethodPost, "/api/catalog", nil))
 	if method.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST response = %d, want 405", method.Code)
+	}
+}
+
+func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	server := newTestServer(t, nil)
+	server.config.Logging.AccessLog = true
+	server.config.Logging.LogHealthChecks = false
+	server.logger = slog.New(slog.NewJSONHandler(&output, nil))
+
+	request := httptest.NewRequest(http.MethodGet, "/api/catalog?token=secret", nil)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("catalog response = %d", response.Code)
+	}
+	var record map[string]any
+	if err := json.Unmarshal(output.Bytes(), &record); err != nil {
+		t.Fatalf("decode access log: %v; output=%q", err, output.String())
+	}
+	if record["request_id"] != response.Header().Get("X-Request-ID") {
+		t.Fatalf("request_id = %#v, header = %q", record["request_id"], response.Header().Get("X-Request-ID"))
+	}
+	if record["method"] != http.MethodGet || record["route"] != "/api/catalog" || record["status"] != float64(http.StatusOK) {
+		t.Fatalf("access record = %#v", record)
+	}
+	if record["bytes"] != float64(response.Body.Len()) {
+		t.Fatalf("bytes = %#v, body length = %d", record["bytes"], response.Body.Len())
+	}
+	if bytes.Contains(output.Bytes(), []byte("secret")) {
+		t.Fatalf("access log leaked query string: %q", output.String())
+	}
+
+	output.Reset()
+	health := httptest.NewRecorder()
+	server.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if output.Len() != 0 {
+		t.Fatalf("health access log = %q, want suppressed", output.String())
+	}
+
+	server.config.Logging.LogHealthChecks = true
+	health = httptest.NewRecorder()
+	server.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if output.Len() == 0 {
+		t.Fatal("health access log missing when enabled")
 	}
 }
 

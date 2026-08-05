@@ -43,6 +43,13 @@ async function readFloatingSurface(
   });
 }
 
+async function openProviderMenuWithKeyboard(page: Page): Promise<void> {
+  const trigger = page.getByTestId('current-provider-icon');
+  await trigger.focus();
+  await trigger.press('Enter');
+  await expect(page.getByRole('menu', { name: '选择搜索入口' })).toBeVisible();
+}
+
 test('renders the navigation-first desktop layout with stable geometry', async ({ page }) => {
   await page.goto('/');
 
@@ -444,7 +451,7 @@ test('Google and Gemini keep accurate multicolor marks without a provider chevro
 }) => {
   await page.goto('/');
 
-  await page.getByTestId('current-provider-icon').click();
+  await openProviderMenuWithKeyboard(page);
   await page.getByRole('menuitemradio', { name: 'Google' }).click();
 
   const googleCurrent = await page.evaluate(() => {
@@ -463,7 +470,7 @@ test('Google and Gemini keep accurate multicolor marks without a provider chevro
     svgCount: 1,
   });
 
-  await page.getByTestId('current-provider-icon').click();
+  await openProviderMenuWithKeyboard(page);
   const googleMenuIcons = await page.evaluate(() =>
     Array.from(document.querySelectorAll('[data-provider-icon="google"]'), (icon) =>
       Array.from(icon.querySelectorAll('path'), (path) => path.getAttribute('fill')),
@@ -475,7 +482,7 @@ test('Google and Gemini keep accurate multicolor marks without a provider chevro
   ]);
 
   await page.getByRole('menuitemradio', { name: 'Gemini' }).click();
-  await page.getByTestId('current-provider-icon').click();
+  await openProviderMenuWithKeyboard(page);
 
   const geminiMenu = await page.evaluate(() => {
     const trigger = document.querySelector('[data-testid="current-provider-icon"]');
@@ -523,7 +530,8 @@ test('Google and Gemini keep accurate multicolor marks without a provider chevro
     triggerSVGCount: 1,
   });
 
-  await page.getByTestId('current-provider-icon').click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu', { name: '选择搜索入口' })).toHaveCount(0);
   await page.getByRole('button', { name: /^主题：/ }).click();
   await page.getByRole('menuitemradio', { name: '绀樱夜' }).click();
 

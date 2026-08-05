@@ -11,4 +11,4 @@ web/test-results/
 web/playwright-report/
 web/.vite/
 
-navi
+/navi

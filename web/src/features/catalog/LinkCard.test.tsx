@@ -28,4 +28,14 @@ describe('LinkCard', () => {
     );
     expect(screen.getByText('example.com')).toBeInTheDocument();
   });
+
+  it('uses a versioned local icon URL when a favicon update arrives', () => {
+    render(
+      <LinkCard
+        iconURL="/api/icons/github?v=2"
+        link={githubLink}
+      />,
+    );
+    expect(screen.getByRole('img', { hidden: true })).toHaveAttribute('src', '/api/icons/github?v=2');
+  });
 });

@@ -52,13 +52,13 @@ type statusResponse struct {
 }
 
 func (s *Server) serveCatalog(writer http.ResponseWriter, request *http.Request) {
+	writer.Header().Set("Cache-Control", "no-store")
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
 		writeJSONError(writer, http.StatusServiceUnavailable, "目录暂时不可用。")
 		return
 	}
 	writer.Header().Set("ETag", snapshot.ETag())
-	writer.Header().Set("Cache-Control", "no-store")
 	if request.Header.Get("If-None-Match") == snapshot.ETag() {
 		writer.WriteHeader(http.StatusNotModified)
 		return
@@ -208,11 +208,15 @@ func (s *Server) serveIcon(writer http.ResponseWriter, request *http.Request) {
 }
 
 func (s *Server) serveGo(writer http.ResponseWriter, request *http.Request) {
+	runtimeID := strings.TrimPrefix(request.URL.Path, "/go/")
+	if runtimeID == "" || strings.Contains(runtimeID, "/") {
+		writeFailurePage(writer, http.StatusNotFound, "链接不存在")
+		return
+	}
 	if s.resolver == nil {
 		writeFailurePage(writer, http.StatusServiceUnavailable, "链接暂时不可用")
 		return
 	}
-	runtimeID := strings.TrimPrefix(request.URL.Path, "/go/")
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
 		writeFailurePage(writer, http.StatusServiceUnavailable, "目录暂时不可用")

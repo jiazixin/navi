@@ -42,6 +42,47 @@
 
 ## 3. 变更记录
 
+### CHG-20260805-037 补齐后端可观测性、Favicon 生命周期与集成门禁
+
+- 日期：2026-08-05
+- 状态：implemented
+- 类型：backend / observability / favicon / lifecycle / security / frontend integration / testing
+- 原行为：Go 后端核心路径可运行，但 `logging` 配置未驱动实际 logger 和访问日志；favicon 刷新
+  未使用远端 ETag/Last-Modified，缓存清理未接入目录更新，`favicon.updated` 也无法精确刷新浏览器
+  中使用长期缓存的图标；应用生命周期、异常路由和真实热加载集成覆盖不足。项目仍使用包含已知
+  可达漏洞的 Go 1.24.3 和 `golang.org/x/net v0.50.0`。
+- 新行为：
+  - 主进程按 `logging.level` 和 `logging.format` 创建 `slog` logger；启动、目录更新和错误日志使用
+    稳定结构化属性。HTTP 访问日志记录 request_id、method、route、status、duration 和 bytes，遵守
+    `access_log`、`log_health_checks`，不记录查询参数。
+  - favicon 缓存持久化远端 ETag/Last-Modified，刷新时发送条件请求并正确处理 304；页面发现和图标
+    下载按来源合并并发请求。目录移除的缓存先标记为清理候选，保留 24 小时后删除，恢复引用时取消
+    清理标记。
+  - `favicon.updated` SSE 携带 runtime ID；前端只为对应图标增加本地版本参数，绕过 immutable 缓存，
+    不刷新整份目录或改变图标容器几何。
+  - HTTP 请求绑定应用生命周期 context；关闭时先取消 SSE 等长连接，再执行 graceful shutdown。
+    `/api`、`/go`、空 ID、嵌套 ID 和未知业务路径不再误入 SPA fallback；unavailable/degraded、HEAD、
+    只读方法和内部错误隔离均有集成测试。
+  - Go 工具链升级到 1.25.12，`golang.org/x/net` 升级到 v0.55.0；Docker 构建阶段同步固定到
+    `golang:1.25.12-alpine`。根二进制忽略规则改为 `/navi`，避免误伤 `cmd/navi/main.go`。
+- 影响：`cmd/navi`、`internal/app`、`internal/catalog`、`internal/favicon`、`internal/httpapi`、前端
+  SSE/favicon 渲染链路、Go/Docker 构建版本和后端测试覆盖。未新增写 API、数据库或导航状态源。
+- 验收：补齐 `AC-P0-008`、`AC-P0-009`、`AC-P0-017` 至 `AC-P0-021`、`AC-P0-301` 至
+  `AC-P0-303`、`AC-P0-402`、`AC-P0-405`、`AC-P0-406` 的自动化实现证据。
+- 验证：
+  - Go 1.25.12 下 `go test ./...`、`go test -race ./...`、`go vet ./...`、`staticcheck ./...`：通过；
+    `govulncheck ./...` 为 0 个可达漏洞。
+  - `go test -cover ./internal/...`：app 77.5%、catalog 80.7%、config 73.1%、favicon 65.4%、
+    httpapi 77.1%、navigation 83.9%；原 app 0% 和 favicon 46.8% 的主要缺口已补齐。
+  - `npm --prefix web run lint`、`typecheck`、`test`、`build`：通过；Vitest 19 个文件、72 项通过，
+    statements 96.45%、branches 77.89%、functions 94.11%、lines 96.83%。
+  - `npm --prefix web run storybook:test`：通过；上游 `module.register()` deprecation 与大 chunk 警告
+    仍按既有记录保留，不来自项目源码。
+  - `npm --prefix web run test:visual`：26/26 通过；
+    `npm --prefix web run test:e2e`：Chromium、Firefox、WebKit 51/51 通过；两个高并发易抖动用例分别以 20 次重复压测全部通过。
+  - `npm --prefix web audit --omit=dev`：0 vulnerabilities；`make build` 通过并生成嵌入式二进制。
+  - 当前机器 Docker daemon 不可用，因此容器镜像实际构建仍保留为发布环境门禁。
+
 ### CHG-20260803-036 移除分组标题横向分隔线
 
 - 日期：2026-08-03

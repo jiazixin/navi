@@ -24,9 +24,10 @@ const (
 
 // Event is a compact catalog reload notification suitable for SSE delivery.
 type Event struct {
-	Type     EventType
-	Revision uint64
-	Message  string
+	Type      EventType `json:"type"`
+	Revision  uint64    `json:"revision,omitempty"`
+	Message   string    `json:"message,omitempty"`
+	RuntimeID string    `json:"runtimeId,omitempty"`
 }
 
 // Loader validates a catalog file and returns a fully constructed catalog.
@@ -43,6 +44,8 @@ type Watcher struct {
 
 	mu       sync.RWMutex
 	watcher  *fsnotify.Watcher
+	started  bool
+	stopped  bool
 	degraded bool
 	message  string
 
@@ -105,7 +108,13 @@ func (w *Watcher) Start(ctx context.Context) error {
 		watcher.Close()
 		return fmt.Errorf("catalog watcher is already running")
 	}
+	if w.stopped {
+		w.mu.Unlock()
+		watcher.Close()
+		return fmt.Errorf("catalog watcher has been stopped")
+	}
 	w.watcher = watcher
+	w.started = true
 	w.mu.Unlock()
 
 	go w.run(ctx, watcher)
@@ -115,9 +124,14 @@ func (w *Watcher) Start(ctx context.Context) error {
 // Stop releases watcher resources and waits for its worker to exit.
 func (w *Watcher) Stop() {
 	w.stopOnce.Do(func() {
-		w.mu.RLock()
+		w.mu.Lock()
 		watcher := w.watcher
-		w.mu.RUnlock()
+		started := w.started
+		w.stopped = true
+		if !started {
+			close(w.done)
+		}
+		w.mu.Unlock()
 		if watcher != nil {
 			_ = watcher.Close()
 		}

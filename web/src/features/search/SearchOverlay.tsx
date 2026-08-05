@@ -13,6 +13,7 @@ type SearchOverlayProps = {
   query: string;
   onChange: (query: string) => void;
   onClose: () => void;
+  faviconVersions?: Readonly<Record<string, number>>;
 };
 
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
@@ -23,7 +24,7 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   ).filter((element) => !element.hasAttribute('hidden'));
 }
 
-export function SearchOverlay({ page, query, onChange, onClose }: SearchOverlayProps): React.JSX.Element {
+export function SearchOverlay({ page, query, onChange, onClose, faviconVersions }: SearchOverlayProps): React.JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
@@ -115,7 +116,12 @@ export function SearchOverlay({ page, query, onChange, onClose }: SearchOverlayP
         </IconButton>
       </div>
       <main className={styles.results}>
-        <CatalogView page={page} entranceMode="filter" searching={query.length > 0} />
+        <CatalogView
+          {...(faviconVersions === undefined ? {} : { faviconVersions })}
+          page={page}
+          entranceMode="filter"
+          searching={query.length > 0}
+        />
       </main>
     </motion.div>
   );

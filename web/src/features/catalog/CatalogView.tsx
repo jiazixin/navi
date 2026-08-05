@@ -10,12 +10,14 @@ type CatalogViewProps = {
   page: CatalogPage;
   searching?: boolean;
   entranceMode?: 'initial' | 'filter';
+  faviconVersions?: Readonly<Record<string, number>>;
 };
 
 export function CatalogView({
   page,
   searching = false,
   entranceMode = 'initial',
+  faviconVersions,
 }: CatalogViewProps): React.JSX.Element {
   const reduceMotion = useReducedMotion();
   const linkCount = countLinks(page);
@@ -47,6 +49,7 @@ export function CatalogView({
               key={group.name}
               enableLayoutMotion={enableLayoutMotion}
               entranceMode={entranceMode}
+              {...(faviconVersions === undefined ? {} : { faviconVersions })}
               group={group}
               index={index}
             />

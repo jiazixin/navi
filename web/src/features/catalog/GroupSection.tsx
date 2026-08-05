@@ -9,13 +9,25 @@ type GroupSectionProps = {
   index?: number;
   enableLayoutMotion?: boolean;
   entranceMode?: 'initial' | 'filter';
+  faviconVersions?: Readonly<Record<string, number>>;
 };
+
+function getIconProps(
+  runtimeId: string,
+  faviconVersions?: Readonly<Record<string, number>>,
+): { iconURL: string } | Record<string, never> {
+  const version = faviconVersions?.[runtimeId];
+  return version === undefined
+    ? {}
+    : { iconURL: `/api/icons/${encodeURIComponent(runtimeId)}?v=${version}` };
+}
 
 export function GroupSection({
   group,
   index = 0,
   enableLayoutMotion = true,
   entranceMode = 'initial',
+  faviconVersions,
 }: GroupSectionProps): React.JSX.Element {
   const reduceMotion = useReducedMotion();
   const entranceDelay = entranceMode === 'initial' ? Math.min(index * motionTokens.stagger, 0.24) : 0;
@@ -48,7 +60,12 @@ export function GroupSection({
       <motion.div className={styles.grid} layout={enableLayoutMotion && !reduceMotion}>
         <AnimatePresence initial={false} mode="popLayout">
           {group.links.map((link) => (
-            <LinkCard key={link.runtimeId} enableLayoutMotion={enableLayoutMotion} link={link} />
+            <LinkCard
+              key={link.runtimeId}
+              {...getIconProps(link.runtimeId, faviconVersions)}
+              enableLayoutMotion={enableLayoutMotion}
+              link={link}
+            />
           ))}
         </AnimatePresence>
       </motion.div>

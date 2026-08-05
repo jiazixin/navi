@@ -23,9 +23,11 @@ type Entry struct {
 	RuntimeID    string
 	SourceURL    string
 	ContentType  string
+	SourceETag   string
 	ETag         string
 	LastModified string
 	FetchedAt    time.Time
+	StaleSince   time.Time
 	fileName     string
 }
 
@@ -33,9 +35,11 @@ type metadata struct {
 	RuntimeID    string    `json:"runtime_id"`
 	SourceURL    string    `json:"source_url"`
 	ContentType  string    `json:"content_type"`
+	SourceETag   string    `json:"source_etag,omitempty"`
 	ETag         string    `json:"etag"`
 	LastModified string    `json:"last_modified,omitempty"`
 	FetchedAt    time.Time `json:"fetched_at"`
+	StaleSince   time.Time `json:"stale_since,omitempty"`
 	FileName     string    `json:"file_name"`
 }
 
@@ -85,6 +89,13 @@ func (s *Store) Open(runtimeID string) (Entry, *os.File, error) {
 
 // Put atomically persists a validated icon and updates the in-memory index.
 func (s *Store) Put(runtimeID, sourceURL, contentType, lastModified string, body []byte) (Entry, error) {
+	return s.PutWithValidators(runtimeID, sourceURL, contentType, "", lastModified, body)
+}
+
+// PutWithValidators atomically persists an icon and the validators returned by
+// its remote source. ETag is derived locally from the validated bytes and is
+// kept separate from SourceETag, which is only used for conditional refreshes.
+func (s *Store) PutWithValidators(runtimeID, sourceURL, contentType, sourceETag, lastModified string, body []byte) (Entry, error) {
 	if runtimeID == "" {
 		return Entry{}, fmt.Errorf("favicon runtime ID must not be empty")
 	}
@@ -94,9 +105,10 @@ func (s *Store) Put(runtimeID, sourceURL, contentType, lastModified string, body
 	digest := sha256.Sum256(append([]byte(sourceURL+"\x00"+runtimeID+"\x00"), body...))
 	contentDigest := sha256.Sum256(body)
 	fileName := hex.EncodeToString(digest[:]) + extensionFor(contentType)
+	previous, hadPrevious := s.Entry(runtimeID)
 	entry := Entry{
 		RuntimeID: runtimeID, SourceURL: sourceURL, ContentType: contentType,
-		ETag: "\"" + hex.EncodeToString(contentDigest[:]) + "\"", LastModified: lastModified,
+		SourceETag: sourceETag, ETag: "\"" + hex.EncodeToString(contentDigest[:]) + "\"", LastModified: lastModified,
 		FetchedAt: time.Now().UTC(), fileName: fileName,
 	}
 
@@ -105,7 +117,8 @@ func (s *Store) Put(runtimeID, sourceURL, contentType, lastModified string, body
 	}
 	meta := metadata{
 		RuntimeID: entry.RuntimeID, SourceURL: entry.SourceURL, ContentType: entry.ContentType,
-		ETag: entry.ETag, LastModified: entry.LastModified, FetchedAt: entry.FetchedAt, FileName: entry.fileName,
+		SourceETag: entry.SourceETag, ETag: entry.ETag, LastModified: entry.LastModified, FetchedAt: entry.FetchedAt,
+		StaleSince: entry.StaleSince, FileName: entry.fileName,
 	}
 	encoded, err := json.Marshal(meta)
 	if err != nil {
@@ -117,7 +130,85 @@ func (s *Store) Put(runtimeID, sourceURL, contentType, lastModified string, body
 	s.mu.Lock()
 	s.entries[runtimeID] = entry
 	s.mu.Unlock()
+	if hadPrevious && previous.fileName != "" && previous.fileName != fileName {
+		// The new entry is already published; an orphaned old blob is safe to
+		// reclaim on a later cache cleanup pass.
+		if err := os.Remove(filepath.Join(s.directory, previous.fileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			// Keep the new entry usable; an orphaned derived blob is harmless and
+			// can be removed by a later maintenance pass.
+		}
+	}
 	return entry, nil
+}
+
+// Refresh records a successful conditional refresh (HTTP 304) without
+// rewriting the cached bytes. It returns the updated cache entry.
+func (s *Store) Refresh(runtimeID, sourceURL, sourceETag, lastModified string) (Entry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, ok := s.entries[runtimeID]
+	if !ok || entry.SourceURL != sourceURL {
+		return Entry{}, ErrNotFound
+	}
+	if sourceETag != "" {
+		entry.SourceETag = sourceETag
+	}
+	if lastModified != "" {
+		entry.LastModified = lastModified
+	}
+	entry.FetchedAt = time.Now().UTC()
+	entry.StaleSince = time.Time{}
+	if err := s.writeMetadataLocked(entry); err != nil {
+		return Entry{}, err
+	}
+	s.entries[runtimeID] = entry
+	return entry, nil
+}
+
+// Cleanup marks entries absent from activeRuntimeIDs as cleanup candidates and
+// removes candidates only after grace has elapsed. This keeps a removed link's
+// derived cache around briefly in case a catalog edit is reverted.
+func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duration) (int, error) {
+	if grace < 0 {
+		return 0, fmt.Errorf("favicon cleanup grace must not be negative")
+	}
+	now := time.Now().UTC()
+	removed := 0
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for runtimeID, entry := range s.entries {
+		if _, active := activeRuntimeIDs[runtimeID]; active {
+			if entry.StaleSince.IsZero() {
+				continue
+			}
+			entry.StaleSince = time.Time{}
+			if err := s.writeMetadataLocked(entry); err != nil {
+				return removed, err
+			}
+			s.entries[runtimeID] = entry
+			continue
+		}
+		if entry.StaleSince.IsZero() {
+			entry.StaleSince = now
+			if err := s.writeMetadataLocked(entry); err != nil {
+				return removed, err
+			}
+			s.entries[runtimeID] = entry
+			continue
+		}
+		if now.Sub(entry.StaleSince) < grace {
+			continue
+		}
+		if err := os.Remove(filepath.Join(s.directory, entry.fileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return removed, fmt.Errorf("remove stale favicon cache file: %w", err)
+		}
+		if err := os.Remove(filepath.Join(s.directory, metadataName(runtimeID))); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return removed, fmt.Errorf("remove stale favicon metadata: %w", err)
+		}
+		delete(s.entries, runtimeID)
+		removed++
+	}
+	return removed, nil
 }
 
 func (s *Store) loadMetadata() error {
@@ -139,10 +230,24 @@ func (s *Store) loadMetadata() error {
 		}
 		s.entries[meta.RuntimeID] = Entry{
 			RuntimeID: meta.RuntimeID, SourceURL: meta.SourceURL, ContentType: meta.ContentType,
-			ETag: meta.ETag, LastModified: meta.LastModified, FetchedAt: meta.FetchedAt, fileName: meta.FileName,
+			SourceETag: meta.SourceETag, ETag: meta.ETag, LastModified: meta.LastModified, FetchedAt: meta.FetchedAt,
+			StaleSince: meta.StaleSince, fileName: meta.FileName,
 		}
 	}
 	return nil
+}
+
+func (s *Store) writeMetadataLocked(entry Entry) error {
+	meta := metadata{
+		RuntimeID: entry.RuntimeID, SourceURL: entry.SourceURL, ContentType: entry.ContentType,
+		SourceETag: entry.SourceETag, ETag: entry.ETag, LastModified: entry.LastModified,
+		FetchedAt: entry.FetchedAt, StaleSince: entry.StaleSince, FileName: entry.fileName,
+	}
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("encode favicon metadata: %w", err)
+	}
+	return writeAtomically(s.directory, metadataName(entry.RuntimeID), encoded, 0o640)
 }
 
 func validMetadata(meta metadata) bool {

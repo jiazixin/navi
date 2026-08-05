@@ -23,6 +23,8 @@ type Config struct {
 	Workers         int
 }
 
+const cacheCleanupGrace = 24 * time.Hour
+
 // Manager fetches icons in bounded background workers.
 type Manager struct {
 	config  Config
@@ -35,6 +37,27 @@ type Manager struct {
 	jobs     chan catalog.Link
 	cancel   context.CancelFunc
 	wg       sync.WaitGroup
+
+	discoverMu  sync.Mutex
+	discovering map[string]*discoverCall
+	fetchMu     sync.Mutex
+	fetching    map[string]*iconCall
+}
+
+type discoverCall struct {
+	done       chan struct{}
+	candidates []string
+	err        error
+}
+
+type iconCall struct {
+	done         chan struct{}
+	contentType  string
+	contents     []byte
+	sourceETag   string
+	lastModified string
+	notModified  bool
+	err          error
 }
 
 // NewManager creates a favicon manager around a writable cache store.
@@ -49,6 +72,7 @@ func NewManager(config Config, store *Store, publish func(catalog.Event)) (*Mana
 	return &Manager{
 		config: config, store: store, client: client, publish: publish,
 		inFlight: make(map[string]struct{}), jobs: make(chan catalog.Link, 1_000),
+		discovering: make(map[string]*discoverCall), fetching: make(map[string]*iconCall),
 	}, nil
 }
 
@@ -80,11 +104,14 @@ func (m *Manager) Stop() {
 	}
 }
 
-// Schedule queues missing or expired icons without blocking catalog serving.
-func (m *Manager) Schedule(directory catalog.Catalog) {
+// Schedule queues missing or expired icons and retires cache entries that are
+// no longer referenced by the active catalog.
+func (m *Manager) Schedule(directory catalog.Catalog) error {
+	activeRuntimeIDs := make(map[string]struct{})
 	for _, page := range directory.Pages {
 		for _, group := range page.Groups {
 			for _, link := range group.Links {
+				activeRuntimeIDs[link.RuntimeID] = struct{}{}
 				if !m.shouldFetch(link.RuntimeID) {
 					continue
 				}
@@ -96,6 +123,10 @@ func (m *Manager) Schedule(directory catalog.Catalog) {
 			}
 		}
 	}
+	if _, err := m.store.Cleanup(activeRuntimeIDs, cacheCleanupGrace); err != nil {
+		return fmt.Errorf("cleanup favicon cache: %w", err)
+	}
+	return nil
 }
 
 func (m *Manager) shouldFetch(runtimeID string) bool {
@@ -134,60 +165,131 @@ func (m *Manager) worker(ctx context.Context) {
 }
 
 func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
+	entry, hasEntry := m.store.Entry(link.RuntimeID)
 	for _, entryURL := range []string{link.PublicURL, link.PrivateURL} {
 		if entryURL == "" {
 			continue
 		}
-		candidates, err := Discover(ctx, m.client, entryURL)
+		candidates, err := m.discover(ctx, entryURL)
 		if err != nil {
 			continue
 		}
 		for _, candidate := range candidates {
-			contentType, contents, lastModified, err := m.fetchIcon(ctx, candidate)
+			previous := Entry{}
+			if hasEntry && entry.SourceURL == candidate {
+				previous = entry
+			}
+			contentType, contents, sourceETag, lastModified, notModified, err := m.fetchIconSingleflight(ctx, candidate, previous)
 			if err != nil {
 				continue
 			}
-			if _, err := m.store.Put(link.RuntimeID, candidate, contentType, lastModified, contents); err != nil {
+			if notModified {
+				if _, refreshErr := m.store.Refresh(link.RuntimeID, candidate, sourceETag, lastModified); refreshErr == nil {
+					return
+				}
+				continue
+			}
+			if _, err := m.store.PutWithValidators(link.RuntimeID, candidate, contentType, sourceETag, lastModified, contents); err != nil {
 				return
 			}
 			if m.publish != nil {
-				m.publish(catalog.Event{Type: catalog.EventFaviconUpdated})
+				m.publish(catalog.Event{Type: catalog.EventFaviconUpdated, RuntimeID: link.RuntimeID})
 			}
 			return
 		}
 	}
 }
 
-func (m *Manager) fetchIcon(ctx context.Context, source string) (string, []byte, string, error) {
+func (m *Manager) fetchIconSingleflight(ctx context.Context, source string, previous Entry) (string, []byte, string, string, bool, error) {
+	key := source + "\x00" + previous.SourceETag + "\x00" + previous.LastModified
+	m.fetchMu.Lock()
+	if call, ok := m.fetching[key]; ok {
+		m.fetchMu.Unlock()
+		select {
+		case <-call.done:
+			return call.contentType, append([]byte(nil), call.contents...), call.sourceETag, call.lastModified, call.notModified, call.err
+		case <-ctx.Done():
+			return "", nil, "", "", false, ctx.Err()
+		}
+	}
+	call := &iconCall{done: make(chan struct{})}
+	m.fetching[key] = call
+	m.fetchMu.Unlock()
+
+	call.contentType, call.contents, call.sourceETag, call.lastModified, call.notModified, call.err = m.fetchIcon(ctx, source, previous)
+	m.fetchMu.Lock()
+	delete(m.fetching, key)
+	close(call.done)
+	m.fetchMu.Unlock()
+	return call.contentType, append([]byte(nil), call.contents...), call.sourceETag, call.lastModified, call.notModified, call.err
+}
+
+func (m *Manager) discover(ctx context.Context, pageURL string) ([]string, error) {
+	m.discoverMu.Lock()
+	if call, ok := m.discovering[pageURL]; ok {
+		m.discoverMu.Unlock()
+		select {
+		case <-call.done:
+			return append([]string(nil), call.candidates...), call.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	call := &discoverCall{done: make(chan struct{})}
+	m.discovering[pageURL] = call
+	m.discoverMu.Unlock()
+
+	call.candidates, call.err = Discover(ctx, m.client, pageURL)
+	m.discoverMu.Lock()
+	delete(m.discovering, pageURL)
+	close(call.done)
+	m.discoverMu.Unlock()
+	return append([]string(nil), call.candidates...), call.err
+}
+
+func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) (string, []byte, string, string, bool, error) {
 	parsed, err := url.Parse(source)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return "", nil, "", fmt.Errorf("invalid favicon source")
+		return "", nil, "", "", false, fmt.Errorf("invalid favicon source")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("create favicon request: %w", err)
+		return "", nil, "", "", false, fmt.Errorf("create favicon request: %w", err)
 	}
 	request.Header.Set("Accept", "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5")
+	if previous.SourceURL == source {
+		if previous.SourceETag != "" {
+			request.Header.Set("If-None-Match", previous.SourceETag)
+		}
+		if previous.LastModified != "" {
+			request.Header.Set("If-Modified-Since", previous.LastModified)
+		}
+	}
 	response, err := m.client.Do(request)
 	if err != nil {
-		return "", nil, "", fmt.Errorf("fetch favicon: %w", err)
+		return "", nil, "", "", false, fmt.Errorf("fetch favicon: %w", err)
 	}
 	defer response.Body.Close()
+	sourceETag := response.Header.Get("ETag")
+	lastModified := response.Header.Get("Last-Modified")
+	if response.StatusCode == http.StatusNotModified {
+		return "", nil, sourceETag, lastModified, true, nil
+	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return "", nil, "", fmt.Errorf("fetch favicon: unexpected status")
+		return "", nil, "", "", false, fmt.Errorf("fetch favicon: unexpected status")
 	}
 	contents, err := io.ReadAll(io.LimitReader(response.Body, m.config.MaxFileBytes+1))
 	if err != nil {
-		return "", nil, "", fmt.Errorf("read favicon: %w", err)
+		return "", nil, "", "", false, fmt.Errorf("read favicon: %w", err)
 	}
 	if int64(len(contents)) > m.config.MaxFileBytes {
-		return "", nil, "", fmt.Errorf("read favicon: file exceeds size limit")
+		return "", nil, "", "", false, fmt.Errorf("read favicon: file exceeds size limit")
 	}
 	contentType, ok := validatedContentType(response.Header.Get("Content-Type"), contents)
 	if !ok {
-		return "", nil, "", fmt.Errorf("read favicon: unsupported image type")
+		return "", nil, "", "", false, fmt.Errorf("read favicon: unsupported image type")
 	}
-	return contentType, contents, response.Header.Get("Last-Modified"), nil
+	return contentType, contents, sourceETag, lastModified, false, nil
 }
 
 func validatedContentType(header string, contents []byte) (string, bool) {

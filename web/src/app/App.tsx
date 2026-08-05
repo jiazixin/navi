@@ -36,6 +36,7 @@ export function App(): React.JSX.Element {
   const [hasSearched, setHasSearched] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [dismissedBanner, setDismissedBanner] = useState<string | null>(null);
+  const [faviconVersions, setFaviconVersions] = useState<Record<string, number>>({});
   const [currentPageID, setCurrentPageID] = useState<string | null>(null);
   const [pageDirection, setPageDirection] = useState<1 | -1>(1);
   const reduceMotion = useReducedMotion();
@@ -64,9 +65,14 @@ export function App(): React.JSX.Element {
     void queryClient.invalidateQueries({ queryKey: ['status'] });
   }, [queryClient]);
 
+  const handleFaviconUpdate = useCallback((runtimeId: string): void => {
+    setFaviconVersions((current) => ({ ...current, [runtimeId]: (current[runtimeId] ?? 0) + 1 }));
+  }, []);
+
   const connection = useCatalogEvents({
     onCatalogUpdate: refreshCatalog,
     onCatalogError: handleCatalogError,
+    onFaviconUpdate: handleFaviconUpdate,
   });
 
   const pages = useMemo(() => catalogQuery.data?.pages ?? [], [catalogQuery.data?.pages]);
@@ -238,6 +244,7 @@ export function App(): React.JSX.Element {
               >
                 <CatalogView
                   entranceMode={hasSearched ? 'filter' : 'initial'}
+                  faviconVersions={faviconVersions}
                   page={filteredPage}
                   searching={searchQuery.length > 0}
                 />
@@ -260,6 +267,7 @@ export function App(): React.JSX.Element {
       <AnimatePresence>
         {searchOpen && filteredPage !== undefined ? (
           <SearchOverlay
+            faviconVersions={faviconVersions}
             key="search-overlay"
             onChange={handleQueryChange}
             onClose={() => setSearchOpen(false)}

@@ -8,11 +8,13 @@ export type ConnectionState =
 type UseCatalogEventsOptions = {
   onCatalogUpdate: () => void;
   onCatalogError: () => void;
+  onFaviconUpdate?: (runtimeId: string) => void;
 };
 
 export function useCatalogEvents({
   onCatalogUpdate,
   onCatalogError,
+  onFaviconUpdate,
 }: UseCatalogEventsOptions): ConnectionState {
   const [connection, setConnection] = useState<ConnectionState>({ kind: 'connecting' });
 
@@ -31,7 +33,14 @@ export function useCatalogEvents({
         setConnection({ kind: 'live' });
       });
       source.addEventListener('catalog.updated', onCatalogUpdate);
-      source.addEventListener('favicon.updated', onCatalogUpdate);
+      source.addEventListener('favicon.updated', (event) => {
+        const runtimeId = parseFaviconRuntimeId(event);
+        if (runtimeId !== undefined) {
+          onFaviconUpdate?.(runtimeId);
+          if (onFaviconUpdate !== undefined) return;
+        }
+        onCatalogUpdate();
+      });
       source.addEventListener('catalog.error', onCatalogError);
       source.addEventListener('error', () => {
         source?.close();
@@ -50,7 +59,26 @@ export function useCatalogEvents({
         window.clearTimeout(reconnectTimer);
       }
     };
-  }, [onCatalogError, onCatalogUpdate]);
+  }, [onCatalogError, onCatalogUpdate, onFaviconUpdate]);
 
   return connection;
+}
+
+function parseFaviconRuntimeId(event: Event): string | undefined {
+  if (!(event instanceof MessageEvent) || typeof event.data !== 'string') return undefined;
+  try {
+    const payload: unknown = JSON.parse(event.data);
+    if (
+      typeof payload === 'object' &&
+      payload !== null &&
+      'runtimeId' in payload &&
+      typeof payload.runtimeId === 'string' &&
+      payload.runtimeId.length > 0
+    ) {
+      return payload.runtimeId;
+    }
+  } catch {
+    // Keep the catalog refresh fallback for malformed or legacy events.
+  }
+  return undefined;
 }

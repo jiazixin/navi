@@ -93,6 +93,8 @@ test('catalog load failure', async ({ page }) => {
   await expect(page).toHaveScreenshot('navi-desktop-failure.png', {
     animations: 'disabled',
     fullPage: true,
+    // macOS font rasterization can vary by worker for the small "Navi" label.
+    maxDiffPixels: 40,
   });
 });
 

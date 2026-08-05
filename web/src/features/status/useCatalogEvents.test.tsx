@@ -22,12 +22,12 @@ class EventSourceMock {
     this.closed = true;
   }
 
-  emit(type: string): void {
+  emit(type: string, event: Event = new Event(type)): void {
     for (const listener of this.listeners.get(type) ?? []) {
       if (typeof listener === 'function') {
-        listener(new Event(type));
+        listener(event);
       } else {
-        listener.handleEvent(new Event(type));
+        listener.handleEvent(event);
       }
     }
   }
@@ -81,5 +81,29 @@ describe('useCatalogEvents', () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
     expect(EventSourceMock.instances).toHaveLength(2);
+  });
+
+  it('routes favicon events to the affected runtime ID', () => {
+    const onCatalogUpdate = vi.fn();
+    const onFaviconUpdate = vi.fn();
+    const { unmount } = renderHook(() =>
+      useCatalogEvents({
+        onCatalogUpdate,
+        onCatalogError: vi.fn(),
+        onFaviconUpdate,
+      }),
+    );
+    const source = EventSourceMock.instances[0];
+
+    act(() => {
+      source?.emit(
+        'favicon.updated',
+        new MessageEvent('favicon.updated', { data: JSON.stringify({ runtimeId: 'github' }) }),
+      );
+    });
+
+    expect(onFaviconUpdate).toHaveBeenCalledWith('github');
+    expect(onCatalogUpdate).not.toHaveBeenCalled();
+    unmount();
   });
 });

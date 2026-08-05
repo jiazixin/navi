@@ -41,16 +41,19 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	if loaded.Catalog.Watch {
 		watcher = catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store)
 		if err := watcher.Start(runCtx); err != nil {
+			logger.Error("catalog watcher unavailable", "error", err)
 			return fmt.Errorf("start catalog watcher: %w", err)
 		}
 	}
 	iconStore, iconManager, iconDegraded := startFaviconManager(loaded, logger, watcher)
 	if iconManager != nil {
 		iconManager.Start(runCtx)
-		iconManager.Schedule(snapshot.Catalog())
-		if watcher != nil {
-			eventObserverDone = observeCatalogEvents(runCtx, watcher, store, iconManager)
+		if err := iconManager.Schedule(snapshot.Catalog()); err != nil {
+			logger.Error("favicon cache maintenance failed", "error", err)
 		}
+	}
+	if watcher != nil {
+		eventObserverDone = observeCatalogEvents(runCtx, watcher, store, iconManager, logger)
 	}
 	defer func() {
 		cancel()
@@ -73,7 +76,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	)
 	handler, err := httpapi.New(httpapi.Options{
 		Config: loaded, Catalog: store, Watcher: watcher, Icons: iconStore, Resolver: resolver, Static: static,
-		Degraded: iconDegraded,
+		Degraded: iconDegraded, Logger: logger,
 	})
 	if err != nil {
 		return fmt.Errorf("create HTTP API: %w", err)
@@ -85,18 +88,30 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: loaded.Server.ReadHeaderTimeout, ReadTimeout: loaded.Server.ReadTimeout,
 		WriteTimeout: loaded.Server.WriteTimeout, IdleTimeout: loaded.Server.IdleTimeout,
+		BaseContext: func(net.Listener) context.Context { return runCtx },
 	}
 	serverErrors := make(chan error, 1)
 	go func() {
 		serverErrors <- server.Serve(listener)
 	}()
-	logger.Info("Navi started", "listen", listener.Addr().String(), "config", loaded.Path, "revision", snapshot.Revision())
+	entries, groups := catalogCounts(snapshot.Catalog())
+	logger.Info("Navi started",
+		"listen", listener.Addr().String(),
+		"config_source", loaded.Path,
+		"datadir", loaded.DataDir,
+		"revision", snapshot.Revision(),
+		"entries", entries,
+		"groups", groups,
+	)
 
 	select {
 	case <-ctx.Done():
-		shutdown, cancel := context.WithTimeout(context.Background(), loaded.Server.ShutdownTimeout)
-		defer cancel()
-		if err := server.Shutdown(shutdown); err != nil {
+		// Propagate process cancellation to long-lived handlers such as SSE before
+		// waiting for the HTTP server to become idle.
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), loaded.Server.ShutdownTimeout)
+		defer shutdownCancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("shutdown HTTP server: %w", err)
 		}
 		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -109,6 +124,16 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		}
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
+}
+
+func catalogCounts(directory catalog.Catalog) (entries, groups int) {
+	for _, page := range directory.Pages {
+		groups += len(page.Groups)
+		for _, group := range page.Groups {
+			entries += len(group.Links)
+		}
+	}
+	return entries, groups
 }
 
 func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *catalog.Watcher) (*favicon.Store, *favicon.Manager, func() (bool, string)) {
@@ -136,7 +161,7 @@ func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *cat
 	return store, manager, func() (bool, string) { return false, "" }
 }
 
-func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager) chan struct{} {
+func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager, logger *slog.Logger) chan struct{} {
 	done := make(chan struct{})
 	subscription := watcher.Subscribe()
 	go func() {
@@ -150,11 +175,20 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 				if !ok {
 					return
 				}
+				if event.Type == catalog.EventCatalogError {
+					logger.Error("catalog reload failed", "revision", event.Revision, "message", event.Message)
+					continue
+				}
 				if event.Type != catalog.EventCatalogUpdated {
 					continue
 				}
-				if snapshot, ok := store.Snapshot(); ok {
-					manager.Schedule(snapshot.Catalog())
+				logger.Info("catalog reloaded", "revision", event.Revision)
+				if manager != nil {
+					if snapshot, ok := store.Snapshot(); ok {
+						if err := manager.Schedule(snapshot.Catalog()); err != nil {
+							logger.Error("favicon cache maintenance failed", "revision", event.Revision, "error", err)
+						}
+					}
 				}
 			}
 		}
