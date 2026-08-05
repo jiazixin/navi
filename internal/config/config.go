@@ -43,7 +43,7 @@ var (
 // Config is the validated process configuration with paths resolved from its file.
 type Config struct {
 	Path              string           `yaml:"-"`
-	DataDir           string           `yaml:"datadir"`
+	StorageDir        string           `yaml:"storage"`
 	Theme             string           `yaml:"theme"`
 	BackgroundPattern string           `yaml:"background_pattern"`
 	WebSearch         string           `yaml:"web_search"`
@@ -162,7 +162,7 @@ func LoadFile(path string) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
-		DataDir:           "./data",
+		StorageDir:        "./storage",
 		Theme:             ThemeDefault,
 		BackgroundPattern: BackgroundPatternMeridianGrid,
 		WebSearch:         WebSearchBaidu,
@@ -199,7 +199,7 @@ func selectPath(flagValue string, lookupEnv LookupEnv) (string, error) {
 
 func resolvePaths(loaded *Config) {
 	baseDir := filepath.Dir(loaded.Path)
-	loaded.DataDir = resolvePath(baseDir, loaded.DataDir)
+	loaded.StorageDir = resolvePath(baseDir, loaded.StorageDir)
 	loaded.Catalog.Path = resolvePath(baseDir, loaded.Catalog.Path)
 }
 
@@ -212,8 +212,8 @@ func resolvePath(baseDir, path string) string {
 }
 
 func validate(loaded Config) error {
-	if loaded.DataDir == "" {
-		return fieldError("datadir", "must not be empty")
+	if loaded.StorageDir == "" {
+		return fieldError("storage", "must not be empty")
 	}
 	if _, ok := themes[loaded.Theme]; !ok {
 		return fieldError("theme", "must be a supported theme")

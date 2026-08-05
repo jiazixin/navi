@@ -18,7 +18,7 @@ Go 后端读取 `urls.yaml`，提供只读目录、合法配置热加载和内�
 - 页面严格按 YAML 顺序渲染；分组顺序由该分组第一次出现的位置决定。
 - 优先访问 private URL；内网地址不可达时自动回退 public URL。
 - 合法 YAML 修改会热加载，并自动通知已打开的页面刷新内容。
-- 自动发现站点 favicon，并缓存到主配置指定的 `datadir`。
+- 自动发现站点 favicon，并缓存到主配置指定的 `storage`。
 - 首屏提供开放式搜索工作台，可进入百度、Google、Yandex、Bing 国际版、GitHub、ChatGPT、
   Claude 和 Gemini；入口收纳在可伸缩椭圆与图标菜单中。桌面指针经过后椭圆保持展开 8 秒再
   自动收回，避免快速划过产生闪动，同时保留第一导航分组预览；搜索区不使用角色挂件或随机
@@ -45,7 +45,7 @@ Go 后端读取 `urls.yaml`，提供只读目录、合法配置热加载和内�
 主配置中的相对路径以主配置文件所在目录为基准。
 
 ```yaml
-datadir: ./data
+storage: ./storage
 
 # 可选主题：default（默认）、navy-blossom（绀樱夜）、mint-tide（薄荷汐）、
 # moss-court（苔庭青）、tea-mist（茶雾青）、amber-tide（琥珀潮）、
@@ -130,7 +130,7 @@ pages:
 页面底部使用图标分页控件切换页面。
 
 Navi 会先解析目标页面的 `link rel="icon"` 声明，找不到时尝试站点根目录的
-`/favicon.ico`。校验通过的图标保存到 `datadir/favicons` 并由 Navi 本地提供。
+`/favicon.ico`。校验通过的图标保存到 `storage/favicons` 并由 Navi 本地提供。
 该目录只是可删除、可重建的派生缓存，不保存第二份导航数据。
 
 ## 文档
@@ -191,12 +191,12 @@ docker build -t navi:local .
 docker run --rm -p 8080:8080 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
   -v "$(pwd)/urls.yaml:/app/urls.yaml:ro" \
-  -v navi-data:/data \
+  -v navi-storage:/storage \
   navi:local -f /app/config.yaml
 ```
 
-容器以非 root 用户运行。`config.yaml` 和 `urls.yaml` 应以只读方式挂载，`datadir` 使用独立的可写
-volume；容器中的挂载配置应设置 `datadir: /data`。
+容器以非 root 用户运行。`config.yaml` 和 `urls.yaml` 应以只读方式挂载，`storage` 使用独立的可写
+volume；容器中的挂载配置应设置 `storage: /storage`。
 
 ## 部署提醒
 

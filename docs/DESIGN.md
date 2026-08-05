@@ -37,7 +37,7 @@ Navi 是一个以 UI/UX 为唯一核心目标的只读个人导航系统。Go �
 - UI/UX 质量拥有发布否决权；功能正确但视觉粗糙、动效僵硬或操作费力时不得发布。
 - 严格按照 `urls.yaml` 展示页面、分组、链接和顺序。
 - YAML 修改后自动热加载，页面无需手动刷新即可更新。
-- 自动发现目标站点 favicon，下载到 `datadir` 并由本站稳定提供。
+- 自动发现目标站点 favicon，下载到 `storage` 并由本站稳定提供。
 - 点击链接时优先使用 `private_url`；不可达时自动切换 `public_url`。
 - 提供快速搜索、键盘操作、响应式布局和清晰的异常状态。
 - 支持手机、平板、桌面、超宽屏、横竖屏、缩放、高 DPI、触控和键鼠等显示场景。
@@ -47,7 +47,7 @@ Navi 是一个以 UI/UX 为唯一核心目标的只读个人导航系统。Go �
 ### 2.2 非目标
 
 - 不实现登录、权限、用户偏好同步或多租户。
-- 不使用数据库，也不持久化导航目录、顺序或用户状态；`datadir` 只保存可重建的
+- 不使用数据库，也不持久化导航目录、顺序或用户状态；`storage` 只保存可重建的
   favicon 派生缓存。
 - 不实现拖拽排序、链接编辑、分组编辑或任何写入 API。
 - 不代理目标网站内容，不做通用反向代理。
@@ -94,7 +94,7 @@ flowchart LR
     Y["urls.yaml"] --> W["Catalog loader and watcher"]
     W --> M["Immutable in-memory snapshot"]
     M --> F["Favicon discovery and local cache"]
-    D["datadir/favicons"] <--> F
+    D["storage/favicons"] <--> F
     M --> A["Read-only JSON API"]
     M --> R["Private/public resolver"]
     A --> U["React UI"]
@@ -109,7 +109,7 @@ flowchart LR
 - 目录加载器：使用 YAML AST 和强类型模型解析 `urls.yaml`。
 - 文件观察器：监听父目录中的文件替换、创建和写入事件，防抖后重新加载。
 - 快照仓库：通过不可变快照和原子指针向请求提供一致视图。
-- Favicon 管理器：发现站点图标、受限下载、校验并缓存到 `datadir/favicons`。
+- Favicon 管理器：发现站点图标、受限下载、校验并缓存到 `storage/favicons`。
 - 链接解析器：探测内网、回退外网、缓存结果并返回 HTTP 重定向。
 - HTTP API：提供目录数据、状态、SSE 事件、健康检查和静态资源。
 - Web UI：React + TypeScript 应用，构建产物通过 `go:embed` 进入二进制。
@@ -142,12 +142,12 @@ flowchart LR
 
 当 `-f` 与 `configpath` 同时存在时，`-f` 必须优先。空字符串视为未设置。
 主配置中的相对路径以主配置文件所在目录为基准，不以进程工作目录为基准。
-`datadir` 遵循同一规则。
+`storage` 遵循同一规则。
 
 ### 5.2 主配置格式
 
 ```yaml
-datadir: ./data
+storage: ./storage
 
 # Themes: default（默认）、navy-blossom（绀樱夜）、mint-tide（薄荷汐）、
 # moss-court（苔庭青）、tea-mist（茶雾青）、amber-tide（琥珀潮）、
@@ -208,7 +208,7 @@ favicon:
 - 所有 timeout 必须大于 0。
 - `health.uri` 必须以 `/` 开头，且不能覆盖保留路由。
 - `catalog.path` 必须存在、是普通文件且可读。
-- `datadir` 必须是目录或可被程序创建；其相对路径以主配置目录为基准。
+- `storage` 必须是目录或可被程序创建；其相对路径以主配置目录为基准。
 - `theme` 默认值为 `default`，只接受配置注释列出的 8 个稳定标识；未知值导致启动失败。
 - `background_pattern` 默认值为 `meridian-grid`，只接受配置注释列出的 9 个稳定标识；
   未知值导致启动失败。
@@ -303,8 +303,8 @@ Favicon 是可删除、可重建的派生缓存，不改变 `urls.yaml` 的唯�
 
 目录规则：
 
-- 根目录来自主配置 `datadir`。
-- 图标文件保存到 `datadir/favicons/`。
+- 根目录来自主配置 `storage`。
+- 图标文件保存到 `storage/favicons/`。
 - 缓存文件名使用目标规范化 origin 和运行时链接 ID 的 SHA-256 摘要，禁止使用远端文件名，
   防止路径穿越和重名。
 - 元数据 sidecar 记录来源 URL、内容类型、ETag、Last-Modified、抓取时间和内容哈希。
@@ -333,7 +333,7 @@ Favicon 是可删除、可重建的派生缓存，不改变 `urls.yaml` 的唯�
 
 前端始终先渲染稳定字标。缓存命中时直接展示本站图标路由；新图标后台下载完成后，
 服务通过 SSE 发送 `favicon.updated`，前端无布局位移地替换字标。抓取失败只记录
-限频日志并按刷新周期重试，不使目录加载失败。若 `datadir` 不可写，服务继续提供导航，
+限频日志并按刷新周期重试，不使目录加载失败。若 `storage` 不可写，服务继续提供导航，
 health 标记为 `degraded`，所有链接使用字标。
 
 ## 7. 内外网链接选择
@@ -679,11 +679,11 @@ Navi 不复制任何品牌的页面，但以成熟设计系统的以下原则作
 
 ## 12. 可观测性
 
-- 启动日志包含版本、监听地址、主配置来源、datadir、目录条目数和分组数。
+- 启动日志包含版本、监听地址、主配置来源、storage、目录条目数和分组数。
 - 热加载日志包含 revision、耗时和成功/失败，不输出完整 URL 查询串。
 - Favicon 日志包含缓存命中、刷新、失败类别和耗时，不记录带查询参数的完整来源 URL。
 - 访问日志包含 request_id、method、route、status、duration、bytes。
 - 健康检查：
   - `200 ok`：目录已加载，文件观察器和 favicon 缓存目录正常。
-  - `200 degraded`：仍提供最后有效快照，但最近一次热加载失败或 datadir 不可写。
+  - `200 degraded`：仍提供最后有效快照，但最近一次热加载失败或 storage 不可写。
   - `503 unavailable`：没有任何有效目录快照。

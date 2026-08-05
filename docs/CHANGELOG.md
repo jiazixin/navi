@@ -35,12 +35,23 @@
   `site/urls` 结构。
 - 系统只读，不含登录、数据库、拖拽、Web 编辑或 YAML 回写。
 - 唯一核心目标是高质量 UI/UX；YAML 渲染、搜索、热加载和内外网自动选择均服务于体验。
-- 站点 favicon 自动发现并作为派生缓存存入主配置指定的 `datadir`。
+- 站点 favicon 自动发现并作为派生缓存存入主配置指定的 `storage`。
 - 动效跟随显示器原生刷新率，不设置 60fps 或其他人为最高帧率。
 - 所有实现必须遵守 `docs/CODING_STANDARDS.md` 的生产级命名、组织和零弃用门禁。
 - 所有组件、响应式布局和视觉测试必须遵守 `docs/UI_SPEC.md`。
 
 ## 3. 变更记录
+
+### CHG-20260805-039 将存储配置统一命名为 storage
+
+- 日期：2026-08-05
+- 状态：implemented
+- 类型：configuration / storage / documentation / testing
+- 原行为：主配置使用 `datadir`，Go 内部字段为 `DataDir`，默认目录为 `./data`，启动日志也输出 `datadir`。
+- 新行为：公开配置改为 `storage`，Go 内部使用 `StorageDir`，默认目录为 `./storage`，启动日志字段改为 `storage`，相关运行路径和文档统一使用 storage 命名。
+- 兼容性：项目仍使用严格 YAML 校验，旧 `datadir` 字段作为未知字段拒绝，不保留别名或迁移分支。
+- 影响：主配置、favicon 派生缓存根目录、启动日志、忽略规则、运行说明、设计、实施、验收和配置测试。
+- 验证：`gofmt`、`git diff --check`、`GOTOOLCHAIN=go1.25.12 go test ./internal/config ./internal/app` 和 `PATH=/tmp/navi-tools:$PATH GOTOOLCHAIN=go1.25.12 make verify` 均通过；Docker 镜像构建按用户要求不纳入本次验证。
 
 ### CHG-20260805-038 建立最终验证记录
 

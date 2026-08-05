@@ -60,7 +60,7 @@ configpath=/tmp/navi/config.yaml ./navi
 预期：
 
 - 不创建或使用 SQLite、BoltDB、导航 JSON 状态文件或其他目录副本。
-- `datadir/favicons` 中允许存在可删除、可重建的 favicon 派生缓存及其元数据；
+- `storage/favicons` 中允许存在可删除、可重建的 favicon 派生缓存及其元数据；
   其中不得保存导航目录副本或排序状态。
 - 不存在新增、修改、删除、排序、上传的 HTTP API。
 - UI 中不存在登录、编辑、拖拽、保存和管理入口。
@@ -149,7 +149,7 @@ public 实际响应时间与 200ms 处理余量之和。
 准备页面分别声明相对 `link rel="icon"`、`shortcut icon`、`apple-touch-icon`，
 以及完全不声明图标的站点。  
 预期：按设计顺序发现图标；无声明时请求 origin 的 `/favicon.ico`；
-public 发现失败时尝试 private；成功内容保存到 `datadir/favicons`。
+public 发现失败时尝试 private；成功内容保存到 `storage/favicons`。
 
 ### AC-P0-019 Favicon 本地缓存
 
@@ -161,11 +161,11 @@ public 发现失败时尝试 private；成功内容保存到 `datadir/favicons`�
 
 分别返回超大文件、HTML 伪装图片、超过 3 次重定向、慢响应、路径穿越式远端文件名和 SVG。  
 预期：超大、HTML、过多重定向和超时均拒绝落盘；缓存路径始终在
-`datadir/favicons`；合法 SVG 通过隔离图像响应提供，不能执行脚本或作为 HTML。
+`storage/favicons`；合法 SVG 通过隔离图像响应提供，不能执行脚本或作为 HTML。
 
-### AC-P0-021 datadir 故障降级
+### AC-P0-021 storage 故障降级
 
-将 `datadir` 指向不可写位置。  
+将 `storage` 指向不可写位置。
 预期：目录渲染和链接跳转仍可使用，所有图标回退字标，health 返回 `degraded`，
 日志给出权限错误。恢复可写后，重启或刷新周期能建立缓存。
 
@@ -628,7 +628,7 @@ race detector 无数据竞争；govulncheck 无影响当前调用路径的已知
 7. `-f`、`configpath` 和默认路径测试。
 8. 二进制版本信息和产物哈希。
 9. `docs/CHANGELOG.md` 已包含本次交付条目。
-10. Favicon 自动发现、本地缓存、安全限制和 datadir 降级测试。
+10. Favicon 自动发现、本地缓存、安全限制和 storage 降级测试。
 11. Go/TypeScript 弃用检查、race、govulncheck 和生产依赖 audit 报告。
 12. `docs/CODING_STANDARDS.md` 的 Code Review 清单已逐项确认。
 13. 手机、平板、桌面、超宽屏、横竖屏、zoom 和真实设备 smoke 记录。

@@ -1,4 +1,4 @@
-datadir: ./data
+storage: ./storage
 theme: default
 background_pattern: meridian-grid
 web_search: baidu

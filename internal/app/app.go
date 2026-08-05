@@ -98,7 +98,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	logger.Info("Navi started",
 		"listen", listener.Addr().String(),
 		"config_source", loaded.Path,
-		"datadir", loaded.DataDir,
+		"storage", loaded.StorageDir,
 		"revision", snapshot.Revision(),
 		"entries", entries,
 		"groups", groups,
@@ -137,7 +137,7 @@ func catalogCounts(directory catalog.Catalog) (entries, groups int) {
 }
 
 func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *catalog.Watcher) (*favicon.Store, *favicon.Manager, func() (bool, string)) {
-	store, err := favicon.NewStore(loaded.DataDir)
+	store, err := favicon.NewStore(loaded.StorageDir)
 	if err != nil {
 		logger.Error("favicon cache unavailable", "error", err)
 		return nil, nil, func() (bool, string) {

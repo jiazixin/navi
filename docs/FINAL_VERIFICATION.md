@@ -24,6 +24,8 @@
 - [x] 只读 HTTP 表面、安全响应头、探测请求隔离、日志脱敏和依赖漏洞检查。
 - [x] 正式版本二进制、`--version`、commit/build metadata、产物哈希和启动 smoke 验证。
 - [x] 发布验证脚本、可重复门禁、变更记录和 README/运行文档同步。
+- [x] `datadir` 配置命名已统一为 `storage`，内部字段为 `StorageDir`，默认路径为 `./storage`；旧字段按严格 YAML 校验拒绝。
+- [x] storage 重命名涉及的配置、日志、favicon 缓存、示例、忽略规则、容器路径和中英文文档已同步；Docker 镜像构建不纳入本次验证。
 
 ## 3. 验证结果摘要
 
@@ -37,6 +39,7 @@
 | Storybook | 构建通过 |
 | npm 生产依赖审计 | 0 vulnerabilities |
 | 工作区格式检查 | `git diff --check` 通过 |
+| storage 重命名 | 配置、运行时、文档和测试同步完成；legacy `datadir` 拒绝测试通过 |
 
 ## 4. 交付结论
 

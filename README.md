@@ -22,7 +22,7 @@ accessibility, and polished monochrome presentation.
 - Private URLs are preferred; Navi falls back to public URLs when private endpoints
   cannot be reached.
 - Valid YAML changes are hot-reloaded and pushed to open pages.
-- Favicons are discovered automatically and cached under the configured `datadir`.
+- Favicons are discovered automatically and cached under the configured `storage`.
 - An open search workbench launches Baidu, Google, Yandex, Bing International, GitHub,
   ChatGPT, Claude, or Gemini from an expanding pill and icon menu. On desktop, a pointer visit holds the
   pill open for eight seconds before it retracts, while the first navigation group remains visible.
@@ -52,7 +52,7 @@ Navi selects its main configuration in this order:
 Relative paths are resolved from the directory containing the selected main config.
 
 ```yaml
-datadir: ./data
+storage: ./storage
 
 # Themes: default, navy-blossom, mint-tide, moss-court, tea-mist,
 # amber-tide, sunny-coast, violet-lime.
@@ -132,7 +132,7 @@ destinations are accepted. Page and link order follow the `pages` and `urls`
 arrays exactly. The bottom icon pagination switches between pages.
 
 Navi discovers `link rel="icon"` declarations and falls back to `/favicon.ico`.
-Validated images are stored under `datadir/favicons` and served locally. This
+Validated images are stored under `storage/favicons` and served locally. This
 directory is a disposable derived cache; it never contains a second copy of the
 navigation catalog.
 
@@ -199,12 +199,12 @@ docker build -t navi:local .
 docker run --rm -p 8080:8080 \
   -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
   -v "$(pwd)/urls.yaml:/app/urls.yaml:ro" \
-  -v navi-data:/data \
+  -v navi-storage:/storage \
   navi:local -f /app/config.yaml
 ```
 
-The container runs as a non-root user. Mount `config.yaml` and `urls.yaml` read-only; keep `datadir` on the
-separate writable volume by setting `datadir: /data` in the mounted configuration.
+The container runs as a non-root user. Mount `config.yaml` and `urls.yaml` read-only; keep `storage` on the
+separate writable volume by setting `storage: /storage` in the mounted configuration.
 
 ## Deployment Note
 

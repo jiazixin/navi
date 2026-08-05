@@ -102,7 +102,7 @@ Lucide React、Storybook、Vitest、Playwright。
 测试先覆盖：
 
 - `-f` 高于 `configpath`，环境变量高于默认路径。
-- 相对 `catalog.path` 和 `datadir` 以主配置目录为基准。
+- 相对 `catalog.path` 和 `storage` 以主配置目录为基准。
 - `theme` 缺失时默认为 `default`，8 个主题标识均可解析，未知主题失败。
 - `background_pattern` 缺失时默认为 `meridian-grid`，9 个纹样标识均可解析，未知值失败。
 - `web_search` 缺失时默认为 `baidu`，8 个搜索入口标识均可解析，未知值失败。
@@ -192,12 +192,12 @@ go test ./internal/config -run Test -v
 - HTML 读取上限、图标大小上限、超时、3 次重定向和非法 content type。
 - 临时文件校验后原子 rename，文件名不能由远端输入控制。
 - ETag/Last-Modified 条件刷新、singleflight、worker 上限和过期清理。
-- datadir 不可写时进入 degraded，但目录与跳转仍可用。
+- storage 不可写时进入 degraded，但目录与跳转仍可用。
 - SVG 不能以 HTML 或脚本响应方式提供。
 
 实现要点：
 
-- `datadir/favicons` 只保存派生图标和 sidecar 元数据。
+- `storage/favicons` 只保存派生图标和 sidecar 元数据。
 - 页面发现最多读取 256 KiB；图标内容由配置限制。
 - 首屏先用字标，后台任务完成后发布 `favicon.updated` 事件。
 - 不提供接受任意远端 URL 的 favicon 抓取 API。
@@ -401,7 +401,7 @@ transform、opacity 或 stroke-dashoffset，禁止随机数、Canvas 粒子、JS
 
 - `go:embed` 包含生产前端产物。
 - SPA fallback 不得吞掉 `/api`、`/go` 和 health 路由的 404。
-- 启动顺序：配置 -> datadir -> 目录 -> favicon manager -> watcher -> HTTP。
+- 启动顺序：配置 -> storage -> 目录 -> favicon manager -> watcher -> HTTP。
 - 关闭顺序：停止接收 -> HTTP drain -> watcher stop -> favicon workers stop -> logger flush。
 - 构建信息通过 linker flags 注入版本、commit 和 build time。
 
@@ -443,7 +443,7 @@ transform、opacity 或 stroke-dashoffset，禁止随机数、Canvas 粒子、JS
 
 - Linux/macOS 主流架构能构建单二进制。
 - 容器以非 root 用户运行，配置通过只读挂载提供。
-- datadir 使用独立可写 volume；`urls.yaml` 仍可只读挂载。
+- storage 使用独立可写 volume；`urls.yaml` 仍可只读挂载。
 - `-f` 与 `configpath` 在本机和容器中均验证。
 - 二进制执行 `--version` 不加载配置。
 - 完整执行 `docs/ACCEPTANCE.md` 的 P0 项。

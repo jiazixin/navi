@@ -1,4 +1,4 @@
-datadir: ./data
+storage: ./storage
 
 # Themes: default（默认）、navy-blossom（绀樱夜）、mint-tide（薄荷汐）、
 # moss-court（苔庭青）、tea-mist（茶雾青）、amber-tide（琥珀潮）、

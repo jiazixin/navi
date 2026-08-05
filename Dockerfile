@@ -21,13 +21,13 @@ ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
   -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
   -o /out/navi ./cmd/navi
-RUN mkdir -p /out/data && chmod 0750 /out/data
+RUN mkdir -p /out/storage && chmod 0750 /out/storage
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 COPY --chown=65532:65532 --from=binary-build /out/navi /app/navi
-COPY --chown=65532:65532 --from=binary-build /out/data /data
+COPY --chown=65532:65532 --from=binary-build /out/storage /storage
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/storage"]
 ENTRYPOINT ["/app/navi"]

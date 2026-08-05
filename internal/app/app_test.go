@@ -269,7 +269,7 @@ func getAppJSON(t *testing.T, endpoint string, wantStatus int, payload any) appS
 func appTestConfig(t *testing.T, catalogPath string, port int, watch bool) config.Config {
 	t.Helper()
 	return config.Config{
-		Path: filepath.Join(t.TempDir(), "config.yaml"), DataDir: filepath.Join(t.TempDir(), "data"),
+		Path: filepath.Join(t.TempDir(), "config.yaml"), StorageDir: filepath.Join(t.TempDir(), "storage"),
 		Theme: config.ThemeDefault, BackgroundPattern: config.BackgroundPatternMeridianGrid, WebSearch: config.WebSearchBaidu,
 		Server:     config.ServerConfig{Listen: "127.0.0.1", Port: port, ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second},
 		Health:     config.HealthConfig{URI: "/health"},
