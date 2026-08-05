@@ -615,6 +615,8 @@ race detector 无数据竞争；govulncheck 无影响当前调用路径的已知
 
 ## 8. 发布门禁
 
+最终验证记录见 [`docs/FINAL_VERIFICATION.md`](FINAL_VERIFICATION.md)。
+
 发布前必须保存以下证据：
 
 1. `make verify` 完整通过记录。
