@@ -19,7 +19,7 @@ func TestWatcherReloadsWritesAndAtomicRenames(t *testing.T) {
 	}
 	store.Publish(initial)
 	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestWatcherKeepsLastValidSnapshotWhenReloadFails(t *testing.T) {
 	}
 	store.Publish(initial)
 	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)
@@ -95,7 +95,7 @@ func TestWatcherDebouncesRapidChanges(t *testing.T) {
 		return LoadFile(path)
 	}
 	watcher := NewWatcher(path, 80*time.Millisecond, loader, store)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)
@@ -156,7 +156,7 @@ func TestWatcherStopBeforeStartIsSafeAndPreventsReuse(t *testing.T) {
 		t.Fatal("Stop() blocked before Start()")
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err == nil {
 		t.Fatal("Start() after Stop() should fail")
@@ -169,7 +169,7 @@ func TestWatcherStartRejectsSecondStart(t *testing.T) {
 
 	path := writeCatalog(t, catalogWithTitle("Initial"))
 	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore())
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)

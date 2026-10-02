@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { catalogFixture, primaryPageFixture } from '../../test/fixtures';
+import { catalogFixture, primaryPageFixture } from '../../../tests/fixtures/catalog';
 import { PagePagination } from './PagePagination';
 
 describe('PagePagination', () => {

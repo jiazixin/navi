@@ -10,7 +10,7 @@ export default defineConfig({
         url: 'http://127.0.0.1/',
       },
     },
-    exclude: ['tests/e2e/**', 'node_modules/**'],
+    exclude: ['e2e/**', 'e2e/production/**', 'node_modules/**'],
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     coverage: {

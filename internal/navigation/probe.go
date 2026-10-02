@@ -4,6 +4,7 @@ package navigation
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/http"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ type probeResult struct {
 type flight struct {
 	done      chan struct{}
 	reachable bool
+	canceled  bool
 }
 
 // NewProber creates a bounded, cached destination prober.
@@ -37,45 +39,61 @@ func NewProber(maxConcurrent int) *Prober {
 
 // Probe checks a target once per cache period, combining simultaneous callers.
 func (p *Prober) Probe(ctx context.Context, target string, timeout, cacheTTL time.Duration) bool {
-	now := time.Now()
-	p.cacheMu.Lock()
-	if cached, ok := p.cache[target]; ok && now.Before(cached.expiresAt) {
-		p.cacheMu.Unlock()
-		return cached.reachable
-	}
-	if ongoing, ok := p.flights[target]; ok {
-		p.cacheMu.Unlock()
-		select {
-		case <-ctx.Done():
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	for {
+		if ctx.Err() != nil {
 			return false
-		case <-ongoing.done:
-			return ongoing.reachable
 		}
-	}
-	ongoing := &flight{done: make(chan struct{})}
-	p.flights[target] = ongoing
-	p.cacheMu.Unlock()
+		now := time.Now()
+		p.cacheMu.Lock()
+		maps.DeleteFunc(p.cache, func(_ string, cached probeResult) bool {
+			return !now.Before(cached.expiresAt)
+		})
+		if cached, ok := p.cache[target]; ok {
+			p.cacheMu.Unlock()
+			return cached.reachable
+		}
+		if ongoing, ok := p.flights[target]; ok {
+			p.cacheMu.Unlock()
+			select {
+			case <-ctx.Done():
+				return false
+			case <-ongoing.done:
+				// One caller's cancellation is not evidence about the target.
+				// Retry within this caller's original budget when the leader stopped.
+				if ongoing.canceled {
+					continue
+				}
+				return ongoing.reachable
+			}
+		}
+		ongoing := &flight{done: make(chan struct{})}
+		p.flights[target] = ongoing
+		p.cacheMu.Unlock()
 
-	reachable := p.probe(ctx, target, timeout)
-	p.cacheMu.Lock()
-	ongoing.reachable = reachable
-	p.cache[target] = probeResult{reachable: reachable, expiresAt: time.Now().Add(cacheTTL)}
-	delete(p.flights, target)
-	close(ongoing.done)
-	p.cacheMu.Unlock()
-	return reachable
+		reachable := p.probe(ctx, target)
+		p.cacheMu.Lock()
+		ongoing.reachable = reachable
+		ongoing.canceled = ctx.Err() != nil
+		if !ongoing.canceled {
+			p.cache[target] = probeResult{reachable: reachable, expiresAt: time.Now().Add(cacheTTL)}
+		}
+		delete(p.flights, target)
+		close(ongoing.done)
+		p.cacheMu.Unlock()
+		return reachable
+	}
 }
 
-func (p *Prober) probe(parent context.Context, target string, timeout time.Duration) bool {
+func (p *Prober) probe(ctx context.Context, target string) bool {
 	select {
 	case p.limit <- struct{}{}:
 		defer func() { <-p.limit }()
-	case <-parent.Done():
+	case <-ctx.Done():
 		return false
 	}
 
-	ctx, cancel := context.WithTimeout(parent, timeout)
-	defer cancel()
 	client := &http.Client{CheckRedirect: limitRedirects}
 	response, err := request(ctx, client, http.MethodHead, target)
 	if response != nil {
@@ -110,7 +128,7 @@ func reachableStatus(status int) bool {
 }
 
 func limitRedirects(request *http.Request, via []*http.Request) error {
-	if len(via) >= 3 {
+	if len(via) > 3 {
 		return errors.New("redirect limit reached")
 	}
 	return nil

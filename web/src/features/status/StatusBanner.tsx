@@ -1,7 +1,7 @@
 import { CheckCircle2, CloudOff, TriangleAlert, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import { IconButton } from '../../shared/ui/IconButton';
+import { motionTokens } from '../../styles/motion';
+import { IconButton } from '../../components/IconButton';
 import styles from './StatusBanner.module.css';
 
 export type StatusBannerKind = 'degraded' | 'offline' | 'restored';

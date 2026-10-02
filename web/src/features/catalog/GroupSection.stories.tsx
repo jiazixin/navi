@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { infrastructureGroup, longLink } from '../../test/fixtures';
+import { infrastructureGroup, longLink } from '../../../tests/fixtures/catalog';
 import { GroupSection } from './GroupSection';
 
 const meta = {

@@ -1,9 +1,10 @@
+import { getNextMenuIndex, isMenuNavigationKey } from '../../lib/keyboard/menuNavigation';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Check, Palette } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
+import { motionTokens } from '../../styles/motion';
 import type { ThemePreference } from './useTheme';
-import { IconButton } from '../../shared/ui/IconButton';
+import { IconButton } from '../../components/IconButton';
 import { getThemeOption, themeOptions } from './themeOptions';
 import styles from './ThemeButton.module.css';
 
@@ -60,7 +61,7 @@ export function ThemeButton({ preference, onChange }: ThemeButtonProps): React.J
       return;
     }
 
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    if (!isMenuNavigationKey(event.key)) {
       return;
     }
 
@@ -75,19 +76,7 @@ export function ThemeButton({ preference, onChange }: ThemeButtonProps): React.J
     );
     const selectedIndex = themeOptions.findIndex((option) => option.id === preference);
     const currentIndex = activeIndex >= 0 ? activeIndex : selectedIndex;
-    const lastIndex = themeOptions.length - 1;
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? lastIndex
-          : event.key === 'ArrowDown'
-            ? currentIndex >= lastIndex
-              ? 0
-              : currentIndex + 1
-            : currentIndex <= 0
-              ? lastIndex
-              : currentIndex - 1;
+    const nextIndex = getNextMenuIndex(event.key, currentIndex, themeOptions.length);
     optionRefs.current[nextIndex]?.focus();
   }
 

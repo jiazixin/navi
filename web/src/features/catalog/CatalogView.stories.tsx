@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { primaryPageFixture } from '../../test/fixtures';
+import { primaryPageFixture } from '../../../tests/fixtures/catalog';
 import { CatalogView } from './CatalogView';
 
 const meta = {

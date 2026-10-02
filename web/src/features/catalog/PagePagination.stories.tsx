@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { catalogFixture } from '../../test/fixtures';
+import { catalogFixture } from '../../../tests/fixtures/catalog';
 import { PagePagination } from './PagePagination';
 
 function PaginationDemo(): React.JSX.Element {

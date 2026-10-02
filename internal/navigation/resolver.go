@@ -28,11 +28,30 @@ func NewResolver(prober *Prober, privateTimeout, publicTimeout, cacheTTL time.Du
 
 // Resolve chooses a reachable destination for one immutable catalog link.
 func (r *Resolver) Resolve(ctx context.Context, link catalog.Link) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	if link.PrivateURL != "" && r.prober.Probe(ctx, link.PrivateURL, r.privateTimeout, r.cacheTTL) {
 		return link.PrivateURL, nil
 	}
 	if link.PublicURL != "" && r.prober.Probe(ctx, link.PublicURL, r.publicTimeout, r.cacheTTL) {
 		return link.PublicURL, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	return "", ErrUnreachable
+}
+
+// Retry discards only negative cached results before a user-requested retry.
+// Successful probes and in-flight request deduplication remain intact.
+func (r *Resolver) Retry(ctx context.Context, link catalog.Link) (string, error) {
+	r.prober.cacheMu.Lock()
+	for _, target := range []string{link.PrivateURL, link.PublicURL} {
+		if cached, ok := r.prober.cache[target]; ok && !cached.reachable {
+			delete(r.prober.cache, target)
+		}
+	}
+	r.prober.cacheMu.Unlock()
+	return r.Resolve(ctx, link)
 }

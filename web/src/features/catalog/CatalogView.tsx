@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { CatalogPage } from '../../shared/api/catalog';
-import { EmptyState } from '../../shared/ui/EmptyState';
+import { motionTokens } from '../../styles/motion';
+import type { CatalogPage } from '../../app/api/catalog';
+import { EmptyState } from '../../components/EmptyState';
 import { countLinks } from './filterCatalog';
 import { GroupSection } from './GroupSection';
 import styles from './CatalogView.module.css';

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import type { CatalogPage } from '../../shared/api/catalog';
+import type { CatalogPage } from '../../app/api/catalog';
 import styles from './PagePagination.module.css';
 
 type PagePaginationProps = {

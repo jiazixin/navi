@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { mockCatalog } from './src/test/mockCatalog.ts';
+import { mockCatalog } from './tests/fixtures/mockCatalog.ts';
 
 function devAPI(): Plugin {
   const linksByRuntimeID = new Map(
@@ -16,6 +16,13 @@ function devAPI(): Plugin {
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         const requestURL = new URL(request.url ?? '/', 'http://127.0.0.1');
+
+        // UI fixtures are pre-authenticated; production tests cover the actual login boundary.
+        if (requestURL.pathname === '/api/auth/session') {
+          response.setHeader('Content-Type', 'application/json');
+          response.end(JSON.stringify({ authenticated: true, authRequired: true }));
+          return;
+        }
 
         if (requestURL.pathname === '/api/catalog') {
           response.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -78,7 +85,7 @@ function devAPI(): Plugin {
 export default defineConfig(({ command }) => ({
   plugins: [react(), ...(command === 'serve' ? [devAPI()] : [])],
   build: {
-    outDir: '../ui/dist',
+    outDir: 'dist',
     emptyOutDir: true,
     sourcemap: true,
     target: 'es2022',

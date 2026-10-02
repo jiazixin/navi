@@ -60,16 +60,19 @@ describe('useCatalogEvents', () => {
     act(() => source?.emit('catalog.updated'));
     act(() => source?.emit('favicon.updated'));
     act(() => source?.emit('catalog.error'));
-    expect(onCatalogUpdate).toHaveBeenCalledTimes(2);
-    expect(onCatalogError).toHaveBeenCalledTimes(1);
+    act(() => source?.emit('status.updated'));
+    expect(onCatalogUpdate).toHaveBeenCalledTimes(3);
+    expect(onCatalogError).toHaveBeenCalledTimes(2);
 
     unmount();
     expect(source?.closed).toBe(true);
   });
 
   it('reconnects with exponential backoff after an error', async () => {
+    const onCatalogUpdate = vi.fn();
+    const onCatalogError = vi.fn();
     const { result } = renderHook(() =>
-      useCatalogEvents({ onCatalogUpdate: vi.fn(), onCatalogError: vi.fn() }),
+      useCatalogEvents({ onCatalogUpdate, onCatalogError }),
     );
     const first = EventSourceMock.instances[0];
 
@@ -81,6 +84,8 @@ describe('useCatalogEvents', () => {
       await vi.advanceTimersByTimeAsync(1_000);
     });
     expect(EventSourceMock.instances).toHaveLength(2);
+    act(() => EventSourceMock.instances[1]?.emit('open'));
+    expect(onCatalogUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('routes favicon events to the affected runtime ID', () => {

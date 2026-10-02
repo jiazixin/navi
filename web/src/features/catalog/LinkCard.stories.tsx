@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fixtureIcon, grafanaLink, longLink } from '../../test/fixtures';
+import { fixtureIcon, grafanaLink, longLink } from '../../../tests/fixtures/catalog';
 import { LinkCard } from './LinkCard';
 
 const meta = {

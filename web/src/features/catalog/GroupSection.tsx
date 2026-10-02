@@ -1,6 +1,7 @@
+import { useId } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { CatalogGroup } from '../../shared/api/catalog';
+import { motionTokens } from '../../styles/motion';
+import type { CatalogGroup } from '../../app/api/catalog';
 import { LinkCard } from './LinkCard';
 import styles from './GroupSection.module.css';
 
@@ -29,6 +30,7 @@ export function GroupSection({
   entranceMode = 'initial',
   faviconVersions,
 }: GroupSectionProps): React.JSX.Element {
+  const headingID = useId();
   const reduceMotion = useReducedMotion();
   const entranceDelay = entranceMode === 'initial' ? Math.min(index * motionTokens.stagger, 0.24) : 0;
   const entranceDuration = entranceMode === 'initial' ? motionTokens.emphasis : motionTokens.favicon;
@@ -36,7 +38,7 @@ export function GroupSection({
 
   return (
     <motion.section
-      aria-labelledby={`group-${index}`}
+      aria-labelledby={headingID}
       className={styles.section}
       exit={
         reduceMotion
@@ -52,7 +54,7 @@ export function GroupSection({
       }
     >
       <header className={styles.headingRow}>
-        <h2 id={`group-${index}`}>{group.name}</h2>
+        <h2 id={headingID}>{group.name}</h2>
         <span className={styles.count} aria-label={`${group.links.length} 个链接`}>
           {group.links.length}
         </span>

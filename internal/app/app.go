@@ -13,9 +13,8 @@ import (
 	"navi/internal/catalog"
 	"navi/internal/config"
 	"navi/internal/favicon"
-	"navi/internal/httpapi"
 	"navi/internal/navigation"
-	"navi/ui"
+	"navi/web"
 )
 
 // Run starts Navi and waits for context cancellation or an HTTP server failure.
@@ -32,14 +31,13 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	static, err := ui.Files()
+	static, err := web.Files()
 	if err != nil {
 		return fmt.Errorf("open embedded UI: %w", err)
 	}
-	var watcher *catalog.Watcher
+	watcher := catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store)
 	var eventObserverDone chan struct{}
 	if loaded.Catalog.Watch {
-		watcher = catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store)
 		if err := watcher.Start(runCtx); err != nil {
 			logger.Error("catalog watcher unavailable", "error", err)
 			return fmt.Errorf("start catalog watcher: %w", err)
@@ -48,12 +46,12 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	iconStore, iconManager, iconDegraded := startFaviconManager(loaded, logger, watcher)
 	if iconManager != nil {
 		iconManager.Start(runCtx)
+	}
+	eventObserverDone = observeCatalogEvents(runCtx, watcher, store, iconManager, logger, loaded.Favicon.RefreshInterval)
+	if iconManager != nil {
 		if err := iconManager.Schedule(snapshot.Catalog()); err != nil {
 			logger.Error("favicon cache maintenance failed", "error", err)
 		}
-	}
-	if watcher != nil {
-		eventObserverDone = observeCatalogEvents(runCtx, watcher, store, iconManager, logger)
 	}
 	defer func() {
 		cancel()
@@ -74,7 +72,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		loaded.Navigation.PublicProbeTimeout,
 		loaded.Navigation.ProbeCacheTTL,
 	)
-	handler, err := httpapi.New(httpapi.Options{
+	handler, err := newHTTPServer(httpOptions{
 		Config: loaded, Catalog: store, Watcher: watcher, Icons: iconStore, Resolver: resolver, Static: static,
 		Degraded: iconDegraded, Logger: logger,
 	})
@@ -112,6 +110,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), loaded.Server.ShutdownTimeout)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
 			return fmt.Errorf("shutdown HTTP server: %w", err)
 		}
 		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -158,22 +157,47 @@ func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *cat
 			return true, "图标缓存暂不可用，当前使用字标。"
 		}
 	}
-	return store, manager, func() (bool, string) { return false, "" }
+	return store, manager, manager.Degraded
 }
 
-func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager, logger *slog.Logger) chan struct{} {
+func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager, logger *slog.Logger, refreshInterval time.Duration) chan struct{} {
 	done := make(chan struct{})
-	subscription := watcher.Subscribe()
+	var events <-chan catalog.Event
+	closeSubscription := func() {}
+	if watcher != nil {
+		subscription := watcher.Subscribe()
+		events = subscription.Events()
+		closeSubscription = subscription.Close
+	}
 	go func() {
 		defer close(done)
-		defer subscription.Close()
+		defer closeSubscription()
+		ticker := time.NewTicker(refreshInterval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case event, ok := <-subscription.Events():
+			case <-ticker.C:
+				if manager != nil {
+					if snapshot, ok := store.Snapshot(); ok {
+						if err := manager.Schedule(snapshot.Catalog()); err != nil {
+							logger.Error("favicon cache maintenance failed", "error", err)
+						}
+					}
+				}
+			case event, ok := <-events:
 				if !ok {
 					return
+				}
+				if event.Type == catalog.EventStatusUpdated && manager != nil {
+					degraded, message := manager.Degraded()
+					if degraded {
+						logger.Error("favicon cache degraded", "message", message)
+					} else {
+						logger.Info("favicon cache recovered")
+					}
+					continue
 				}
 				if event.Type == catalog.EventCatalogError {
 					logger.Error("catalog reload failed", "revision", event.Revision, "message", event.Message)
@@ -194,22 +218,4 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 		}
 	}()
 	return done
-}
-
-// WaitForPort waits until a TCP address can accept connections. It is used by integration tests.
-func WaitForPort(ctx context.Context, address string) error {
-	for {
-		connection, err := net.DialTimeout("tcp", address, 50*time.Millisecond)
-		if err == nil {
-			if closeErr := connection.Close(); closeErr != nil {
-				return fmt.Errorf("close readiness connection: %w", closeErr)
-			}
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(25 * time.Millisecond):
-		}
-	}
 }

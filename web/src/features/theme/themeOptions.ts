@@ -1,4 +1,4 @@
-import type { CatalogTheme } from '../../shared/api/theme';
+import type { CatalogTheme } from '../../app/api/theme';
 
 type ThemeOption = {
   id: CatalogTheme;

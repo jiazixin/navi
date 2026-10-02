@@ -8,16 +8,48 @@ file changes, and resolves private/public destinations. The React frontend is
 embedded into the Go binary and focuses on fast search, responsive layout,
 accessibility, and polished monochrome presentation.
 
-> Project status: the `0.1` frontend milestone is complete. The Go backend now loads real YAML,
-> watches valid updates, caches derived favicons, resolves private/public destinations, exposes the
-> read-only API, and embeds the production frontend into the `navi` binary.
+> The Go backend loads YAML, watches catalog updates, caches favicons and resolves links.
+> The production frontend is embedded in the binary. See [development and verification](docs/IMPLEMENTATION.md) for current checks and limitations.
 
 [中文说明](README.zh-CN.md)
+
+
+## Repository Layout and First Run
+
+See [the reusable directory standard](目录规范.md). This project uses:
+
+```text
+cmd/navi/       Go executable entry point
+internal/       Backend and configuration loading code, with colocated tests
+web/            Frontend sources, tooling, tests, and Go embedding entry point
+  src/app/      API, providers, application assembly
+  src/layouts/  Application shell
+  src/features/ Domain components and logic
+  src/components/ Reusable UI
+  src/styles/   Global styles and motion tokens
+  src/test/     Unit-test setup
+  tests/        Shared fixtures and contract tests
+  e2e/          Browser tests, production fixtures and snapshots
+  dist/         Generated static bundle (ignored)
+configs/        Runtime and catalog YAML; only example files are committed
+bin/            Generated executable (ignored)
+.cache/         Local favicon cache (ignored)
+docs/           Design, development notes, and plans
+```
+
+Initialize configuration once from the repository root; existing files are preserved:
+
+```sh
+cp -n configs/config.example.yaml configs/config.local.yaml
+cp -n configs/urls.example.yaml configs/urls.yaml
+```
+
+Run commands from the repository root. `CONFIG_FILE` explicitly selects a file relative to the process working directory (use an absolute path in deployment). Otherwise only `configs/config.local.yaml` is checked; an absent file uses built-in defaults. An explicitly empty or missing path fails. Catalog YAML is still required. Relative paths inside the configuration resolve from its directory; the default `storage: ../.cache` keeps favicon caches at the application root.
 
 ## Product Contract
 
 - `urls.yaml` is the only source of truth for navigation content, grouping, and order.
-- There is no login, database, drag-and-drop ordering, web editor, or write API.
+- Account/password login is optional. Navigation remains read-only; there is no database, drag-and-drop ordering, web editor, or catalog write API.
 - Entries are rendered in YAML order. Group order is determined by first appearance.
 - Private URLs are preferred; Navi falls back to public URLs when private endpoints
   cannot be reached.
@@ -43,16 +75,15 @@ accessibility, and polished monochrome presentation.
 
 ## Configuration
 
-Navi selects its main configuration in this order:
-
-1. `-f /path/to/config.yaml`
-2. the lowercase `configpath` environment variable
-3. `./config.yaml`
-
-Relative paths are resolved from the directory containing the selected main config.
+Configuration priority is environment variables > selected file > built-in defaults. Set fields with `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_SERVER_PORT=8081`, `NAVI_CATALOG_WATCH=false`, or `NAVI_FAVICON_FETCH_TIMEOUT=3s`. Strings are preserved literally; booleans, numbers and durations are validated. Set `CONFIG_FILE=/absolute/path/config.local.yaml` to select a file. Relative field paths resolve from the selected file's directory (the default is `configs/`).
 
 ```yaml
-storage: ./storage
+auth:
+  username: ""
+  password: ""
+  secure_cookie: false
+
+storage: ../.cache
 
 # Themes: default, navy-blossom, mint-tide, moss-court, tea-mist,
 # amber-tide, sunny-coast, violet-lime.
@@ -132,30 +163,25 @@ destinations are accepted. Page and link order follow the `pages` and `urls`
 arrays exactly. The bottom icon pagination switches between pages.
 
 Navi discovers `link rel="icon"` declarations and falls back to `/favicon.ico`.
-Validated images are stored under `storage/favicons` and served locally. This
+Validated images are stored under `.cache/favicons` and served locally. This
 directory is a disposable derived cache; it never contains a second copy of the
 navigation catalog.
 
 ## Documentation
 
-- [Design](docs/DESIGN.md): product behavior, architecture, configuration, APIs, and UI rules.
-- [UI specification](docs/UI_SPEC.md): component geometry, responsive behavior,
-  viewport matrices, visual regression, and layout assertions.
-- [Coding standards](docs/CODING_STANDARDS.md): production naming, organization,
-  error handling, dependencies, and deprecation gates.
-- [Implementation](docs/IMPLEMENTATION.md): ordered, test-first build plan.
-- [Acceptance](docs/ACCEPTANCE.md): reproducible functional, UI, performance, and security gates.
-- [Change log](docs/CHANGELOG.md): live requirements and design decision history.
+- [Design and protocol](docs/DESIGN.md): configuration, data model, API, lifecycle and deployment boundaries.
+- [UI specification](docs/UI_SPEC.md): visual and interaction contracts.
+- [Development and verification](docs/IMPLEMENTATION.md): commands, release checks and known limitations.
 
-All future implementation must follow these documents. Behavioral changes must update
-the change log and every affected document in the same change.
+Update the affected contract and regression tests when behavior changes. Historical plans and verification records remain available in Git history.
 
-UI/UX quality and production engineering quality are release gates. Correct functionality
-alone is not enough when the experience feels unfinished or the code relies on deprecated,
-weakly typed, poorly owned, or unbounded behavior.
+## Login
 
-Unexpected overflow, overlap, clipping, inconsistent spacing, or different component
-geometry between supported display modes also blocks release.
+Leave both `auth.username` and `auth.password` empty (or omit `auth`) to open the home page directly without login. Set both to enable authentication; setting only one is a configuration error. Values are compared exactly; quote passwords containing YAML punctuation. Whitespace-only credentials are invalid. Changes require a restart. The example leaves authentication disabled; choose your own account and password to enable it.
+
+When authentication is enabled, unauthenticated visits redirect to `/login`; successful login opens `/`. Catalog, status, events, icons and `/go/` destinations require a server-validated session. Use the top-bar logout button to end it. Sessions last 24 hours, use HttpOnly/SameSite=Strict cookies, and are invalidated on logout or process restart. Open pages recheck sessions every 30 seconds and on focus. No password or token is stored in browser localStorage.
+
+Login attempts are limited to five per minute per direct peer IP (a reverse proxy shares this quota); successful login resets that peer's counter. HTTPS proxy deployments must set `auth.secure_cookie: true`; forwarded headers are not trusted. The login shell, bundled assets and configured health endpoint remain public. Health returns only coarse service health.
 
 ## Frontend Development
 
@@ -174,40 +200,63 @@ npm --prefix web run build
 npm --prefix web run storybook:test
 npm --prefix web run test:visual
 npm --prefix web run test:e2e
+npm --prefix web run test:production
 ```
 
 The development server uses the deterministic read-only fixture in `web/vite.config.ts` to emulate
-the backend contract. It exists only for frontend development and acceptance, is not a second catalog
+the backend contract with a pre-authenticated session. Actual login is verified by `test:production`. It exists only for frontend development and acceptance, is not a second catalog
 source of truth, and is excluded from the production bundle.
 
 ## Single-Binary Build
 
 ```bash
-make verify
-make build
-./navi -f ./config.yaml
-./navi --version
+npm --prefix web run build
+VERSION=${VERSION:-dev}
+COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
+BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -o bin/navi ./cmd/navi
+CONFIG_FILE=./configs/config.local.yaml ./bin/navi
+./bin/navi --version
 ```
 
-`make build` generates the frontend bundle, embeds it into `navi`, and injects the version, commit, and
+These commands generate the frontend bundle, embed it into `bin/navi`, and inject the version, commit, and
 build time. Production does not require Node; Node is only used to produce the embedded frontend assets.
 
 ## Container Build
 
+Prepare the `configs` directory containing `config.local.yaml` and `urls.yaml`. Set `server.listen: 0.0.0.0`, `catalog.path: ./urls.yaml`, and `storage: /app/.cache`. Mount the directory so atomic file replacements remain visible.
+
 ```bash
 docker build -t navi:local .
 docker run --rm -p 8080:8080 \
-  -v "$(pwd)/config.yaml:/app/config.yaml:ro" \
-  -v "$(pwd)/urls.yaml:/app/urls.yaml:ro" \
-  -v navi-storage:/storage \
-  navi:local -f /app/config.yaml
+  -v "$(pwd)/configs:/app/configs:ro" \
+  -v navi-cache:/app/.cache \
+  -e CONFIG_FILE=/app/configs/config.local.yaml \
+  navi:local
 ```
 
-The container runs as a non-root user. Mount `config.yaml` and `urls.yaml` read-only; keep `storage` on the
-separate writable volume by setting `storage: /storage` in the mounted configuration.
+The container runs as a non-root user. Mount `config.local.yaml` and `urls.yaml` read-only; keep `storage` on the
+separate writable volume by setting `storage: /app/.cache` in the mounted configuration.
 
 ## Deployment Note
 
-The example binds to `127.0.0.1` because Navi has no built-in authentication.
-When binding to `0.0.0.0`, place it behind appropriate network access controls or
-an authenticated reverse proxy.
+Navi requires login only when an account and password are configured in `auth`. Empty credentials allow public access. For remote access, use HTTPS (directly through a TLS reverse proxy) and set `auth.secure_cookie: true`. The example binds to `127.0.0.1`; containers may use `0.0.0.0`. Keep configuration files private and do not place credentials in destination URLs.
+
+## Development Commands and Runtime State
+
+CI/CD invokes Go and npm commands directly. See [development and verification](docs/IMPLEMENTATION.md) for the full check sequence.
+
+```sh
+go mod download
+npm --prefix web ci
+npm --prefix web run dev
+
+npm --prefix web run build
+go run ./cmd/navi
+```
+
+Install browser binaries before browser tests: `cd web && npx playwright install`. Direct Go compilation requires `npm --prefix web run build` first. Storybook: `npm --prefix web run storybook:test`. Optional audits: `staticcheck ./internal/... ./cmd/... ./web`, `govulncheck ./internal/... ./cmd/... ./web`, and `npm --prefix web audit --omit=dev`.
+
+There is no persistent business database or upload state. Back up `configs/config.local.yaml` and `configs/urls.yaml`; protect credentials with restrictive read permissions. `.cache/favicons/` is rebuildable and does not require backup; mount `/app/.cache` writable by container UID 65532. Sessions live in memory and reset on restart. No empty `data/` directory is needed. Remove only generated outputs when cleaning; preserve configuration and runtime data.

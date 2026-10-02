@@ -15,3 +15,15 @@ func TestFaviconEventCarriesRuntimeIDInSSEPayload(t *testing.T) {
 		t.Fatalf("event payload = %s", got)
 	}
 }
+
+func TestMixedEventOverflowRequiresFullReconciliation(t *testing.T) {
+	hub := newEventHub()
+	defer hub.Close()
+	sub := hub.Subscribe()
+	defer sub.Close()
+	hub.Publish(Event{Type: EventCatalogUpdated, Revision: 2})
+	hub.Publish(Event{Type: EventFaviconUpdated, RuntimeID: "icon"})
+	if got := <-sub.Events(); got.Type != EventCatalogUpdated {
+		t.Fatalf("catalog update was lost: %+v", got)
+	}
+}

@@ -3,11 +3,13 @@ package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -42,6 +44,7 @@ var (
 
 // Config is the validated process configuration with paths resolved from its file.
 type Config struct {
+	Auth              AuthConfig       `yaml:"auth"`
 	Path              string           `yaml:"-"`
 	StorageDir        string           `yaml:"storage"`
 	Theme             string           `yaml:"theme"`
@@ -54,6 +57,16 @@ type Config struct {
 	Navigation        NavigationConfig `yaml:"navigation"`
 	Favicon           FaviconConfig    `yaml:"favicon"`
 }
+
+// AuthConfig supplies the single account used to access Navi.
+type AuthConfig struct {
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
+	SecureCookie bool   `yaml:"secure_cookie"`
+}
+
+// Enabled reports whether authentication is configured. Validation rejects partial accounts.
+func (a AuthConfig) Enabled() bool { return a.Username != "" || a.Password != "" }
 
 // ServerConfig controls the inbound HTTP server.
 type ServerConfig struct {
@@ -106,26 +119,38 @@ type FaviconConfig struct {
 type LookupEnv func(string) (string, bool)
 
 // Load selects, loads, and validates the main configuration file.
-func Load(args []string, lookupEnv LookupEnv) (Config, error) {
-	flagSet := flag.NewFlagSet("navi", flag.ContinueOnError)
-	flagSet.SetOutput(io.Discard)
-	filePath := flagSet.String("f", "", "main configuration file")
-	if err := flagSet.Parse(args); err != nil {
-		return Config{}, fmt.Errorf("parse flags: %w", err)
+func Load(lookupEnv LookupEnv) (Config, error) {
+	configPath := "./configs/config.local.yaml"
+	explicit := false
+	if lookupEnv != nil {
+		if value, ok := lookupEnv("CONFIG_FILE"); ok {
+			if strings.TrimSpace(value) == "" {
+				return Config{}, fmt.Errorf("CONFIG_FILE must not be empty")
+			}
+			configPath, explicit = value, true
+		}
 	}
-	if flagSet.NArg() > 0 {
-		return Config{}, fmt.Errorf("unexpected argument %q", flagSet.Arg(0))
+	loaded, err := loadFile(configPath, lookupEnv)
+	if err == nil || explicit || !errors.Is(err, os.ErrNotExist) {
+		return loaded, err
 	}
-
-	path, err := selectPath(*filePath, lookupEnv)
+	// Only an absent implicit configuration permits built-in defaults.
+	absPath, err := filepath.Abs(configPath)
 	if err != nil {
 		return Config{}, err
 	}
-	return LoadFile(path)
+	return finishConfig(defaultConfig(), absPath, lookupEnv)
 }
 
 // LoadFile loads and validates a specific main configuration file.
 func LoadFile(path string) (Config, error) {
+	return loadFile(path, nil)
+}
+
+func loadFile(path string, lookupEnv LookupEnv) (Config, error) {
+	if strings.TrimSpace(path) == "" {
+		return Config{}, fmt.Errorf("configuration path must not be empty")
+	}
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve configuration path %q: %w", path, err)
@@ -152,6 +177,18 @@ func LoadFile(path string) (Config, error) {
 		return Config{}, fmt.Errorf("decode configuration %s: multiple YAML documents are not supported", absPath)
 	}
 
+	return finishConfig(loaded, absPath, lookupEnv)
+}
+
+func finishConfig(loaded Config, absPath string, lookupEnv LookupEnv) (Config, error) {
+	if lookupEnv != nil {
+		if err := applyEnvironment(reflect.ValueOf(&loaded).Elem(), "NAVI", lookupEnv); err != nil {
+			return Config{}, err
+		}
+	}
+	if strings.TrimSpace(loaded.StorageDir) == "" {
+		return Config{}, fmt.Errorf("configuration %s: storage: must not be empty", absPath)
+	}
 	loaded.Path = absPath
 	resolvePaths(&loaded)
 	if err := validate(loaded); err != nil {
@@ -162,7 +199,7 @@ func LoadFile(path string) (Config, error) {
 
 func defaultConfig() Config {
 	return Config{
-		StorageDir:        "./storage",
+		StorageDir:        "../.cache",
 		Theme:             ThemeDefault,
 		BackgroundPattern: BackgroundPatternMeridianGrid,
 		WebSearch:         WebSearchBaidu,
@@ -185,16 +222,43 @@ func defaultConfig() Config {
 	}
 }
 
-func selectPath(flagValue string, lookupEnv LookupEnv) (string, error) {
-	if path := strings.TrimSpace(flagValue); path != "" {
-		return path, nil
-	}
-	if lookupEnv != nil {
-		if path, ok := lookupEnv("configpath"); ok && strings.TrimSpace(path) != "" {
-			return strings.TrimSpace(path), nil
+// applyEnvironment maps YAML fields to NAVI_<SECTION>_<FIELD> variables.
+func applyEnvironment(value reflect.Value, prefix string, lookup LookupEnv) error {
+	for i := range value.NumField() {
+		field := value.Field(i)
+		tag := value.Type().Field(i).Tag.Get("yaml")
+		if tag == "-" || tag == "" {
+			continue
+		}
+		name := prefix + "_" + strings.ToUpper(tag)
+		if field.Kind() == reflect.Struct {
+			if err := applyEnvironment(field, name, lookup); err != nil {
+				return err
+			}
+			continue
+		}
+		raw, ok := lookup(name)
+		if !ok {
+			continue
+		}
+		if field.Kind() == reflect.String {
+			field.SetString(raw)
+			continue
+		}
+		var node yaml.Node
+		if err := yaml.Unmarshal([]byte(raw), &node); err != nil || len(node.Content) != 1 || node.Content[0].Kind != yaml.ScalarNode || node.Content[0].Tag == "!!null" {
+			return fmt.Errorf("%s: expected a non-null scalar", name)
+		}
+		decoder := yaml.NewDecoder(strings.NewReader(raw))
+		if err := decoder.Decode(field.Addr().Interface()); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		var trailing yaml.Node
+		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+			return fmt.Errorf("%s: expected one scalar value", name)
 		}
 	}
-	return "./config.yaml", nil
+	return nil
 }
 
 func resolvePaths(loaded *Config) {
@@ -212,6 +276,12 @@ func resolvePath(baseDir, path string) string {
 }
 
 func validate(loaded Config) error {
+	if loaded.Auth.Enabled() && (strings.TrimSpace(loaded.Auth.Username) == "" || len(loaded.Auth.Username) > 128) {
+		return fieldError("auth.username", "must contain 1–128 bytes and not be blank")
+	}
+	if loaded.Auth.Enabled() && (strings.TrimSpace(loaded.Auth.Password) == "" || len(loaded.Auth.Password) > 1024) {
+		return fieldError("auth.password", "must contain 1–1024 bytes and not be blank")
+	}
 	if loaded.StorageDir == "" {
 		return fieldError("storage", "must not be empty")
 	}
@@ -291,10 +361,14 @@ func validateCatalogPath(path string) error {
 }
 
 func isReservedHealthURI(uri string) bool {
+	parsed, err := url.ParseRequestURI(uri)
+	if err != nil || parsed.Path != uri || parsed.RawQuery != "" || parsed.Fragment != "" || path.Clean(uri) != uri || strings.HasPrefix(uri, "//") || strings.ContainsAny(uri, "?#") {
+		return true
+	}
 	if !strings.HasPrefix(uri, "/") || uri == "/" {
 		return true
 	}
-	return uri == "/api" || strings.HasPrefix(uri, "/api/") || uri == "/go" || strings.HasPrefix(uri, "/go/")
+	return uri == "/login" || strings.HasPrefix(uri, "/assets") || uri == "/index.html" || uri == "/api" || strings.HasPrefix(uri, "/api/") || uri == "/go" || strings.HasPrefix(uri, "/go/")
 }
 
 type validationError struct {

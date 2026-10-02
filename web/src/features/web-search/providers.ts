@@ -1,4 +1,4 @@
-import type { WebSearchProviderID } from '../../shared/api/webSearch';
+import type { WebSearchProviderID } from '../../app/api/webSearch';
 
 export type SearchProviderID = WebSearchProviderID;
 

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { CatalogBackgroundPattern } from '../../shared/api/backgroundPattern';
+import { motionTokens } from '../../styles/motion';
+import type { CatalogBackgroundPattern } from '../../app/api/backgroundPattern';
 import { BackgroundPatternArtwork } from './BackgroundPatternArtwork';
 import styles from './BackgroundPattern.module.css';
 

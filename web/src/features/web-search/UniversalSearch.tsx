@@ -1,3 +1,4 @@
+import { getNextMenuIndex, isMenuNavigationKey } from '../../lib/keyboard/menuNavigation';
 import {
   useEffect,
   useId,
@@ -10,8 +11,8 @@ import {
 } from 'react';
 import { Check, Search } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { WebSearchProviderID } from '../../shared/api/webSearch';
+import { motionTokens } from '../../styles/motion';
+import type { WebSearchProviderID } from '../../app/api/webSearch';
 import { ProviderIcon } from './ProviderIcon';
 import {
   aiSearchProviders,
@@ -171,7 +172,7 @@ export function UniversalSearch({
       return;
     }
 
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (!isMenuNavigationKey(event.key)) return;
 
     event.preventDefault();
     if (!menuOpen) {
@@ -184,19 +185,7 @@ export function UniversalSearch({
     );
     const selectedIndex = searchProviders.findIndex((option) => option.id === providerID);
     const currentIndex = activeIndex >= 0 ? activeIndex : selectedIndex;
-    const lastIndex = searchProviders.length - 1;
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? lastIndex
-          : event.key === 'ArrowDown'
-            ? currentIndex >= lastIndex
-              ? 0
-              : currentIndex + 1
-            : currentIndex <= 0
-              ? lastIndex
-              : currentIndex - 1;
+    const nextIndex = getNextMenuIndex(event.key, currentIndex, searchProviders.length);
     optionRefs.current[nextIndex]?.focus();
   }
 

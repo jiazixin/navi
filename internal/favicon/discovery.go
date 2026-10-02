@@ -2,11 +2,13 @@ package favicon
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -26,21 +28,31 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 	if err != nil {
 		return nil, fmt.Errorf("create favicon discovery request: %w", err)
 	}
+	if request.URL.Host == "" || (request.URL.Scheme != "http" && request.URL.Scheme != "https") {
+		return nil, fmt.Errorf("invalid favicon discovery URL")
+	}
+	fallback := func(base *url.URL) ([]string, error) {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		origin := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: "/favicon.ico"}
+		return []string{origin.String()}, nil
+	}
 	request.Header.Set("Accept", "text/html,application/xhtml+xml")
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("fetch favicon discovery page: %w", err)
+		return fallback(request.URL)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("fetch favicon discovery page: unexpected status")
+		return fallback(response.Request.URL)
 	}
 	contents, err := io.ReadAll(io.LimitReader(response.Body, maxHTMLBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read favicon discovery page: %w", err)
+		return fallback(response.Request.URL)
 	}
 	if len(contents) > maxHTMLBytes {
-		return nil, fmt.Errorf("read favicon discovery page: HTML exceeds 256 KiB")
+		return fallback(response.Request.URL)
 	}
 	base := response.Request.URL
 	candidates := parseCandidates(contents, base)
@@ -79,11 +91,9 @@ func parseCandidates(contents []byte, base *url.URL) []candidate {
 		}
 	}
 	visit(document)
-	for i := 1; i < len(candidates); i++ {
-		for j := i; j > 0 && candidates[j].score > candidates[j-1].score; j-- {
-			candidates[j], candidates[j-1] = candidates[j-1], candidates[j]
-		}
-	}
+	slices.SortStableFunc(candidates, func(left, right candidate) int {
+		return cmp.Compare(right.score, left.score)
+	})
 	return candidates
 }
 
@@ -96,7 +106,7 @@ func attributeMap(node *html.Node) map[string]string {
 }
 
 func isIconRelation(value string) bool {
-	for _, token := range strings.Fields(strings.ToLower(value)) {
+	for token := range strings.FieldsSeq(strings.ToLower(value)) {
 		if token == "icon" || token == "shortcut" || token == "apple-touch-icon" {
 			return true
 		}
@@ -118,16 +128,16 @@ func resolveCandidate(base *url.URL, raw string) (string, bool) {
 
 func scoreSizes(value string) int {
 	best := -1
-	for _, token := range strings.Fields(strings.ToLower(value)) {
+	for token := range strings.FieldsSeq(strings.ToLower(value)) {
 		if token == "any" {
 			return 64
 		}
-		parts := strings.Split(token, "x")
-		if len(parts) != 2 {
+		widthText, heightText, found := strings.Cut(token, "x")
+		if !found {
 			continue
 		}
-		width, widthErr := strconv.Atoi(parts[0])
-		height, heightErr := strconv.Atoi(parts[1])
+		width, widthErr := strconv.Atoi(widthText)
+		height, heightErr := strconv.Atoi(heightText)
 		if widthErr != nil || heightErr != nil || width != height {
 			continue
 		}

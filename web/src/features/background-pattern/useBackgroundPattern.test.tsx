@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import type { CatalogBackgroundPattern } from '../../shared/api/backgroundPattern';
+import type { CatalogBackgroundPattern } from '../../app/api/backgroundPattern';
 import { useBackgroundPattern } from './useBackgroundPattern';
 
 type HookProps = {
@@ -48,4 +48,15 @@ describe('useBackgroundPattern', () => {
     const fallback = renderHook(() => useBackgroundPattern('orbital-rings'));
     expect(fallback.result.current.preference).toBe('orbital-rings');
   });
+});
+
+it('keeps pattern selection usable when browser storage throws', () => {
+  vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+  vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('full'); });
+  try {
+    const { result } = renderHook(() => useBackgroundPattern('pisces'));
+    expect(result.current.preference).toBe('pisces');
+    act(() => result.current.selectBackgroundPattern('star-trails'));
+    expect(result.current.preference).toBe('star-trails');
+  } finally { vi.restoreAllMocks(); }
 });

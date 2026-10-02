@@ -1,4 +1,4 @@
-import type { CatalogLink, CatalogPage } from '../../shared/api/catalog';
+import type { CatalogLink, CatalogPage } from '../../app/api/catalog';
 
 function normalize(value: string): string {
   return value.trim().toLocaleLowerCase();

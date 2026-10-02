@@ -1,9 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { CatalogPage } from '../../shared/api/catalog';
-import { IconButton } from '../../shared/ui/IconButton';
+import { motionTokens } from '../../styles/motion';
+import type { CatalogPage } from '../../app/api/catalog';
+import { IconButton } from '../../components/IconButton';
 import { CatalogView } from '../catalog/CatalogView';
 import { SearchField } from './SearchField';
 import styles from './SearchOverlay.module.css';

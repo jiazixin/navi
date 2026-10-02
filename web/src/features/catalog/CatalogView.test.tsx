@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { primaryPageFixture } from '../../test/fixtures';
+import { primaryPageFixture } from '../../../tests/fixtures/catalog';
 import { CatalogView } from './CatalogView';
 
 describe('CatalogView', () => {
@@ -20,6 +20,15 @@ describe('CatalogView', () => {
 
     const headingRow = screen.getByRole('heading', { name: '基础设施' }).parentElement;
     expect(headingRow?.querySelector('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('labels each group independently when the catalog and search overlay coexist', () => {
+    render(<><CatalogView page={primaryPageFixture} /><CatalogView page={primaryPageFixture} /></>);
+    const headings = screen.getAllByRole('heading', { level: 2 });
+    expect(new Set(headings.map((heading) => heading.id)).size).toBe(headings.length);
+    for (const heading of headings) {
+      expect(heading.closest('section')).toHaveAttribute('aria-labelledby', heading.id);
+    }
   });
 
   it('renders the search empty state without a decorative container', () => {

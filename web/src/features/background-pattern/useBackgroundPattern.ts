@@ -2,16 +2,20 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   catalogBackgroundPatternSchema,
   type CatalogBackgroundPattern,
-} from '../../shared/api/backgroundPattern';
+} from '../../app/api/backgroundPattern';
 
 export type BackgroundPatternPreference = CatalogBackgroundPattern;
 
 const storageKey = 'navi.background-pattern';
 
 function readPreference(): BackgroundPatternPreference | null {
-  const value = window.localStorage.getItem(storageKey);
-  const result = catalogBackgroundPatternSchema.safeParse(value);
-  return result.success ? result.data : null;
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    const result = catalogBackgroundPatternSchema.safeParse(value);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
 }
 
 export function useBackgroundPattern(configuredPattern: CatalogBackgroundPattern): {
@@ -28,7 +32,11 @@ export function useBackgroundPattern(configuredPattern: CatalogBackgroundPattern
   }, [preference]);
 
   const selectBackgroundPattern = useCallback((pattern: BackgroundPatternPreference): void => {
-    window.localStorage.setItem(storageKey, pattern);
+    try {
+      window.localStorage.setItem(storageKey, pattern);
+    } catch {
+      // Preferences remain usable for this session when storage is unavailable.
+    }
     setLocalPreference(pattern);
   }, []);
 

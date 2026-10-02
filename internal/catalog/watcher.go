@@ -18,6 +18,9 @@ const (
 	EventCatalogUpdated EventType = "catalog.updated"
 	// EventCatalogError announces a reload failure while the old snapshot remains active.
 	EventCatalogError EventType = "catalog.error"
+	// EventStatusUpdated requests a fresh service health read.
+	EventStatusUpdated EventType = "status.updated"
+
 	// EventFaviconUpdated announces that a local favicon cache entry is available.
 	EventFaviconUpdated EventType = "favicon.updated"
 )
@@ -25,7 +28,7 @@ const (
 // Event is a compact catalog reload notification suitable for SSE delivery.
 type Event struct {
 	Type      EventType `json:"type"`
-	Revision  uint64    `json:"revision,omitempty"`
+	Revision  uint64    `json:"revision,omitzero"`
 	Message   string    `json:"message,omitempty"`
 	RuntimeID string    `json:"runtimeId,omitempty"`
 }
@@ -129,6 +132,7 @@ func (w *Watcher) Stop() {
 		started := w.started
 		w.stopped = true
 		if !started {
+			w.events.Close()
 			close(w.done)
 		}
 		w.mu.Unlock()
@@ -225,12 +229,6 @@ func resetTimer(timer *time.Timer, duration time.Duration) (*time.Timer, <-chan 
 		timer = time.NewTimer(duration)
 		return timer, timer.C
 	}
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
 	timer.Reset(duration)
 	return timer, timer.C
 }
@@ -281,8 +279,10 @@ func (h *eventHub) Publish(event Event) {
 			case <-subscriber:
 			default:
 			}
+			// Multiple event types can displace one another. Ask consumers to
+			// reconcile the complete snapshot rather than lose a catalog update.
 			select {
-			case subscriber <- event:
+			case subscriber <- Event{Type: EventCatalogUpdated, Revision: event.Revision}:
 			default:
 			}
 		}

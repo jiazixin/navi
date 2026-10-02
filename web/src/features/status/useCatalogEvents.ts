@@ -31,6 +31,8 @@ export function useCatalogEvents({
       source.addEventListener('open', () => {
         attempt = 0;
         setConnection({ kind: 'live' });
+        // Reconcile changes missed before subscription or during disconnection.
+        onCatalogUpdate();
       });
       source.addEventListener('catalog.updated', onCatalogUpdate);
       source.addEventListener('favicon.updated', (event) => {
@@ -42,6 +44,7 @@ export function useCatalogEvents({
         onCatalogUpdate();
       });
       source.addEventListener('catalog.error', onCatalogError);
+      source.addEventListener('status.updated', onCatalogError);
       source.addEventListener('error', () => {
         source?.close();
         attempt += 1;
@@ -78,7 +81,7 @@ function parseFaviconRuntimeId(event: Event): string | undefined {
       return payload.runtimeId;
     }
   } catch {
-    // Keep the catalog refresh fallback for malformed or legacy events.
+    // Reconcile the complete catalog when an event cannot identify one icon.
   }
   return undefined;
 }

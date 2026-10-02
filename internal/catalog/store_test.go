@@ -48,11 +48,9 @@ func TestStoreSupportsConcurrentReadersAndWriters(t *testing.T) {
 	const readers = 20
 	const writes = 100
 	var readersDone sync.WaitGroup
-	readersDone.Add(readers)
 	for range readers {
-		go func() {
-			defer readersDone.Done()
-			for i := 0; i < writes; i++ {
+		readersDone.Go(func() {
+			for range writes {
 				snapshot, ok := store.Snapshot()
 				if !ok {
 					t.Error("Snapshot() returned no value")
@@ -60,9 +58,9 @@ func TestStoreSupportsConcurrentReadersAndWriters(t *testing.T) {
 				}
 				_ = snapshot.Catalog().Pages
 			}
-		}()
+		})
 	}
-	for i := 0; i < writes; i++ {
+	for range writes {
 		store.Publish(testCatalog("updated"))
 	}
 	readersDone.Wait()

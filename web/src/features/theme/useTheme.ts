@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { catalogThemeSchema, type CatalogTheme } from '../../shared/api/theme';
+import { catalogThemeSchema, type CatalogTheme } from '../../app/api/theme';
 import { getThemeOption } from './themeOptions';
 
 export type ThemePreference = CatalogTheme;
@@ -8,9 +8,13 @@ type ResolvedTheme = 'light' | 'dark' | Exclude<CatalogTheme, 'default'>;
 const storageKey = 'navi.theme';
 
 function readPreference(): ThemePreference | null {
-  const value = window.localStorage.getItem(storageKey);
-  const result = catalogThemeSchema.safeParse(value);
-  return result.success ? result.data : null;
+  try {
+    const value = window.localStorage.getItem(storageKey);
+    const result = catalogThemeSchema.safeParse(value);
+    return result.success ? result.data : null;
+  } catch {
+    return null;
+  }
 }
 
 function resolveTheme(preference: ThemePreference, systemIsDark: boolean): ResolvedTheme {
@@ -50,7 +54,11 @@ export function useTheme(configuredTheme: CatalogTheme = 'default'): {
   }, [preference, resolvedTheme]);
 
   const selectTheme = useCallback((theme: ThemePreference): void => {
-    window.localStorage.setItem(storageKey, theme);
+    try {
+      window.localStorage.setItem(storageKey, theme);
+    } catch {
+      // Preferences remain usable for this session when storage is unavailable.
+    }
     setLocalPreference(theme);
   }, []);
 

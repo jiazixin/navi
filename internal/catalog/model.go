@@ -1,6 +1,8 @@
 // Package catalog owns the validated YAML navigation domain and immutable snapshots.
 package catalog
 
+import "slices"
+
 // Catalog is the validated, grouped navigation directory without a store revision.
 type Catalog struct {
 	Pages []Page
@@ -36,7 +38,7 @@ func (c Catalog) FindLink(runtimeID string) (Link, bool) {
 		for _, group := range page.Groups {
 			for _, link := range group.Links {
 				if link.RuntimeID == runtimeID {
-					link.Tags = append([]string(nil), link.Tags...)
+					link.Tags = slices.Clone(link.Tags)
 					return link, true
 				}
 			}
@@ -58,7 +60,7 @@ func (c Catalog) clone() Catalog {
 			}
 			for linkIndex, link := range group.Links {
 				cloned.Pages[pageIndex].Groups[groupIndex].Links[linkIndex] = link
-				cloned.Pages[pageIndex].Groups[groupIndex].Links[linkIndex].Tags = append([]string(nil), link.Tags...)
+				cloned.Pages[pageIndex].Groups[groupIndex].Links[linkIndex].Tags = slices.Clone(link.Tags)
 			}
 		}
 	}

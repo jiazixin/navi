@@ -1,4 +1,4 @@
-import { primaryPageFixture } from '../../test/fixtures';
+import { primaryPageFixture } from '../../../tests/fixtures/catalog';
 import { countLinks, filterPage } from './filterCatalog';
 
 describe('filterPage', () => {

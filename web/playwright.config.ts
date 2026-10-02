@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './e2e',
+  testIgnore: '**/production/**',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
@@ -16,17 +17,17 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      testIgnore: /visual\.spec\.ts/,
+      testIgnore: [/visual\.spec\.ts/, '**/production/**'],
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' },
     },
     {
       name: 'firefox',
-      testIgnore: /visual\.spec\.ts/,
+      testIgnore: [/visual\.spec\.ts/, '**/production/**'],
       use: { ...devices['Desktop Firefox'], viewport: { width: 1024, height: 768 }, colorScheme: 'light' },
     },
     {
       name: 'webkit',
-      testIgnore: /visual\.spec\.ts/,
+      testIgnore: [/visual\.spec\.ts/, '**/production/**'],
       use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' },
     },
     {

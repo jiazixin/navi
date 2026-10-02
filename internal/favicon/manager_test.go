@@ -1,9 +1,10 @@
 package favicon
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -54,7 +55,7 @@ func TestManagerUsesConditionalValidatorsAndHandlesNotModified(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := catalog.Link{RuntimeID: "one", PublicURL: server.URL + "/page"}
-	manager.fetch(context.Background(), link)
+	manager.fetch(t.Context(), link)
 	entry, ok := store.Entry("one")
 	if !ok || entry.SourceETag != `"remote-v1"` {
 		t.Fatalf("entry after initial fetch = %#v, ok=%v", entry, ok)
@@ -67,7 +68,7 @@ func TestManagerUsesConditionalValidatorsAndHandlesNotModified(t *testing.T) {
 	entry.FetchedAt = time.Now().Add(-2 * time.Hour)
 	store.entries["one"] = entry
 	store.mu.Unlock()
-	manager.fetch(context.Background(), link)
+	manager.fetch(t.Context(), link)
 	if got := iconRequests.Load(); got != 2 {
 		t.Fatalf("icon requests = %d, want 2", got)
 	}
@@ -116,7 +117,7 @@ func TestManagerDeduplicatesConcurrentDiscoveryBySource(t *testing.T) {
 	for range 2 {
 		go func() {
 			start.Done()
-			_, err := manager.discover(context.Background(), pageURL)
+			_, err := manager.discover(t.Context(), pageURL)
 			results <- err
 		}()
 	}
@@ -138,5 +139,62 @@ func TestManagerDeduplicatesConcurrentDiscoveryBySource(t *testing.T) {
 	}
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("discovery requests = %d, want 1", got)
+	}
+}
+
+func TestManagerReportsStorageFailureAndRecovery(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan catalog.Event, 10)
+	manager, err := NewManager(Config{FetchTimeout: time.Second, RefreshInterval: time.Hour, MaxFileBytes: 1024, Workers: 1}, store, func(e catalog.Event) { events <- e })
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/favicon.ico" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nicon"))
+	}))
+	defer target.Close()
+	// Replacing the cache directory with a regular file fails writes even under root.
+	if err := os.Remove(store.directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.directory, []byte("blocked"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := catalog.Link{RuntimeID: "one", PublicURL: target.URL}
+	manager.fetch(t.Context(), link)
+	if degraded, message := manager.Degraded(); !degraded || strings.Contains(message, store.directory) {
+		t.Fatalf("health = %v, %q", degraded, message)
+	}
+	if event := <-events; event.Type != catalog.EventStatusUpdated {
+		t.Fatalf("event = %+v", event)
+	}
+	// A different successful write must not erase this link's failure.
+	manager.recordStorageResult("other", nil)
+	if degraded, _ := manager.Degraded(); !degraded {
+		t.Fatal("unrelated success cleared failure")
+	}
+	if err := os.Remove(store.directory); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(store.directory, 0750); err != nil {
+		t.Fatal(err)
+	}
+	manager.fetch(t.Context(), link)
+	if degraded, _ := manager.Degraded(); degraded {
+		t.Fatal("health did not recover")
+	}
+	if _, ok := store.Entry("one"); !ok {
+		t.Fatal("root icon not stored")
+	}
+	if event := <-events; event.Type != catalog.EventStatusUpdated {
+		t.Fatalf("recovery event = %+v", event)
 	}
 }

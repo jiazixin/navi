@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { githubLink } from '../../test/fixtures';
+import { githubLink } from '../../../tests/fixtures/catalog';
 import { LinkCard } from './LinkCard';
 
 describe('LinkCard', () => {

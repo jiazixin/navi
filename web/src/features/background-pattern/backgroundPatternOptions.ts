@@ -1,4 +1,4 @@
-import type { CatalogBackgroundPattern } from '../../shared/api/backgroundPattern';
+import type { CatalogBackgroundPattern } from '../../app/api/backgroundPattern';
 
 type BackgroundPatternOption = {
   id: CatalogBackgroundPattern;

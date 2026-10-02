@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
+import { motionTokens } from '../../styles/motion';
 import styles from './LinkIcon.module.css';
 
 type LinkIconProps = {

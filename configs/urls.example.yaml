@@ -1,0 +1,855 @@
+version: 1
+
+pages:
+  - id: development
+    title: Development Workspace
+    subtitle: Source control, collaboration, package registries, and everyday developer utilities
+    urls:
+      - name: GitHub
+        group: Source Control
+        description: Host source code, issues, pull requests, and automation
+        public_url: https://github.com
+        tags: [git, code, collaboration]
+      - name: GitLab
+        group: Source Control
+        description: DevSecOps platform with repositories and CI/CD
+        public_url: https://gitlab.com
+        tags: [git, code, ci]
+      - name: Bitbucket
+        group: Source Control
+        description: Git hosting and collaboration from Atlassian
+        public_url: https://bitbucket.org
+        tags: [git, code, atlassian]
+      - name: Codeberg
+        group: Source Control
+        description: Community-driven non-profit Git hosting
+        public_url: https://codeberg.org
+        tags: [git, open-source]
+      - name: Gitea
+        group: Source Control
+        description: Lightweight self-hosted Git service
+        private_url: http://gitea.lan:3000
+        public_url: https://about.gitea.com
+        tags: [git, self-hosted]
+      - name: Stack Overflow
+        group: Community
+        description: Programming questions and answers
+        public_url: https://stackoverflow.com
+        tags: [questions, answers, programming]
+      - name: DEV Community
+        group: Community
+        description: Articles and discussions for software developers
+        public_url: https://dev.to
+        tags: [articles, community]
+      - name: GitHub Gist
+        group: Snippets
+        description: Share code snippets and small files
+        public_url: https://gist.github.com
+        tags: [snippets, git]
+      - name: CodePen
+        group: Snippets
+        description: Build and share browser-based front-end demos
+        public_url: https://codepen.io
+        tags: [frontend, playground]
+      - name: Replit
+        group: Cloud IDE
+        description: Collaborative browser-based development environment
+        public_url: https://replit.com
+        tags: [ide, cloud, collaboration]
+      - name: Visual Studio Code
+        group: Editors
+        description: Extensible source-code editor and documentation
+        public_url: https://code.visualstudio.com
+        tags: [editor, ide, microsoft]
+      - name: JetBrains
+        group: Editors
+        description: Professional IDEs and developer tools
+        public_url: https://www.jetbrains.com
+        tags: [editor, ide]
+      - name: DevDocs
+        group: References
+        description: Fast searchable documentation for many technologies
+        public_url: https://devdocs.io
+        tags: [docs, reference, offline]
+      - name: regex101
+        group: Utilities
+        description: Build, test, and explain regular expressions
+        public_url: https://regex101.com
+        tags: [regex, testing]
+      - name: JSON Schema
+        group: Utilities
+        description: Specification and learning resources for JSON Schema
+        public_url: https://json-schema.org
+        tags: [json, schema, validation]
+      - name: CyberChef
+        group: Utilities
+        description: Transform, inspect, encode, and decode data in the browser
+        public_url: https://gchq.github.io/CyberChef
+        tags: [encoding, decoding, data]
+
+  - id: languages
+    title: Languages and Runtimes
+    subtitle: Official documentation and package ecosystems for widely used programming languages
+    urls:
+      - name: Go
+        group: Systems and Backend
+        description: Official site for the Go programming language
+        public_url: https://go.dev
+        tags: [golang, backend, systems]
+      - name: Go Packages
+        group: Systems and Backend
+        description: Search documentation for Go modules and packages
+        public_url: https://pkg.go.dev
+        tags: [golang, packages, docs]
+      - name: Rust
+        group: Systems and Backend
+        description: Official site for the Rust programming language
+        public_url: https://www.rust-lang.org
+        tags: [rust, systems, safe]
+      - name: crates.io
+        group: Systems and Backend
+        description: Rust community package registry
+        public_url: https://crates.io
+        tags: [rust, packages]
+      - name: C++ Reference
+        group: Systems and Backend
+        description: Language and standard-library reference for C and C++
+        public_url: https://en.cppreference.com
+        tags: [cpp, c, reference]
+      - name: Zig
+        group: Systems and Backend
+        description: General-purpose systems programming language
+        public_url: https://ziglang.org
+        tags: [zig, systems]
+      - name: Python
+        group: Scripting and Data
+        description: Official Python language website and documentation
+        public_url: https://www.python.org
+        tags: [python, scripting, data]
+      - name: PyPI
+        group: Scripting and Data
+        description: Python Package Index
+        public_url: https://pypi.org
+        tags: [python, packages]
+      - name: Ruby
+        group: Scripting and Data
+        description: Official site for the Ruby programming language
+        public_url: https://www.ruby-lang.org
+        tags: [ruby, scripting]
+      - name: PHP
+        group: Scripting and Data
+        description: Official PHP documentation and downloads
+        public_url: https://www.php.net
+        tags: [php, web, backend]
+      - name: Java
+        group: JVM
+        description: Java platform documentation and learning resources
+        public_url: https://dev.java
+        tags: [java, jvm, backend]
+      - name: Kotlin
+        group: JVM
+        description: Official Kotlin language documentation
+        public_url: https://kotlinlang.org
+        tags: [kotlin, jvm, android]
+      - name: Maven Central
+        group: JVM
+        description: Search artifacts published to the Maven repository
+        public_url: https://central.sonatype.com
+        tags: [java, maven, packages]
+      - name: .NET
+        group: Managed Platforms
+        description: Documentation for .NET, C Sharp, and ASP.NET
+        public_url: https://dotnet.microsoft.com
+        tags: [dotnet, csharp, microsoft]
+      - name: Swift
+        group: Managed Platforms
+        description: Official Swift language website
+        public_url: https://www.swift.org
+        tags: [swift, apple, ios]
+      - name: Dart
+        group: Managed Platforms
+        description: Language and tools behind Flutter applications
+        public_url: https://dart.dev
+        tags: [dart, flutter, mobile]
+
+  - id: web-development
+    title: Web Development
+    subtitle: Browser standards, JavaScript runtimes, frameworks, styling, and testing
+    urls:
+      - name: MDN Web Docs
+        group: Web Platform
+        description: Reference and learning material for browser technologies
+        public_url: https://developer.mozilla.org
+        tags: [html, css, javascript, docs]
+      - name: W3C
+        group: Web Platform
+        description: Web standards, specifications, and working groups
+        public_url: https://www.w3.org
+        tags: [web, standards, specifications]
+      - name: Can I use
+        group: Web Platform
+        description: Browser support tables for web platform features
+        public_url: https://caniuse.com
+        tags: [browser, compatibility, css]
+      - name: Node.js
+        group: JavaScript Runtimes
+        description: Server-side JavaScript runtime
+        public_url: https://nodejs.org
+        tags: [javascript, runtime, backend]
+      - name: npm
+        group: JavaScript Runtimes
+        description: JavaScript package registry
+        public_url: https://www.npmjs.com
+        tags: [javascript, packages, nodejs]
+      - name: Deno
+        group: JavaScript Runtimes
+        description: Secure JavaScript and TypeScript runtime
+        public_url: https://deno.com
+        tags: [javascript, typescript, runtime]
+      - name: Bun
+        group: JavaScript Runtimes
+        description: Fast all-in-one JavaScript runtime and toolkit
+        public_url: https://bun.sh
+        tags: [javascript, runtime, toolkit]
+      - name: TypeScript
+        group: Frameworks and Libraries
+        description: Typed JavaScript language and handbook
+        public_url: https://www.typescriptlang.org
+        tags: [typescript, javascript, types]
+      - name: React
+        group: Frameworks and Libraries
+        description: Library for building web and native user interfaces
+        public_url: https://react.dev
+        tags: [react, frontend, ui]
+      - name: Vue.js
+        group: Frameworks and Libraries
+        description: Progressive JavaScript framework
+        public_url: https://vuejs.org
+        tags: [vue, frontend, ui]
+      - name: Angular
+        group: Frameworks and Libraries
+        description: Web application framework from Google
+        public_url: https://angular.dev
+        tags: [angular, frontend, framework]
+      - name: Svelte
+        group: Frameworks and Libraries
+        description: Compiler-based framework for web user interfaces
+        public_url: https://svelte.dev
+        tags: [svelte, frontend, compiler]
+      - name: Next.js
+        group: Full-stack Frameworks
+        description: React framework for full-stack web applications
+        public_url: https://nextjs.org
+        tags: [nextjs, react, fullstack]
+      - name: Nuxt
+        group: Full-stack Frameworks
+        description: Full-stack Vue framework
+        public_url: https://nuxt.com
+        tags: [nuxt, vue, fullstack]
+      - name: Vite
+        group: Build and Styling
+        description: Fast front-end build tool and development server
+        public_url: https://vite.dev
+        tags: [vite, build, frontend]
+      - name: Tailwind CSS
+        group: Build and Styling
+        description: Utility-first CSS framework
+        public_url: https://tailwindcss.com
+        tags: [css, design-system, frontend]
+      - name: Storybook
+        group: Testing and Quality
+        description: Build and test UI components in isolation
+        public_url: https://storybook.js.org
+        tags: [components, testing, ui]
+      - name: Playwright
+        group: Testing and Quality
+        description: End-to-end testing and browser automation
+        public_url: https://playwright.dev
+        tags: [testing, browser, automation]
+
+  - id: infrastructure
+    title: Infrastructure and DevOps
+    subtitle: Containers, orchestration, observability, automation, and self-hosted operations
+    urls:
+      - name: Docker
+        group: Containers
+        description: Container platform, documentation, and image ecosystem
+        public_url: https://www.docker.com
+        tags: [containers, devops]
+      - name: Docker Hub
+        group: Containers
+        description: Search and publish container images
+        public_url: https://hub.docker.com
+        tags: [containers, registry, images]
+      - name: Podman
+        group: Containers
+        description: Daemonless tool for managing OCI containers and pods
+        public_url: https://podman.io
+        tags: [containers, linux, oci]
+      - name: Portainer
+        group: Containers
+        description: Web management interface for container environments
+        private_url: https://portainer.lan:9443
+        public_url: https://www.portainer.io
+        tags: [containers, self-hosted, management]
+      - name: Kubernetes
+        group: Orchestration
+        description: Production-grade container orchestration
+        public_url: https://kubernetes.io
+        tags: [kubernetes, containers, orchestration]
+      - name: Helm
+        group: Orchestration
+        description: Package manager for Kubernetes applications
+        public_url: https://helm.sh
+        tags: [kubernetes, packages, charts]
+      - name: Argo CD
+        group: Orchestration
+        description: Declarative GitOps delivery for Kubernetes
+        private_url: https://argocd.lan
+        public_url: https://argo-cd.readthedocs.io
+        tags: [kubernetes, gitops, deployment]
+      - name: Grafana
+        group: Observability
+        description: Metrics visualization and operational dashboards
+        private_url: http://grafana.lan:3000
+        public_url: https://grafana.com
+        tags: [monitoring, metrics, dashboards]
+      - name: Prometheus
+        group: Observability
+        description: Metrics collection, querying, and alerting
+        private_url: http://prometheus.lan:9090
+        public_url: https://prometheus.io
+        tags: [monitoring, metrics, alerts]
+      - name: OpenTelemetry
+        group: Observability
+        description: Vendor-neutral observability framework
+        public_url: https://opentelemetry.io
+        tags: [tracing, metrics, logs]
+      - name: Jaeger
+        group: Observability
+        description: Distributed tracing platform
+        private_url: http://jaeger.lan:16686
+        public_url: https://www.jaegertracing.io
+        tags: [tracing, observability]
+      - name: Terraform
+        group: Infrastructure as Code
+        description: Provision and manage infrastructure declaratively
+        public_url: https://developer.hashicorp.com/terraform
+        tags: [iac, cloud, automation]
+      - name: OpenTofu
+        group: Infrastructure as Code
+        description: Open-source infrastructure as code under the Linux Foundation
+        public_url: https://opentofu.org
+        tags: [iac, cloud, open-source]
+      - name: Ansible
+        group: Infrastructure as Code
+        description: Agentless configuration and automation platform
+        public_url: https://www.ansible.com
+        tags: [automation, configuration, devops]
+      - name: Jenkins
+        group: CI and Delivery
+        description: Extensible automation server for continuous delivery
+        private_url: http://jenkins.lan:8080
+        public_url: https://www.jenkins.io
+        tags: [ci, cd, automation]
+      - name: GitHub Actions
+        group: CI and Delivery
+        description: Repository-native automation and CI/CD workflows
+        public_url: https://github.com/features/actions
+        tags: [ci, cd, github]
+      - name: NGINX
+        group: Edge and Proxy
+        description: Web server, reverse proxy, and load balancer
+        public_url: https://nginx.org
+        tags: [proxy, web-server, load-balancer]
+      - name: Caddy
+        group: Edge and Proxy
+        description: Extensible web server with automatic HTTPS
+        public_url: https://caddyserver.com
+        tags: [proxy, web-server, https]
+      - name: Traefik Proxy
+        group: Edge and Proxy
+        description: Cloud-native application proxy and ingress
+        public_url: https://traefik.io/traefik
+        tags: [proxy, ingress, cloud-native]
+      - name: Amazon Web Services
+        group: Cloud Platforms
+        description: Compute, storage, networking, and managed cloud services
+        public_url: https://aws.amazon.com
+        tags: [aws, cloud, infrastructure]
+      - name: Microsoft Azure
+        group: Cloud Platforms
+        description: Microsoft cloud computing platform and services
+        public_url: https://azure.microsoft.com
+        tags: [azure, cloud, microsoft]
+      - name: Google Cloud
+        group: Cloud Platforms
+        description: Google infrastructure, data, and application services
+        public_url: https://cloud.google.com
+        tags: [gcp, cloud, google]
+      - name: Cloudflare
+        group: Cloud Platforms
+        description: Connectivity, security, and edge application platform
+        public_url: https://www.cloudflare.com
+        tags: [cloud, edge, security]
+      - name: DigitalOcean
+        group: Cloud Platforms
+        description: Developer-focused cloud infrastructure and platform services
+        public_url: https://www.digitalocean.com
+        tags: [cloud, hosting, infrastructure]
+      - name: Oracle Cloud
+        group: Cloud Platforms
+        description: Oracle cloud infrastructure and managed services
+        public_url: https://www.oracle.com/cloud
+        tags: [cloud, oracle, infrastructure]
+      - name: Proxmox VE
+        group: Virtualization
+        description: Open-source server virtualization platform
+        private_url: https://proxmox.lan:8006
+        public_url: https://www.proxmox.com
+        tags: [virtualization, self-hosted, homelab]
+
+  - id: data
+    title: Databases and Data Systems
+    subtitle: Relational, document, analytical, search, streaming, and messaging technologies
+    urls:
+      - name: PostgreSQL
+        group: Relational Databases
+        description: Advanced open-source relational database
+        public_url: https://www.postgresql.org
+        tags: [sql, database, relational]
+      - name: MySQL
+        group: Relational Databases
+        description: Widely deployed open-source relational database
+        public_url: https://www.mysql.com
+        tags: [sql, database, relational]
+      - name: MariaDB
+        group: Relational Databases
+        description: Community-developed relational database
+        public_url: https://mariadb.org
+        tags: [sql, database, relational]
+      - name: SQLite
+        group: Relational Databases
+        description: Small, fast, embedded SQL database engine
+        public_url: https://www.sqlite.org
+        tags: [sql, embedded, database]
+      - name: CockroachDB
+        group: Relational Databases
+        description: Distributed SQL database for resilient applications
+        public_url: https://www.cockroachlabs.com
+        tags: [sql, distributed, database]
+      - name: MongoDB
+        group: Document and Key-Value
+        description: Document-oriented application data platform
+        public_url: https://www.mongodb.com
+        tags: [nosql, document, database]
+      - name: Redis
+        group: Document and Key-Value
+        description: In-memory data structure server
+        public_url: https://redis.io
+        tags: [cache, key-value, database]
+      - name: Apache Cassandra
+        group: Document and Key-Value
+        description: Distributed wide-column database
+        public_url: https://cassandra.apache.org
+        tags: [nosql, distributed, database]
+      - name: ClickHouse
+        group: Analytics
+        description: Column-oriented database for real-time analytics
+        public_url: https://clickhouse.com
+        tags: [olap, analytics, database]
+      - name: DuckDB
+        group: Analytics
+        description: In-process analytical SQL database
+        public_url: https://duckdb.org
+        tags: [olap, analytics, embedded]
+      - name: Apache Spark
+        group: Analytics
+        description: Engine for large-scale data processing
+        public_url: https://spark.apache.org
+        tags: [big-data, processing, analytics]
+      - name: Elasticsearch
+        group: Search
+        description: Distributed search and analytics engine
+        public_url: https://www.elastic.co/elasticsearch
+        tags: [search, analytics, database]
+      - name: Apache Solr
+        group: Search
+        description: Open-source enterprise search platform
+        public_url: https://solr.apache.org
+        tags: [search, apache, indexing]
+      - name: Apache Kafka
+        group: Streaming and Messaging
+        description: Distributed event streaming platform
+        public_url: https://kafka.apache.org
+        tags: [streaming, events, distributed]
+      - name: RabbitMQ
+        group: Streaming and Messaging
+        description: Reliable open-source message broker
+        public_url: https://www.rabbitmq.com
+        tags: [messaging, queue, broker]
+      - name: Apache Pulsar
+        group: Streaming and Messaging
+        description: Cloud-native distributed messaging and streaming
+        public_url: https://pulsar.apache.org
+        tags: [streaming, messaging, distributed]
+      - name: Supabase
+        group: Data Platforms
+        description: Postgres-based backend development platform
+        public_url: https://supabase.com
+        tags: [postgresql, backend, baas]
+      - name: Firebase
+        group: Data Platforms
+        description: Google platform for building and operating applications
+        public_url: https://firebase.google.com
+        tags: [backend, baas, google]
+      - name: MinIO
+        group: Data Platforms
+        description: S3-compatible object storage for private infrastructure
+        private_url: http://minio.lan:9001
+        public_url: https://min.io
+        tags: [storage, s3, self-hosted]
+      - name: DBeaver
+        group: Database Tools
+        description: Universal desktop database management tool
+        public_url: https://dbeaver.io
+        tags: [database, sql, client]
+
+  - id: ai-data-science
+    title: AI and Data Science
+    subtitle: Models, machine learning frameworks, notebooks, datasets, and experiment tooling
+    urls:
+      - name: OpenAI
+        group: Model Platforms
+        description: AI models, developer platform, and documentation
+        public_url: https://openai.com
+        tags: [ai, llm, models]
+      - name: Anthropic
+        group: Model Platforms
+        description: Claude models, research, and developer resources
+        public_url: https://www.anthropic.com
+        tags: [ai, llm, models]
+      - name: Google AI
+        group: Model Platforms
+        description: Google artificial intelligence products and research
+        public_url: https://ai.google
+        tags: [ai, google, models]
+      - name: Hugging Face
+        group: Model Platforms
+        description: Models, datasets, demos, and machine learning community
+        public_url: https://huggingface.co
+        tags: [ai, models, datasets]
+      - name: Ollama
+        group: Model Platforms
+        description: Run and manage language models locally
+        private_url: http://ollama.lan:11434
+        public_url: https://ollama.com
+        tags: [ai, local, llm]
+      - name: PyTorch
+        group: Machine Learning
+        description: Flexible open-source deep learning framework
+        public_url: https://pytorch.org
+        tags: [machine-learning, python, deep-learning]
+      - name: TensorFlow
+        group: Machine Learning
+        description: End-to-end machine learning platform
+        public_url: https://www.tensorflow.org
+        tags: [machine-learning, python, deep-learning]
+      - name: JAX
+        group: Machine Learning
+        description: High-performance numerical computing and transformations
+        public_url: https://jax.readthedocs.io
+        tags: [machine-learning, python, numerical]
+      - name: scikit-learn
+        group: Machine Learning
+        description: Machine learning tools for Python
+        public_url: https://scikit-learn.org
+        tags: [machine-learning, python, statistics]
+      - name: Keras
+        group: Machine Learning
+        description: Deep learning API for building and training models
+        public_url: https://keras.io
+        tags: [deep-learning, python, neural-network]
+      - name: NumPy
+        group: Scientific Python
+        description: Fundamental package for numerical computing in Python
+        public_url: https://numpy.org
+        tags: [python, arrays, numerical]
+      - name: pandas
+        group: Scientific Python
+        description: Data analysis and manipulation library for Python
+        public_url: https://pandas.pydata.org
+        tags: [python, data, dataframe]
+      - name: SciPy
+        group: Scientific Python
+        description: Algorithms for scientific computing in Python
+        public_url: https://scipy.org
+        tags: [python, science, numerical]
+      - name: Jupyter
+        group: Notebooks
+        description: Interactive notebooks and computational environments
+        private_url: http://jupyter.lan:8888
+        public_url: https://jupyter.org
+        tags: [notebook, python, data-science]
+      - name: Google Colab
+        group: Notebooks
+        description: Hosted Jupyter notebooks with compute resources
+        public_url: https://colab.research.google.com
+        tags: [notebook, google, python]
+      - name: Kaggle
+        group: Datasets and Research
+        description: Data science competitions, datasets, and notebooks
+        public_url: https://www.kaggle.com
+        tags: [datasets, competition, data-science]
+      - name: Papers with Code
+        group: Datasets and Research
+        description: Machine learning papers linked to code and benchmarks
+        public_url: https://paperswithcode.com
+        tags: [papers, benchmarks, machine-learning]
+      - name: arXiv
+        group: Datasets and Research
+        description: Open-access repository of scholarly preprints
+        public_url: https://arxiv.org
+        tags: [papers, research, preprints]
+      - name: MLflow
+        group: MLOps
+        description: Manage machine learning experiments and model lifecycles
+        private_url: http://mlflow.lan:5000
+        public_url: https://mlflow.org
+        tags: [mlops, experiments, models]
+      - name: Weights and Biases
+        group: MLOps
+        description: Track experiments, datasets, and model evaluations
+        public_url: https://wandb.ai
+        tags: [mlops, experiments, tracking]
+
+  - id: security-networking
+    title: Security and Networking
+    subtitle: Application security, vulnerability intelligence, cryptography, diagnostics, and connectivity
+    urls:
+      - name: OWASP
+        group: Application Security
+        description: Open resources for improving software security
+        public_url: https://owasp.org
+        tags: [security, web, appsec]
+      - name: PortSwigger Web Security Academy
+        group: Application Security
+        description: Free hands-on web security training
+        public_url: https://portswigger.net/web-security
+        tags: [security, training, web]
+      - name: OpenSSF
+        group: Application Security
+        description: Open-source software supply-chain security initiatives
+        public_url: https://openssf.org
+        tags: [security, open-source, supply-chain]
+      - name: NIST NVD
+        group: Vulnerabilities
+        description: National Vulnerability Database
+        public_url: https://nvd.nist.gov
+        tags: [security, cve, vulnerabilities]
+      - name: CVE Program
+        group: Vulnerabilities
+        description: Common identifiers for publicly known vulnerabilities
+        public_url: https://www.cve.org
+        tags: [security, cve, vulnerabilities]
+      - name: CISA Known Exploited Vulnerabilities
+        group: Vulnerabilities
+        description: Catalog of vulnerabilities exploited in the wild
+        public_url: https://www.cisa.gov/known-exploited-vulnerabilities-catalog
+        tags: [security, cisa, vulnerabilities]
+      - name: VirusTotal
+        group: Threat Intelligence
+        description: Analyze suspicious files, domains, IPs, and URLs
+        public_url: https://www.virustotal.com
+        tags: [security, malware, analysis]
+      - name: MITRE ATT&CK
+        group: Threat Intelligence
+        description: Knowledge base of adversary tactics and techniques
+        public_url: https://attack.mitre.org
+        tags: [security, threats, tactics]
+      - name: Let's Encrypt
+        group: Cryptography and TLS
+        description: Free automated certificate authority
+        public_url: https://letsencrypt.org
+        tags: [tls, certificates, https]
+      - name: OpenSSL
+        group: Cryptography and TLS
+        description: Cryptography and TLS toolkit
+        public_url: https://www.openssl.org
+        tags: [tls, cryptography, security]
+      - name: SSL Labs
+        group: Cryptography and TLS
+        description: Test and analyze public TLS server configurations
+        public_url: https://www.ssllabs.com/ssltest
+        tags: [tls, testing, security]
+      - name: Wireshark
+        group: Network Diagnostics
+        description: Network protocol analyzer and documentation
+        public_url: https://www.wireshark.org
+        tags: [network, packets, diagnostics]
+      - name: Nmap
+        group: Network Diagnostics
+        description: Network discovery and security auditing utility
+        public_url: https://nmap.org
+        tags: [network, scanning, security]
+      - name: Speedtest
+        group: Network Diagnostics
+        description: Measure internet connection performance
+        public_url: https://www.speedtest.net
+        tags: [network, bandwidth, diagnostics]
+      - name: Shodan
+        group: Internet Intelligence
+        description: Search engine for internet-connected services
+        public_url: https://www.shodan.io
+        tags: [network, search, security]
+      - name: RIPEstat
+        group: Internet Intelligence
+        description: Internet number resource and routing data explorer
+        public_url: https://stat.ripe.net
+        tags: [network, bgp, routing]
+      - name: Cloudflare Radar
+        group: Internet Intelligence
+        description: Global internet traffic, adoption, and security insights
+        public_url: https://radar.cloudflare.com
+        tags: [network, trends, security]
+      - name: Tailscale
+        group: Private Networking
+        description: WireGuard-based private mesh networking
+        public_url: https://tailscale.com
+        tags: [vpn, wireguard, network]
+      - name: WireGuard
+        group: Private Networking
+        description: Fast and modern encrypted VPN protocol
+        public_url: https://www.wireguard.com
+        tags: [vpn, security, network]
+      - name: Pi-hole
+        group: Private Networking
+        description: Network-wide DNS sinkhole and blocking dashboard
+        private_url: http://pihole.lan/admin
+        public_url: https://pi-hole.net
+        tags: [dns, privacy, self-hosted]
+
+  - id: systems-learning
+    title: Systems, Learning, and Research
+    subtitle: Operating systems, hardware references, computer science courses, papers, and communities
+    urls:
+      - name: Linux Kernel
+        group: Operating Systems
+        description: Official home of the Linux kernel
+        public_url: https://www.kernel.org
+        tags: [linux, kernel, systems]
+      - name: ArchWiki
+        group: Operating Systems
+        description: Detailed Linux installation and administration knowledge base
+        public_url: https://wiki.archlinux.org
+        tags: [linux, arch, wiki]
+      - name: Ubuntu
+        group: Operating Systems
+        description: Ubuntu Linux distribution and documentation
+        public_url: https://ubuntu.com
+        tags: [linux, ubuntu, operating-system]
+      - name: Debian
+        group: Operating Systems
+        description: Community-built universal operating system
+        public_url: https://www.debian.org
+        tags: [linux, debian, operating-system]
+      - name: Fedora
+        group: Operating Systems
+        description: Community Linux platform sponsored by Red Hat
+        public_url: https://fedoraproject.org
+        tags: [linux, fedora, operating-system]
+      - name: FreeBSD
+        group: Operating Systems
+        description: Unix-like operating system for servers and embedded platforms
+        public_url: https://www.freebsd.org
+        tags: [bsd, unix, operating-system]
+      - name: Homebrew
+        group: Package Managers
+        description: Package manager for macOS and Linux
+        public_url: https://brew.sh
+        tags: [packages, macos, linux]
+      - name: NixOS
+        group: Package Managers
+        description: Declarative Linux distribution and reproducible package manager
+        public_url: https://nixos.org
+        tags: [linux, packages, reproducible]
+      - name: Raspberry Pi
+        group: Hardware and Embedded
+        description: Single-board computers, documentation, and projects
+        public_url: https://www.raspberrypi.com
+        tags: [hardware, embedded, arm]
+      - name: Arduino
+        group: Hardware and Embedded
+        description: Open-source electronics platform and documentation
+        public_url: https://www.arduino.cc
+        tags: [hardware, embedded, electronics]
+      - name: RISC-V International
+        group: Hardware and Embedded
+        description: Open instruction set architecture specifications and ecosystem
+        public_url: https://riscv.org
+        tags: [hardware, cpu, architecture]
+      - name: IEEE Xplore
+        group: Papers and Standards
+        description: Technical literature in engineering and computing
+        public_url: https://ieeexplore.ieee.org
+        tags: [papers, ieee, research]
+      - name: ACM Digital Library
+        group: Papers and Standards
+        description: Computing research publications and proceedings
+        public_url: https://dl.acm.org
+        tags: [papers, acm, research]
+      - name: IETF Datatracker
+        group: Papers and Standards
+        description: Internet standards, RFC work, and working-group documents
+        public_url: https://datatracker.ietf.org
+        tags: [ietf, rfc, standards]
+      - name: MIT OpenCourseWare
+        group: Courses
+        description: Free university course materials from MIT
+        public_url: https://ocw.mit.edu
+        tags: [courses, university, learning]
+      - name: CS50
+        group: Courses
+        description: Harvard's introduction to computer science
+        public_url: https://cs50.harvard.edu
+        tags: [courses, computer-science, programming]
+      - name: freeCodeCamp
+        group: Courses
+        description: Free coding curriculum and developer certifications
+        public_url: https://www.freecodecamp.org
+        tags: [courses, programming, web]
+      - name: roadmap.sh
+        group: Courses
+        description: Community roadmaps and learning paths for developers
+        public_url: https://roadmap.sh
+        tags: [roadmap, learning, career]
+      - name: Hacker News
+        group: News and Community
+        description: Technology news and discussions from the startup community
+        public_url: https://news.ycombinator.com
+        tags: [news, community, startups]
+      - name: Lobsters
+        group: News and Community
+        description: Computing-focused link aggregation and discussion
+        public_url: https://lobste.rs
+        tags: [news, programming, community]
+      - name: GitHub Trending
+        group: News and Community
+        description: Discover repositories gaining attention on GitHub
+        public_url: https://github.com/trending
+        tags: [github, trending, open-source]
+      - name: Are.na
+        group: Inspiration
+        description: Collect references and connect ideas
+        public_url: https://www.are.na
+        tags: [research, inspiration]
+      - name: Internet Archive Software
+        group: Inspiration
+        description: Historical software, emulation, and preserved digital artifacts
+        public_url: https://archive.org/details/software
+        tags: [archive, history, software]
+      - name: Computer History Museum
+        group: Inspiration
+        description: Stories and collections from the history of computing
+        public_url: https://computerhistory.org
+        tags: [history, computing, museum]

@@ -1,0 +1,114 @@
+# 账号密码都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
+# 仅填写其中一项会启动报错；修改后重启生效。
+# 通过 HTTPS（包括反向代理）访问时设置 secure_cookie: true。
+auth:
+  username: ""
+  password: ""
+  secure_cookie: false
+
+# Navi 主配置示例
+# 复制为 configs/config.local.yaml 后按部署环境修改。启动方式：CONFIG_FILE=/路径/config.local.yaml ./bin/navi
+# 配置选择：CONFIG_FILE 选择配置；未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
+# 主配置修改后需要重启；只有 catalog.path 指向的导航 YAML 支持热加载。
+# 未知字段、非法取值、重复 YAML 键和多个 YAML 文档会导致启动失败。
+# 下列值均为默认值；省略字段时使用默认值，不用空字符串代替省略。
+# 时间使用 Go duration 写法，例如 250ms、3s、10m、168h；不支持 7d。
+
+# 可重建缓存目录；相对路径以本配置文件所在目录为基准，不是进程工作目录。
+# 目录内的 favicons 保存图标及元数据，不保存第二份导航目录；可在停机后删除重建。
+# 运行用户需要写入权限及足够磁盘空间。Docker 通常设置 /app/.cache 并挂载可写 volume。
+# 字段覆盖：NAVI_<字段> 或 NAVI_<节>_<字段>，如 NAVI_SERVER_PORT=8081。环境变量 > 文件 > 默认值。
+storage: ../.cache
+
+# 默认主题；default 跟随浏览器所在系统的深色/浅色模式。
+# 可选：default（默认）、navy-blossom（绀樱夜）、mint-tide（薄荷汐）、
+# moss-court（苔庭青）、tea-mist（茶雾青）、amber-tide（琥珀潮）、
+# sunny-coast（晴海橙）、violet-lime（藤萝青）。
+# 用户在页面选择的主题优先于此值，保存于该浏览器 localStorage。
+theme: default
+
+# 默认背景纹样；none 表示无纹样。系统开启“减少动态效果”时停止背景动画。
+# 可选：none（素幕）、meridian-grid（经纬阵）、orbital-rings（天游环）、
+# pisces（双鱼宫）、sagittarius（天弓宫）、roman-meander（回廊纹）、
+# rose-window（玫瑰窗）、eight-point-star（八芒阵）、star-trails（星轨幕）。
+# 页面中的本地选择会覆盖此值，与主题偏好分别保存。
+background_pattern: meridian-grid
+
+# 外部搜索默认入口，不影响导航列表的本地筛选。
+# 可选：baidu、google、yandex、bing、github、chatgpt、claude、gemini。
+# 页面切换入口只在当前会话有效，刷新后回到此值。
+# Claude/Gemini 打开站点并尝试复制查询；复制依赖浏览器权限和安全上下文。
+web_search: baidu
+
+server:
+  # 监听地址：127.0.0.1 只接受本机连接；容器或局域网访问通常用 0.0.0.0。
+  # Navi 通过 auth 账号密码保护目录，目录 API 包含配置的内外网地址。
+  # 对外开放时使用 HTTPS 反向代理，并设置 auth.secure_cookie: true。
+  listen: 127.0.0.1
+  # TCP 端口，范围 1–65535；确保未被其他进程占用。
+  port: 8080
+  # 接收请求头的最长时间，防止慢速客户端长期占用连接；必须大于 0。
+  read_header_timeout: 5s
+  # 读取整个请求的最长时间；必须大于 0。
+  read_timeout: 20s
+  # 普通响应的写入超时；应留足 private/public 探测及响应时间。
+  # SSE /api/events 仅限制每帧写入时间，等待事件时取消期限，不会每 30 秒断开。
+  write_timeout: 30s
+  # HTTP keep-alive 连接等待下一个请求的最长空闲时间；必须大于 0。
+  idle_timeout: 90s
+  # 收到 SIGINT/SIGTERM 后的关闭等待时间；到期强制关闭残留连接。
+  shutdown_timeout: 10s
+
+health:
+  # 健康检查路径，不带域名、查询参数或 #片段。
+  # 不能为 /、/login、/index.html、/assets 前缀、/api、/go 或其 API/跳转子路径。
+  # 正常返回 HTTP 200 + ok；仍能提供导航的降级状态为 200 + degraded。
+  # 需要区分降级原因时读取 /api/status（启用认证时需登录），不要只判断 HTTP 状态码。
+  uri: /health
+
+logging:
+  # 日志最低级别，可选 debug、info、warn、error。
+  level: info
+  # 可选 json（方便日志采集）或 logfmt（键值文本）。
+  format: json
+  # 是否记录请求方法、路径、状态码、耗时等访问日志；不记录 URL 查询参数。
+  access_log: true
+  # 是否在访问日志中包含健康检查；默认关闭，避免探活日志刷屏。
+  log_health_checks: false
+
+catalog:
+  # 导航 YAML 路径，相对本配置文件所在目录；启动时必须存在且内容合法。
+  # 使用 version: 1 + pages 格式，参见 urls.example.yaml；最大 2 MiB、20 页、1000 链接。
+  path: ./urls.yaml
+  # 开启后监听目录文件的保存/原子替换，校验通过才更新页面。
+  # 非法更新保留最近一次有效内容，并报告 degraded；修复后恢复。
+  # 关闭后修改导航文件需重启，但后台图标获取和图标更新通知仍正常工作。
+  # Docker 热加载推荐挂载配置“目录”，单文件 bind mount 可能看不到原子替换后的新文件。
+  watch: true
+  # 合并一次保存产生的多次文件事件；值越大更新越慢，但可减少编辑过程中的重复加载。
+  reload_debounce: 250ms
+
+navigation:
+  # 点击卡片时，先从 Navi 服务器探测 private_url，再按需回退 public_url。
+  # 这是服务器网络视角；服务器可达不代表用户浏览器一定能到达。
+  # 超时包含等待并发名额及合并请求的时间；以下时间均必须大于 0。
+  private_probe_timeout: 800ms
+  public_probe_timeout: 1200ms
+  # 同一目标的正常探测结果缓存时间；越短恢复感知越快，目标站点探测压力也越大。
+  # 请求取消/超时不写入缓存；不会向目标转发浏览器 Cookie 或 Authorization。
+  probe_cache_ttl: 30s
+  # 同时实际探测的最大数量，正整数；个人使用通常保持 32 即可。
+  max_concurrent_probes: 32
+
+favicon:
+  # 每次发现页面/下载图标的 HTTP 超时，不是整个链接所有候选的总预算。
+  # 图标后台获取不会阻塞目录首屏和链接点击。
+  fetch_timeout: 3s
+  # 图标过期阈值和周期维护间隔；168h = 7 天。维护也在启动和目录更新时执行。
+  # 到期后可能再等待一个维护周期；上次失败的图标在后续维护时重试。
+  refresh_interval: 168h
+  # 单个图标允许的最大字节数，范围 1024–4194304；默认 1 MiB。
+  # 发现页面另有固定 256 KiB 上限；页面失败或超大时仍尝试站点根 /favicon.ico。
+  max_file_bytes: 1048576
+  # 后台下载 worker 数量，范围 1–16；增大将提高网络和磁盘并发。
+  workers: 4

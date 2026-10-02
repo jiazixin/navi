@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink, LoaderCircle } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import type { CatalogLink } from '../../shared/api/catalog';
+import { motionTokens } from '../../styles/motion';
+import type { CatalogLink } from '../../app/api/catalog';
 import { LinkIcon } from './LinkIcon';
 import styles from './LinkCard.module.css';
 
@@ -27,12 +27,16 @@ function getHostname(link: CatalogLink): string {
 
 export function LinkCard({ link, enableLayoutMotion = true, iconURL }: LinkCardProps): React.JSX.Element {
   const [opening, setOpening] = useState(false);
+  const openingTimer = useRef<number | undefined>(undefined);
   const reduceMotion = useReducedMotion();
   const secondaryText = link.description ?? getHostname(link);
 
+  useEffect(() => () => window.clearTimeout(openingTimer.current), []);
+
   function handleClick(): void {
     setOpening(true);
-    window.setTimeout(() => setOpening(false), 800);
+    window.clearTimeout(openingTimer.current);
+    openingTimer.current = window.setTimeout(() => setOpening(false), 800);
   }
 
   return (
@@ -70,6 +74,7 @@ export function LinkCard({ link, enableLayoutMotion = true, iconURL }: LinkCardP
     >
       <span className={styles.iconSlot}>
         <LinkIcon
+          key={iconURL ?? link.runtimeId}
           {...(iconURL === undefined ? {} : { iconURL })}
           name={link.name}
           runtimeId={link.runtimeId}

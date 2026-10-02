@@ -39,7 +39,7 @@ type metadata struct {
 	ETag         string    `json:"etag"`
 	LastModified string    `json:"last_modified,omitempty"`
 	FetchedAt    time.Time `json:"fetched_at"`
-	StaleSince   time.Time `json:"stale_since,omitempty"`
+	StaleSince   time.Time `json:"stale_since,omitzero"`
 	FileName     string    `json:"file_name"`
 }
 
@@ -73,7 +73,9 @@ func (s *Store) Entry(runtimeID string) (Entry, bool) {
 
 // Open returns a locally cached icon file and its metadata.
 func (s *Store) Open(runtimeID string) (Entry, *os.File, error) {
-	entry, ok := s.Entry(runtimeID)
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entry, ok := s.entries[runtimeID]
 	if !ok {
 		return Entry{}, nil, ErrNotFound
 	}
@@ -105,7 +107,9 @@ func (s *Store) PutWithValidators(runtimeID, sourceURL, contentType, sourceETag,
 	digest := sha256.Sum256(append([]byte(sourceURL+"\x00"+runtimeID+"\x00"), body...))
 	contentDigest := sha256.Sum256(body)
 	fileName := hex.EncodeToString(digest[:]) + extensionFor(contentType)
-	previous, hadPrevious := s.Entry(runtimeID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previous, hadPrevious := s.entries[runtimeID]
 	entry := Entry{
 		RuntimeID: runtimeID, SourceURL: sourceURL, ContentType: contentType,
 		SourceETag: sourceETag, ETag: "\"" + hex.EncodeToString(contentDigest[:]) + "\"", LastModified: lastModified,
@@ -127,9 +131,7 @@ func (s *Store) PutWithValidators(runtimeID, sourceURL, contentType, sourceETag,
 	if err := writeAtomically(s.directory, metadataName(runtimeID), encoded, 0o640); err != nil {
 		return Entry{}, err
 	}
-	s.mu.Lock()
 	s.entries[runtimeID] = entry
-	s.mu.Unlock()
 	if hadPrevious && previous.fileName != "" && previous.fileName != fileName {
 		// The new entry is already published; an orphaned old blob is safe to
 		// reclaim on a later cache cleanup pass.

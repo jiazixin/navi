@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import type { CatalogTheme } from '../../shared/api/theme';
+import type { CatalogTheme } from '../../app/api/theme';
 import { useTheme } from './useTheme';
 
 type HookProps = {
@@ -72,4 +72,15 @@ describe('useTheme', () => {
     expect(result.current.preference).toBe('default');
     expect(result.current.resolvedTheme).toBe('dark');
   });
+});
+
+it('keeps theme selection usable when browser storage throws', () => {
+  vi.spyOn(window.localStorage, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+  vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('full'); });
+  try {
+    const { result } = renderHook(() => useTheme('mint-tide'));
+    expect(result.current.preference).toBe('mint-tide');
+    act(() => result.current.selectTheme('navy-blossom'));
+    expect(result.current.preference).toBe('navy-blossom');
+  } finally { vi.restoreAllMocks(); }
 });

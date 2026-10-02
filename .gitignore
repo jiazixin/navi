@@ -1,8 +1,5 @@
 .DS_Store
 web/node_modules/
-
-storage/
-ui/dist/
 web/dist/
 web/coverage/
 web/storybook-static/
@@ -10,5 +7,16 @@ web/storybook-static-test/
 web/test-results/
 web/playwright-report/
 web/.vite/
-
-/navi
+/bin/
+/configs/config.local.yaml
+/configs/urls.yaml
+.cache/
+data/
+coverage/
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+web/.cache/

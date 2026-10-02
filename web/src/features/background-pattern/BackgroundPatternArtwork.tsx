@@ -1,4 +1,4 @@
-import type { CatalogBackgroundPattern } from '../../shared/api/backgroundPattern';
+import type { CatalogBackgroundPattern } from '../../app/api/backgroundPattern';
 import styles from './BackgroundPatternArtwork.module.css';
 
 type BackgroundPatternArtworkProps = {

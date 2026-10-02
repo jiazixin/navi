@@ -7,6 +7,13 @@ import (
 	"testing"
 )
 
+func TestRepositoryExampleCatalogIsValid(t *testing.T) {
+	t.Parallel()
+	if _, err := LoadFile("../../configs/urls.example.yaml"); err != nil {
+		t.Fatalf("shipped example catalog is invalid: %v", err)
+	}
+}
+
 func TestLoadFilePreservesPageGroupAndLinkOrder(t *testing.T) {
 	t.Parallel()
 

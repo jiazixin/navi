@@ -1,8 +1,9 @@
+import { getNextMenuIndex, isMenuNavigationKey } from '../../lib/keyboard/menuNavigation';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Check, Orbit } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../motion/tokens';
-import { IconButton } from '../../shared/ui/IconButton';
+import { motionTokens } from '../../styles/motion';
+import { IconButton } from '../../components/IconButton';
 import { BackgroundPatternArtwork } from './BackgroundPatternArtwork';
 import {
   backgroundPatternOptions,
@@ -67,7 +68,7 @@ export function BackgroundPatternButton({
       return;
     }
 
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    if (!isMenuNavigationKey(event.key)) return;
 
     event.preventDefault();
     if (!open) {
@@ -80,19 +81,7 @@ export function BackgroundPatternButton({
     );
     const selectedIndex = backgroundPatternOptions.findIndex((option) => option.id === preference);
     const currentIndex = activeIndex >= 0 ? activeIndex : selectedIndex;
-    const lastIndex = backgroundPatternOptions.length - 1;
-    const nextIndex =
-      event.key === 'Home'
-        ? 0
-        : event.key === 'End'
-          ? lastIndex
-          : event.key === 'ArrowDown'
-            ? currentIndex >= lastIndex
-              ? 0
-              : currentIndex + 1
-            : currentIndex <= 0
-              ? lastIndex
-              : currentIndex - 1;
+    const nextIndex = getNextMenuIndex(event.key, currentIndex, backgroundPatternOptions.length);
     optionRefs.current[nextIndex]?.focus();
   }
 
