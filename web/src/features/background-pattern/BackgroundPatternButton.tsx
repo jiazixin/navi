@@ -129,6 +129,7 @@ export function BackgroundPatternButton({
                   optionRefs.current[index] = element;
                 }}
                 role="menuitemradio"
+                tabIndex={-1}
                 type="button"
               >
                 <span className={styles.preview} aria-hidden="true">

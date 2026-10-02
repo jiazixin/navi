@@ -2,11 +2,36 @@ package favicon
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDiscoveryBoundsUniqueDeclarationsAndRetainsRootFallback(t *testing.T) {
+	var contents strings.Builder
+	// Duplicate and empty declarations must not consume the candidate budget.
+	contents.WriteString(`<link rel="icon" href="">`)
+	for range 20 {
+		contents.WriteString(`<link rel="icon" sizes="64x64" href="/best.png">`)
+	}
+	for index := range maxDeclaredCandidates + 10 {
+		fmt.Fprintf(&contents, `<link rel="icon" href="/icon-%d.png">`, index)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = writer.Write([]byte(contents.String()))
+	}))
+	defer server.Close()
+	urls, err := Discover(t.Context(), server.Client(), server.URL+"/page")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(urls) != maxDeclaredCandidates+1 || urls[0] != server.URL+"/best.png" || urls[len(urls)-1] != server.URL+"/favicon.ico" {
+		t.Fatalf("bounded candidates = %v", urls)
+	}
+}
 
 func TestDiscoverPrioritizesDeclaredRelativeIconAndFallsBackToOrigin(t *testing.T) {
 	t.Parallel()

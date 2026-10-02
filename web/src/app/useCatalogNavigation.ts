@@ -4,11 +4,12 @@ import { filterPage } from '../features/catalog/filterCatalog';
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.matches('input, textarea, select, [contenteditable="true"]');
+  return target.isContentEditable || target.matches('input, textarea, select');
 }
 
 export function useCatalogNavigation(pages: readonly CatalogPage[]) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -94,7 +95,6 @@ export function useCatalogNavigation(pages: readonly CatalogPage[]) {
     const handleDesktopChange = (event: MediaQueryListEvent): void => {
       if (event.matches) {
         setSearchOpen(false);
-        searchInputRef.current?.focus();
       }
     };
     desktopMediaQuery.addEventListener('change', handleDesktopChange);
@@ -103,6 +103,7 @@ export function useCatalogNavigation(pages: readonly CatalogPage[]) {
 
   return {
     searchInputRef,
+    searchButtonRef,
     searchQuery,
     hasSearched,
     searchOpen,

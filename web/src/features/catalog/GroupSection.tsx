@@ -38,6 +38,7 @@ export function GroupSection({
 
   return (
     <motion.section
+      animate={{ opacity: 1, y: 0 }}
       aria-labelledby={headingID}
       className={styles.section}
       exit={

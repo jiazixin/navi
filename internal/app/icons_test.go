@@ -53,7 +53,25 @@ func TestIconRefreshRevalidatesSameURL(t *testing.T) {
 	request.Header.Set("If-None-Match", old.ETag)
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)
-	if response.Code != 200 || response.Body.String() != "new" || response.Header().Get("Cache-Control") != "public, no-cache" {
+	if response.Code != 200 || response.Body.String() != "new" || response.Header().Get("Cache-Control") != "private, no-cache" {
 		t.Fatalf("refresh = %d %s %v", response.Code, response.Body, response.Header())
+	}
+}
+
+func TestPublicIconCanUseSharedCache(t *testing.T) {
+	store, err := favicon.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", []byte("icon")); err != nil {
+		t.Fatal(err)
+	}
+	server := newTestServer(t, nil)
+	server.config.Auth.Username, server.config.Auth.Password = "", ""
+	server.icons = store
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/icons/one", nil))
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "public, no-cache" {
+		t.Fatalf("public icon response = %d, headers = %v", response.Code, response.Header())
 	}
 }

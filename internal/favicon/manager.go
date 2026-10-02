@@ -6,11 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -202,8 +200,16 @@ func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
 			}
 			if result.notModified {
 				_, refreshErr := m.store.Refresh(link.RuntimeID, candidate, result.sourceETag, result.lastModified)
-				m.recordStorageResult(link.RuntimeID, refreshErr)
-				return
+				if !errors.Is(refreshErr, ErrNotFound) {
+					m.recordStorageResult(link.RuntimeID, refreshErr)
+					return
+				}
+				// The blob may have been deleted while the conditional request was
+				// in progress. Recover its bytes instead of extending empty metadata.
+				result, err = m.fetchIconSingleflight(ctx, candidate, Entry{})
+				if err != nil {
+					continue
+				}
 			}
 			_, err = m.store.PutWithValidators(link.RuntimeID, candidate, result.contentType, result.sourceETag, result.lastModified, result.contents)
 			m.recordStorageResult(link.RuntimeID, err)
@@ -274,7 +280,7 @@ func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) 
 	if err != nil {
 		return iconFetchResult{}, fmt.Errorf("create favicon request: %w", err)
 	}
-	request.Header.Set("Accept", "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5")
+	request.Header.Set("Accept", "image/webp,image/png,image/svg+xml,image/jpeg,image/gif,image/x-icon,image/vnd.microsoft.icon,image/*;q=0.8,*/*;q=0.5")
 	if previous.SourceURL == source {
 		if previous.SourceETag != "" {
 			request.Header.Set("If-None-Match", previous.SourceETag)
@@ -291,6 +297,9 @@ func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) 
 	sourceETag := response.Header.Get("ETag")
 	lastModified := response.Header.Get("Last-Modified")
 	if response.StatusCode == http.StatusNotModified {
+		if previous.SourceURL != source || (previous.SourceETag == "" && previous.LastModified == "") {
+			return iconFetchResult{}, fmt.Errorf("fetch favicon: unexpected not-modified response")
+		}
 		return iconFetchResult{sourceETag: sourceETag, lastModified: lastModified, notModified: true}, nil
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
@@ -313,26 +322,6 @@ func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) 
 		sourceETag:   sourceETag,
 		lastModified: lastModified,
 	}, nil
-}
-
-func validatedContentType(header string, contents []byte) (string, bool) {
-	mediaType, _, err := mime.ParseMediaType(header)
-	if err == nil && mediaType == "image/svg+xml" && isSVG(contents) {
-		return "image/svg+xml", true
-	}
-	detected := http.DetectContentType(contents)
-	switch detected {
-	case "image/png", "image/jpeg", "image/gif", "image/webp":
-		return detected, true
-	case "image/x-icon", "image/vnd.microsoft.icon":
-		return "image/x-icon", true
-	}
-	return "", false
-}
-
-func isSVG(contents []byte) bool {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(string(contents), "\ufeff"))
-	return strings.HasPrefix(strings.ToLower(trimmed), "<svg") || strings.HasPrefix(strings.ToLower(trimmed), "<?xml") && strings.Contains(strings.ToLower(trimmed), "<svg")
 }
 
 func limitRedirects(request *http.Request, via []*http.Request) error {

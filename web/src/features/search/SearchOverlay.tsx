@@ -1,4 +1,4 @@
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
 import { X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { motionTokens } from '../../styles/motion';
@@ -14,6 +14,8 @@ type SearchOverlayProps = {
   onChange: (query: string) => void;
   onClose: () => void;
   faviconVersions?: Readonly<Record<string, number>>;
+  desktopSearchInputRef?: RefObject<HTMLInputElement | null>;
+  mobileSearchButtonRef?: RefObject<HTMLButtonElement | null>;
 };
 
 function getFocusableElements(container: HTMLElement): HTMLElement[] {
@@ -24,7 +26,9 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   ).filter((element) => !element.hasAttribute('hidden'));
 }
 
-export function SearchOverlay({ page, query, onChange, onClose, faviconVersions }: SearchOverlayProps): React.JSX.Element {
+export function SearchOverlay({
+  page, query, onChange, onClose, faviconVersions, desktopSearchInputRef, mobileSearchButtonRef,
+}: SearchOverlayProps): React.JSX.Element {
   const overlayRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reduceMotion = useReducedMotion();
@@ -33,6 +37,8 @@ export function SearchOverlay({ page, query, onChange, onClose, faviconVersions 
     const previousOverflow = document.body.style.overflow;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const shell = document.getElementById('navi-shell');
+    const desktopInput = desktopSearchInputRef?.current;
+    const mobileButton = mobileSearchButtonRef?.current;
     document.body.style.overflow = 'hidden';
     if (shell !== null) {
       shell.setAttribute('inert', '');
@@ -46,11 +52,15 @@ export function SearchOverlay({ page, query, onChange, onClose, faviconVersions 
         shell.removeAttribute('inert');
         shell.removeAttribute('aria-hidden');
       }
-      if (previousFocus?.isConnected === true) {
+      if (desktopInput?.isConnected === true && window.matchMedia('(min-width: 768px)').matches) {
+        desktopInput.focus();
+      } else if (mobileButton?.isConnected === true) {
+        mobileButton.focus();
+      } else if (previousFocus?.isConnected === true) {
         previousFocus.focus();
       }
     };
-  }, []);
+  }, [desktopSearchInputRef, mobileSearchButtonRef]);
 
   function focusFirstResult(): void {
     overlayRef.current?.querySelector<HTMLAnchorElement>('a[href^="/go/"]')?.focus();
@@ -69,6 +79,12 @@ export function SearchOverlay({ page, query, onChange, onClose, faviconVersions 
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      handleEscape();
+      return;
+    }
+
     if (event.key !== 'Tab' || overlayRef.current === null) {
       return;
     }

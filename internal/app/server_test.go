@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -128,6 +129,28 @@ func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 	}
 }
 
+func TestNavigationProbesDocumentAndPreservesAnchorInRedirect(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/docs" || request.URL.Fragment != "" {
+			t.Errorf("probe requested anchor as path data: %s", request.URL)
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer target.Close()
+	destination := target.URL + "/docs#section"
+	directory, err := catalog.LoadFile(writeEventCatalog(t, fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Docs, group: One, public_url: %q}\n", destination)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestServer(t, navigation.NewResolver(navigation.NewProber(1), time.Second, time.Second, time.Minute))
+	server.catalog.Publish(directory)
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/go/"+directory.Pages[0].Groups[0].Links[0].RuntimeID, nil))
+	if response.Code != http.StatusFound || response.Header().Get("Location") != destination {
+		t.Fatalf("anchor redirect = %d %q", response.Code, response.Header().Get("Location"))
+	}
+}
+
 func newTestServer(t *testing.T, resolver *navigation.Resolver) *httpServer {
 	t.Helper()
 	store := catalog.NewStore()
@@ -169,6 +192,35 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	server.ServeHTTP(head, authenticatedRequest(http.MethodHead, "/go/one", nil))
 	if head.Body.Len() != 0 {
 		t.Fatal("HEAD failure returned body")
+	}
+}
+
+func TestStaticRoutesRejectMissingAssetsAndInjectTheme(t *testing.T) {
+	server := newTestServer(t, nil)
+	server.config.Theme = "moss-court"
+	server.static = fstest.MapFS{
+		"index.html":    &fstest.MapFile{Data: []byte(`<html><div id="root"></div></html>`)},
+		"assets/app.js": &fstest.MapFile{Data: []byte(`console.log("Navi")`)},
+	}
+	server.files = http.FileServer(http.FS(server.static))
+	for _, route := range []string{"/assets", "/assets/", "/assets/missing.js"} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, authenticatedRequest(http.MethodGet, route, nil))
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s returned %d, want 404", route, response.Code)
+		}
+	}
+	for _, route := range []string{"/", "/index.html", "/login"} {
+		response := httptest.NewRecorder()
+		server.ServeHTTP(response, authenticatedRequest(http.MethodGet, route, nil))
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `data-configured-theme="moss-court"`) {
+			t.Errorf("%s did not serve the configured shell: %d %s", route, response.Code, response.Body)
+		}
+	}
+	asset := httptest.NewRecorder()
+	server.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
+	if asset.Code != http.StatusOK || asset.Body.String() != `console.log("Navi")` {
+		t.Fatalf("asset = %d %s", asset.Code, asset.Body)
 	}
 }
 

@@ -23,7 +23,7 @@ export function App(): React.JSX.Element {
   } = useCatalogState();
   const pages = useMemo(() => catalogQuery.data?.pages ?? [], [catalogQuery.data?.pages]);
   const {
-    searchInputRef, searchQuery, hasSearched, searchOpen, setSearchOpen,
+    searchInputRef, searchButtonRef, searchQuery, hasSearched, searchOpen, setSearchOpen,
     currentPageIndex, currentPage, filteredPage, pageDirection,
     focusFirstResult, openFirstResult, handleSearchEscape, handleQueryChange, handlePageChange,
   } = useCatalogNavigation(pages);
@@ -55,6 +55,7 @@ export function App(): React.JSX.Element {
           onThemeChange={selectTheme}
           query={searchQuery}
           searchInputRef={searchInputRef}
+          mobileSearchButtonRef={searchButtonRef}
           subtitle={currentPage?.subtitle}
           themePreference={themePreference}
           title={currentPage?.title ?? 'Navi'}
@@ -119,6 +120,8 @@ export function App(): React.JSX.Element {
       <AnimatePresence>
         {searchOpen && filteredPage !== undefined ? (
           <SearchOverlay
+            desktopSearchInputRef={searchInputRef}
+            mobileSearchButtonRef={searchButtonRef}
             faviconVersions={faviconVersions}
             key="search-overlay"
             onChange={handleQueryChange}

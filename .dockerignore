@@ -1,8 +1,7 @@
 .git
 .DS_Store
 bin
-configs/config.local.yaml
-configs/urls.yaml
+configs/
 web/dist
 web/node_modules
 web/coverage

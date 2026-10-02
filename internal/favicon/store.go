@@ -18,6 +18,10 @@ import (
 // ErrNotFound indicates that no cached icon exists for a runtime ID.
 var ErrNotFound = errors.New("favicon not found")
 
+// Main configuration permits at most 4 MiB per icon. Recheck persisted blobs
+// within that same bound when upgrading from an older cache validator.
+const maxCachedIconBytes = 4 * 1024 * 1024
+
 // Entry describes one validated locally cached favicon.
 type Entry struct {
 	RuntimeID    string
@@ -68,7 +72,13 @@ func (s *Store) Entry(runtimeID string) (Entry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	entry, ok := s.entries[runtimeID]
-	return entry, ok
+	if !ok {
+		return Entry{}, false
+	}
+	// Cache files are disposable and may be removed outside this process. Never
+	// let fresh metadata suppress a replacement download for a missing blob.
+	info, err := os.Stat(filepath.Join(s.directory, entry.fileName))
+	return entry, err == nil && info.Mode().IsRegular()
 }
 
 // Open returns a locally cached icon file and its metadata.
@@ -85,6 +95,10 @@ func (s *Store) Open(runtimeID string) (Entry, *os.File, error) {
 			return Entry{}, nil, ErrNotFound
 		}
 		return Entry{}, nil, fmt.Errorf("open favicon cache entry: %w", err)
+	}
+	if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() {
+		file.Close()
+		return Entry{}, nil, ErrNotFound
 	}
 	return entry, file, nil
 }
@@ -150,6 +164,9 @@ func (s *Store) Refresh(runtimeID, sourceURL, sourceETag, lastModified string) (
 	defer s.mu.Unlock()
 	entry, ok := s.entries[runtimeID]
 	if !ok || entry.SourceURL != sourceURL {
+		return Entry{}, ErrNotFound
+	}
+	if info, err := os.Stat(filepath.Join(s.directory, entry.fileName)); err != nil || !info.Mode().IsRegular() {
 		return Entry{}, ErrNotFound
 	}
 	if sourceETag != "" {
@@ -227,7 +244,19 @@ func (s *Store) loadMetadata() error {
 		if err := json.Unmarshal(contents, &meta); err != nil || !validMetadata(meta) {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(s.directory, meta.FileName)); err != nil {
+		if info, err := os.Stat(filepath.Join(s.directory, meta.FileName)); err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		icon, err := os.Open(filepath.Join(s.directory, meta.FileName))
+		if err != nil {
+			continue
+		}
+		contents, readErr := io.ReadAll(io.LimitReader(icon, maxCachedIconBytes+1))
+		closeErr := icon.Close()
+		if readErr != nil || closeErr != nil || len(contents) > maxCachedIconBytes {
+			continue
+		}
+		if actualType, ok := validatedContentType(meta.ContentType, contents); !ok || actualType != meta.ContentType {
 			continue
 		}
 		s.entries[meta.RuntimeID] = Entry{

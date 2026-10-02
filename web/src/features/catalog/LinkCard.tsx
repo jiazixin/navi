@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { ExternalLink, LoaderCircle } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { motionTokens } from '../../styles/motion';
@@ -25,7 +25,7 @@ function getHostname(link: CatalogLink): string {
   }
 }
 
-export function LinkCard({ link, enableLayoutMotion = true, iconURL }: LinkCardProps): React.JSX.Element {
+export const LinkCard = memo(function LinkCard({ link, enableLayoutMotion = true, iconURL }: LinkCardProps): React.JSX.Element {
   const [opening, setOpening] = useState(false);
   const openingTimer = useRef<number | undefined>(undefined);
   const reduceMotion = useReducedMotion();
@@ -97,4 +97,4 @@ export function LinkCard({ link, enableLayoutMotion = true, iconURL }: LinkCardP
       </span>
     </motion.a>
   );
-}
+});

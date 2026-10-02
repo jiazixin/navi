@@ -31,7 +31,7 @@ const retryPath = rootElement.dataset.retryPath;
 createRoot(rootElement).render(
   <StrictMode>
     <AppProviders>
-      <AuthGate>
+      <AuthGate configuredTheme={configuredTheme}>
       {message === undefined ? <App /> : (
         <NavigationFailure message={message} configuredTheme={configuredTheme}
           retryPath={retryPath?.startsWith('/go/') === true ? retryPath : '/'} />

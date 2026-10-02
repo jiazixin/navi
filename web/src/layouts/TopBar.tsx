@@ -21,6 +21,7 @@ type TopBarProps = {
   backgroundPatternPreference: BackgroundPatternPreference;
   themePreference: ThemePreference;
   searchInputRef: RefObject<HTMLInputElement | null>;
+  mobileSearchButtonRef?: RefObject<HTMLButtonElement | null>;
   onQueryChange: (query: string) => void;
   onSearchEscape: () => void;
   onMoveToResults: () => void;
@@ -47,6 +48,7 @@ export function TopBar({
   backgroundPatternPreference,
   themePreference,
   searchInputRef,
+  mobileSearchButtonRef,
   onQueryChange,
   onSearchEscape,
   onMoveToResults,
@@ -98,7 +100,12 @@ export function TopBar({
           />
         </div>
         <div className={styles.commands}>
-          <IconButton className={styles.mobileSearch} label="打开搜索" onClick={onOpenSearch}>
+          <IconButton
+            {...(mobileSearchButtonRef === undefined ? {} : { buttonRef: mobileSearchButtonRef })}
+            className={styles.mobileSearch}
+            label="打开搜索"
+            onClick={onOpenSearch}
+          >
             <Search aria-hidden="true" size={19} strokeWidth={1.8} />
           </IconButton>
           <IconButton

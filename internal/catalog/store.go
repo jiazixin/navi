@@ -60,3 +60,8 @@ func (s *Snapshot) ETag() string {
 func (s *Snapshot) Catalog() Catalog {
 	return s.catalog.clone()
 }
+
+// FindLink returns one defensive link copy without cloning the entire catalog.
+func (s *Snapshot) FindLink(runtimeID string) (Link, bool) {
+	return s.catalog.FindLink(runtimeID)
+}

@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func TestSnapshotFindLinkKeepsTagsImmutable(t *testing.T) {
+	store := NewStore()
+	snapshot := store.Publish(Catalog{Pages: []Page{{Groups: []Group{{Links: []Link{{RuntimeID: "one", Tags: []string{"original"}}}}}}}})
+	link, ok := snapshot.FindLink("one")
+	if !ok {
+		t.Fatal("published link not found")
+	}
+	link.Tags[0] = "changed"
+	current, ok := snapshot.FindLink("one")
+	if !ok || current.Tags[0] != "original" {
+		t.Fatalf("snapshot changed through returned link: %+v", current)
+	}
+	if _, ok := snapshot.FindLink("missing"); ok {
+		t.Fatal("missing link was found")
+	}
+}
+
 func TestStorePublishesMonotonicRevisionsAndETags(t *testing.T) {
 	t.Parallel()
 

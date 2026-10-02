@@ -75,6 +75,7 @@ function ProviderMenuGroup({
               optionRefs.current[offset + index] = element;
             }}
             role="menuitemradio"
+            tabIndex={-1}
             type="button"
           >
             <span className={styles.menuOptionIcon}>

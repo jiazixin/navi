@@ -3,6 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { ThemeButton } from './ThemeButton';
 
 describe('ThemeButton', () => {
+  it('moves Tab and Shift+Tab outside the menu while it closes', async () => {
+    const user = userEvent.setup();
+    render(<>
+      <button type="button">之前</button>
+      <ThemeButton onChange={vi.fn()} preference="tea-mist" />
+      <button type="button">之后</button>
+    </>);
+    const trigger = screen.getByRole('button', { name: '主题：茶雾青' });
+    await user.click(trigger);
+    await user.tab();
+    expect(screen.getByRole('button', { name: '之后' })).toHaveFocus();
+    await user.click(trigger);
+    await user.tab({ shift: true });
+    expect(trigger).toHaveFocus();
+  });
+
   it('shows all themes and selects one from the menu', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -225,14 +226,22 @@ func normalizeURL(raw string) (string, error) {
 	if trimmed == "" {
 		return "", nil
 	}
-	parsed, err := url.ParseRequestURI(trimmed)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+	// Catalog destinations are complete URLs, including optional fragments.
+	// ParseRequestURI treats a fragment as path data and breaks anchor links.
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
 		return "", fmt.Errorf("must be a valid URL")
 	}
 	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Host = strings.ToLower(parsed.Host)
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", fmt.Errorf("must use http or https")
+	}
+	if rawPort := parsed.Port(); rawPort != "" {
+		port, err := strconv.Atoi(rawPort)
+		if err != nil || port < 1 || port > 65_535 {
+			return "", fmt.Errorf("must use a port between 1 and 65535")
+		}
 	}
 	if parsed.Path == "" {
 		parsed.Path = "/"

@@ -3,6 +3,22 @@ import userEvent from '@testing-library/user-event';
 import { BackgroundPatternButton } from './BackgroundPatternButton';
 
 describe('BackgroundPatternButton', () => {
+  it('moves Tab and Shift+Tab outside the menu while it closes', async () => {
+    const user = userEvent.setup();
+    render(<>
+      <button type="button">之前</button>
+      <BackgroundPatternButton onChange={vi.fn()} preference="rose-window" />
+      <button type="button">之后</button>
+    </>);
+    const trigger = screen.getByRole('button', { name: '背景纹样：玫瑰窗' });
+    await user.click(trigger);
+    await user.tab();
+    expect(screen.getByRole('button', { name: '之后' })).toHaveFocus();
+    await user.click(trigger);
+    await user.tab({ shift: true });
+    expect(trigger).toHaveFocus();
+  });
+
   it('shows all documented patterns with previews and selects one', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

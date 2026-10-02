@@ -247,6 +247,9 @@ func (s *httpServer) serveIcon(writer http.ResponseWriter, request *http.Request
 	defer file.Close()
 	writer.Header().Set("ETag", entry.ETag)
 	writer.Header().Set("Cache-Control", "public, no-cache")
+	if s.config.Auth.Enabled() {
+		writer.Header().Set("Cache-Control", "private, no-cache")
+	}
 	writer.Header().Set("Content-Type", entry.ContentType)
 	if entry.ContentType == "image/svg+xml" {
 		writer.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
@@ -277,7 +280,7 @@ func (s *httpServer) serveGo(writer http.ResponseWriter, request *http.Request) 
 		s.writeFailurePage(writer, request, http.StatusServiceUnavailable, "目录暂时不可用")
 		return
 	}
-	link, ok := snapshot.Catalog().FindLink(runtimeID)
+	link, ok := snapshot.FindLink(runtimeID)
 	if !ok {
 		s.writeFailurePage(writer, request, http.StatusNotFound, "链接不存在")
 		return
@@ -305,11 +308,15 @@ func (s *httpServer) serveStatic(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	filePath := strings.TrimPrefix(path.Clean(request.URL.Path), "/")
-	if filePath != "." && filePath != "" {
-		if _, err := fs.Stat(s.static, filePath); err == nil {
+	if filePath != "." && filePath != "" && filePath != "index.html" {
+		if info, err := fs.Stat(s.static, filePath); err == nil && info.Mode().IsRegular() {
 			s.files.ServeHTTP(writer, request)
 			return
 		}
+	}
+	if request.URL.Path == "/assets" || strings.HasPrefix(request.URL.Path, "/assets/") {
+		writeJSONError(writer, http.StatusNotFound, "静态资源不存在。")
+		return
 	}
 	contents, err := fs.ReadFile(s.static, "index.html")
 	if err != nil {

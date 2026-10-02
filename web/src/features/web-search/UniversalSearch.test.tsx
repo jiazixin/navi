@@ -78,6 +78,21 @@ describe('UniversalSearch', () => {
     expect(screen.getByRole('menu', { name: '选择搜索入口' })).toBeInTheDocument();
   }
 
+  it('moves Tab into the query field and Shift+Tab back to the provider trigger', async () => {
+    const user = userEvent.setup();
+    render(<>
+      <button type="button">之前</button>
+      <UniversalSearch configuredProviderID="google" />
+    </>);
+    const trigger = screen.getByRole('button', { name: '搜索入口：Google' });
+    await user.click(trigger);
+    await user.tab();
+    expect(screen.getByRole('searchbox', { name: '搜索互联网或询问模型' })).toHaveFocus();
+    await user.click(trigger);
+    await user.tab({ shift: true });
+    expect(trigger).toHaveFocus();
+  });
+
   it('scopes the current provider brand token to the provider SVG', () => {
     const { container } = render(<UniversalSearch />);
     const providerIcon = screen
@@ -229,6 +244,7 @@ describe('UniversalSearch', () => {
     await openProviderMenu(user);
     await user.keyboard('{Tab}');
     expect(geminiTrigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('searchbox', { name: '搜索互联网或询问模型' })).toHaveFocus();
     await waitFor(() =>
       expect(screen.queryByRole('menu', { name: '选择搜索入口' })).not.toBeInTheDocument(),
     );

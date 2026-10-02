@@ -1,86 +1,77 @@
-# 全量审查与验收（2026-09-30）
+# 上线前全量验收（2026-10-02）
 
-基于现有未提交工作区执行 `use-modern-go` 与 Open Code Review 全量审查及修复，保留已有目录调整和功能修改，未提交 Git commit，未新增兼容层。本轮结果如下；后面的 2026-09-17 记录仅作历史参考。
+本轮验证针对提交 `9685e76` 之上的当前工作区，包含所有本轮未提交修改和新增文件。检查前工作区干净；未创建提交、发布或部署。以下结果均来自本轮实际执行，不沿用历史通过记录。
 
-## 审查覆盖
+结论：源码、自动化测试、依赖扫描、前后端构建和隔离启动检查通过，已修复本轮发现的问题。容器运行、真实设备和实际线上 HTTPS 代理尚未验证，不能将本记录视为这些环境的上线验收。
 
-OCR 未配置 LLM endpoint，直接 `ocr review` 未能执行；随后使用官方 delegate 流程，由 OCR 选择文件、解析规则，由当前代理审查源码和差异。没有把 endpoint 调用失败记为审查通过。
+## 审查方式与范围
 
-| 范围 | 总条目 | 可审查文件 | 已审查 | 主动跳过 | 可审查覆盖率 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 当前工作区差异 | 222 | 81 | 81 | 0 | 100% |
-| 全仓扫描 | 211 | 121 | 121 | 0 | 100% |
+- 按 `use-modern-go` CLI 的 Go 1.27.1 完整规则审查、修复 Go，保持既有配置与 JSON 协议。
+- Open Code Review 的全仓 preview 选出 123 个可审查文件，完整读取 6 组规则并逐文件审查，覆盖 Go、前端生产源码、构建配置、配置示例和容器文件。工具默认排除的测试、文档、锁文件及二进制测试数据另行检查。
+- `ocr scan` 的直接模型调用因未配置 LLM endpoint 无法运行；采用 `open-code-review-delegate` 获取文件清单与规则，由当前代理及分工代理执行审查。未将不可运行的模型扫描记作通过。
+- 同时复核认证、会话、请求边界、CSP、SVG 隔离、并发与取消、热加载、资源嵌入、模块依赖和文档引用。
 
-工作区另有 141 项、全仓另有 90 项按 OCR 默认规则排除，包括测试路径、二进制基线和不支持的文本扩展名。测试、文档、Go/npm 依赖与锁文件另行检查和验证，不把这些排除项计入 OCR 的源码覆盖率。逐文件清单和固定问题保存在被忽略的 `web/test-results/navi-ocr-review.json`。
+审查清单、规则、浏览器结果、覆盖率日志、依赖扫描及截图保存在忽略的 `.cache/release-check/2026-10-02/`，不进入发布产物。清单保留 OCR 的默认排除原因。
 
-## 本轮修复
+## 已修复的问题
 
-- 恢复被错误重命名的 `X-Content-Type-Options`、`X-Frame-Options`，增加公开与认证路由的响应头回归检查。
-- 会话满 4096 个时允许已有会话正常重新登录并撤销旧令牌，同时继续拒绝额外的新会话。
-- SSE 每帧写入使用配置的超时，空闲等待时清除期限；取消请求中断阻塞写入，清理时等待取消回调退出。响应记录器保留真实 Flush 错误，避免断开的客户端继续占用处理器。
-- 图标缓存将文件、元数据与索引替换作为同一受锁保护的操作；读取时在释放读锁前打开文件，避免并发替换与清理造成内容、ETag 和持久元数据不一致。
-- 合并探测中，等待者在自己的原始超时预算内重试被其他调用者取消的探测；取消不进入目标缓存，Resolver 保留调用者的取消错误。确定性并发测试覆盖该失败路径。
-- 分组标题使用实例唯一 ID，手机目录与搜索浮层共存时无障碍标签不会指向重复 ID。标题网格允许合法的 40 字标题换行，三浏览器回归覆盖 320px 目录与浮层。
-- 卡片点击计时器重复点击前清理，并在卸载时释放。认证 API 要求当前协议中的 `authRequired` 字段，开发 fixture 同步返回该字段。
-- 应用 `wg.Go`、`t.Context()`、`slices.Clone`、`bytes.Clone`、`slices.SortStableFunc`、`maps.DeleteFunc`、`FieldsSeq`、`strings.Cut`、`omitzero` 和整数 range；移除旧定时器通道排空写法。API 标签数组仍保证空值编码为 `[]`。
+| 范围 | 问题与修复 |
+| --- | --- |
+| 首页显示 | 普通动画模式下分组停在 `opacity: 0`，导致目录不可见；补全入场动画，并在真实浏览器断言最终不透明度 |
+| 键盘与移动搜索 | 修复三个选择菜单的 Tab/Shift+Tab 退出、搜索结果 Escape 关闭、Safari 的返回焦点和移动切换桌面后的焦点与 inert 清理；保留查询 |
+| 认证与快捷键 | 登录页跟随系统主题；斜杠快捷键不夺取嵌套可编辑区域的输入；补齐认证失败、失效、退出与焦点回归测试 |
+| 导航与资源 | URL 保留查询和片段，拒绝空主机及非法端口；缺失静态资源和资源目录返回 404；直接 `/index.html` 注入配置主题 |
+| 图标下载 | 去重后限制声明候选为 16 个，保留根图标回退；移除未支持的 AVIF 协商；校验图像头、容器边界和位图尺寸 |
+| 图标恢复 | 文件丢失及条件 304 后丢失均重新获取；拒绝异常无条件 304；启动重验旧缓存，损坏或过大的内容不进入有效索引并重新下载 |
+| 缓存与性能 | 认证图标使用 private 缓存；单链接跳转直接查找快照，避免克隆整份目录；卡片 memo 避免单图标更新重绘所有卡片 |
+| 构建与隔离 | Node engines 与实际依赖要求一致；覆盖率包含全部生产 TS/TSX；限制测试 worker；发布构建关闭 sourcemap；排除全部本地配置及已有产物的容器上下文 |
 
-## 依赖与构建基线
-
-按 Docker 原固定的 Go 1.25.12 扫描发现 5 个可触达标准库漏洞：GO-2026-6218、GO-2026-6090、GO-2026-6089、GO-2026-5972、GO-2026-5026。Go 1.25 已结束官方支持，因此 `go.mod` 和 Docker 构建镜像统一到 Go 1.27.1。本机与 Docker 的版本口径一致；[Go 官方发布与支持政策](https://go.dev/doc/devel/release#policy)、[官方 Go 镜像标签](https://hub.docker.com/_/golang)。
-
-完整 npm 审计最初报告 7 个受影响包（含传递影响，3 moderate、4 high）。Vitest 与 coverage-v8 固定到 4.1.11，更新相关 Vitest 包及 brace-expansion、js-yaml、nanoid、undici 的安全版本并同步锁文件；未使用强制审计修复。上游依据包括 [Vitest 公告](https://github.com/vitest-dev/vitest/security/advisories/GHSA-82fw-gwwq-j7x9)、[js-yaml 公告](https://github.com/nodeca/js-yaml/security/advisories/GHSA-2883-xcg3-v3hh)、[Undici 公告](https://github.com/nodejs/undici/security/advisories/GHSA-w293-vg96-wgc3)。
+图像检查限制位图每边 1–2048 像素，启动缓存读取上限 4 MiB。PNG/JPEG/GIF 检查可解码的图像头，ICO/WebP 检查容器与尺寸，SVG 检查完整 XML；这些检查不等于完整像素解码。
 
 ## 实际验证
 
-| 项目 | 本轮结果 |
+执行环境：macOS arm64；Go 1.27.1、Node 26.8.2、npm 11.19.1、Playwright 1.62.1；Staticcheck 2026.2.1（0.8.1）、govulncheck 1.8.0、Modern Go Guidelines CLI 0.1.1。浏览器使用项目 Playwright 对应版本。
+
+以下命令从仓库根执行；Go 检查均在生成 `web/dist` 后运行。本机工具缓存放临时目录，静态检查工具使用 `/tmp/navi-go-tools/`，浏览器缓存使用 `/tmp/navi-playwright`。
+
+| 命令 / 检查 | 本轮结果 |
 | --- | --- |
-| Go 格式、完整测试、race、vet、Staticcheck | 全部通过 |
-| Go 模块校验 | `go mod verify` 通过 |
-| Govulncheck 源码与最终二进制 | Go 1.27.1：未发现已知漏洞 |
-| ESLint、TypeScript、生产前端构建 | 全部通过 |
-| 前端单元测试 | 24 文件、94 项通过；语句覆盖率 94.28% |
-| Storybook 测试构建 | 通过；第三方弃用和产物体积提示仍存在 |
-| 三浏览器 E2E | 54/54 通过，使用项目固定版本 Chromium、Firefox、WebKit |
-| 视觉回归 | 26/26 通过，未更新图片基线 |
-| 真实 Go 三浏览器集成 | 21/21 通过，无 API mock；含认证/会话撤销、跳转、热更新、磁盘故障恢复 |
-| 完整 npm audit（包含开发依赖） | 0 项漏洞；干净 `npm ci` 同样为 0 |
-| 干净副本 | 排除本地配置、缓存、node_modules 和产物；最终锁文件安装、前端构建及 Go 测试通过 |
-| 最小启动 | 默认配置文件、显式 CONFIG_FILE、缺失隐式配置的内置默认值：health、catalog、session、嵌入首页与 SIGTERM 正常；显式空路径和缺失文件拒绝启动 |
-| 二进制构建 | macOS arm64 构建及版本输出通过；Linux amd64 静态交叉编译通过 |
-| 差异与生成物 | `git diff --check` 通过；报告、浏览器和审计工具不进入源码目录 |
+| `npm --prefix web ci` | 锁文件安装通过；隔离副本重新安装通过 |
+| `npm --prefix web run lint`、`npm --prefix web run typecheck` | 通过，隔离副本再次通过 |
+| `npm --prefix web run test` | 29 个测试文件、134 项通过；语句 92.67%、分支 78.3%、函数 90.58%、行 92.59% |
+| `npm --prefix web run test:e2e` | Chromium、Firefox、WebKit 共 69 项通过；失败、跳过、flaky 均为 0 |
+| `npm --prefix web run test:visual` | 26 项通过；未更新视觉基线 |
+| `npm --prefix web run test:production` | 最后后端补丁之后重跑，真实 Go 三浏览器共 21 项通过；失败、跳过、flaky 均为 0 |
+| `npm --prefix web run storybook:test` | 测试模式构建通过；此命令不执行组件浏览器交互断言 |
+| `npm --prefix web run build` | 通过；产物没有 sourcemap |
+| `gofmt -l cmd internal web/embed.go`、`git diff --check` | 无格式问题 |
+| `go mod verify` | 所有模块校验通过 |
+| `go test -count=1 -race ./internal/... ./cmd/... ./web` | 最后缓存补丁之后全量通过；隔离副本普通 Go 测试与构建通过 |
+| `go vet ./internal/... ./cmd/... ./web`、`staticcheck ./internal/... ./cmd/... ./web` | 最后缓存补丁之后通过 |
+| `govulncheck ./internal/... ./cmd/... ./web` | 未发现已知漏洞 |
+| `govulncheck -mode=binary bin/navi` | 最后补丁构建的二进制未发现已知漏洞 |
+| `npm --prefix web audit` | 全部依赖（含开发依赖）已知漏洞数 0 |
+| `CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi` | 本机二进制构建通过；Linux amd64 静态交叉编译通过 |
+| 干净副本启动 | 当前源码副本从零安装与构建；隐式、显式配置和默认值启动通过；health、目录、认证开关、嵌入首页、资源 404、SIGTERM 正常退出通过；显式空/缺失配置正确拒绝 |
+| 人工 UI 复核 | 查看普通动画稳定后的桌面 1440、移动 320 和移动搜索截图；目录可见，移动单列及搜索层正常 |
 
-Docker 守护进程未运行，容器构建与实际运行未验证；Linux 交叉编译和源码审查不能替代容器检查。真机触控、高 DPI 和高刷新率手工检查未执行。
+覆盖率门槛保持原值：语句/函数/行 80%，分支 75%；没有通过排除未测生产文件或降低门槛达标。浏览器用例覆盖最大 1000 链接的筛选与 YAML 顺序恢复。macOS WebKit 用 Alt+Tab/Alt+Shift+Tab 包含按钮，尊重 Safari 默认 Tab 行为。
 
----
+发布 JS 为 492,500 字节，CSS 为 60,567 字节；关闭 sourcemap 去除约 7.56 MB 可重建映射文件。单图标更新的 500 卡片渲染次数实验由 500 降为 1，最终单元回归使用 100 卡片验证仅对应卡片更新。这些结果不代表生产网络延迟、背景动画 CPU 或设备帧率已完成基准测试。
 
-## 历史目录规范整改验收（2026-09-17）
+Storybook 构建仍出现依赖工具的 `DEP0205` 弃用提示及 Storybook chunk 超过 500 kB 提示；构建成功，默认产品 JS 小于 500 kB。未为消除工具提示修改第三方依赖。
 
-本次基于当前未提交工作区继续修改，未提交 Git commit。依据根目录《目录规范.md》，不保留旧入口、旧目录副本或兼容层。
+## 文档与目录整理
 
-## 迁移范围
+精简中英文 README，更新设计、开发和 UI 约定；删除 5 份过期归档/已完成计划，历史内容可从 Git 追溯。保留根 `AGENTS.md` 对唯一目录基线的引用，未另建目录规范。同步配置示例、Node 版本要求、认证与容器权限说明，检查链接、命令及 Git/容器忽略规则；无已跟踪但应忽略的产物。
 
-- Go HTTP 装配、认证、处理器与测试归入 `internal/app/`，HTTP 内部类型取消导出；端口等待辅助函数移入测试文件。
-- Web API 归入 `src/app/api/`，跨域 UI 归入 `src/components/`，顶栏归入 `src/layouts/`，导航失败页归入 `src/features/navigation/`，动效变量归入 `src/styles/`。
-- 浏览器测试、生产服务 fixture 和既有视觉基线统一到 `web/e2e/`；共享开发/测试 fixture 在 `web/tests/fixtures/`；`src/test/` 只保留单元测试 setup。
-- `CONFIG_FILE` 选择配置，默认只查找 `configs/config.local.yaml`；缺失使用默认值，显式空路径或缺失文件报错。`NAVI_<字段>` / `NAVI_<节>_<字段>` 覆盖文件与默认值。
-- 本地 `configs/config.yaml` 迁为 `configs/config.local.yaml`；只修改其中缓存路径，其他配置值和导航 YAML 保留。原 `storage/` 整体迁至 `.cache/`，图标文件未丢弃。
-- 安装、开发、运行、构建、检查与测试改为直接调用 Go/npm 命令；Docker、忽略规则、双语 README、开发文档和架构说明同步。历史计划及验收记录放入 `docs/archive/`。
+未进行全仓目录迁移，未改写用户配置或真实业务数据。测试、启动与缓存故障验证使用合成配置和隔离目录。开发预览进程已关闭。
 
-## 实际验证
+## 未执行与部署前剩余检查
 
-以下为 2026-09-17 的历史验证结果，不代表移除构建入口后重新执行了全套验证。
+- Docker CLI 存在，但本机 Docker contexts 对应守护进程 socket 均不存在；未执行镜像构建、容器启动、UID 65532 的实际挂载读写。Linux 交叉编译及 Dockerfile 审查不能替代这些检查。
+- 未执行真机触控、高 DPI、高刷新率及实际浏览器 200%/400% 缩放；视口、键盘和无障碍自动化不等于这些手工检查。
+- 未在实际线上 HTTPS 反向代理验证 Secure Cookie、Host 转发、SSE 缓冲/长连接、目标站点网络可达性和部署资源限制。
+- 仓库没有已配置 CI；未读取或修改任何外部 CI。上述通过结果是本机与隔离副本验证。
 
-| 项目 | 结果 |
-| --- | --- |
-| 完整检查 | 通过：ESLint、TypeScript、79 项前端单元测试、Go 测试、race、vet、格式和生产构建 |
-| Storybook 测试构建 | 通过；第三方工具仍有弃用/产物体积提示 |
-| 常规三浏览器 E2E | 首轮 50/51；Firefox 动画采样只有 2 帧，未满足大于 2 帧断言。该用例随后在三个浏览器复跑均通过；未放宽断言 |
-| 视觉回归 | 26/26 通过；本轮只迁移基线位置，未更新图片 |
-| 真实 Go 三浏览器集成 | 21/21 通过，包含认证、会话撤销、跳转、目录热更新与缓存故障恢复 |
-| 干净副本 | 排除本地配置、运行缓存、node_modules、dist 和报告，依赖安装与完整检查通过 |
-| 最小启动 | 干净副本分别验证默认文件、无主配置文件的内置默认值、显式 CONFIG_FILE；health、嵌入首页、目录 API 与 SIGTERM 退出通过 |
-| 配置错误 | 显式空 CONFIG_FILE 和不存在的路径均退出报错 |
-| 生成物清理 | 在干净副本验证生成目录删除，配置、data 和缓存哨兵文件内容不变 |
-| 路径与工作区 | 当前有效引用无旧目录/命令；Git 已跟踪内容中无被忽略的现存文件；`git diff --check` 通过 |
-
-Docker 守护进程未运行，容器构建与运行未验证。未重新执行 Staticcheck、Govulncheck、独立依赖审计或真机检查；历史结果不能替代本轮验证。
+这些环境项仍需在实际部署条件下执行。本轮未留下已确认而未修复的源码问题；本地通过不能保证不同运行环境或未来输入不存在其他问题。

@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -317,10 +318,14 @@ func discardLogger() *slog.Logger {
 }
 
 func TestPeriodicIconMaintenanceWithoutCatalogWatcher(t *testing.T) {
+	icon, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQSFjwHwAD5AIge4YO3AAAAABJRU5ErkJggg==")
+	if err != nil {
+		t.Fatal(err)
+	}
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/favicon.ico" {
 			w.Header().Set("Content-Type", "image/png")
-			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\nimage"))
+			_, _ = w.Write(icon)
 			return
 		}
 		_, _ = w.Write([]byte("<html></html>"))

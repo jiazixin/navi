@@ -124,6 +124,7 @@ export function ThemeButton({ preference, onChange }: ThemeButtonProps): React.J
                   optionRefs.current[index] = element;
                 }}
                 role="menuitemradio"
+                tabIndex={-1}
                 type="button"
               >
                 <span className={styles.swatches} aria-hidden="true">

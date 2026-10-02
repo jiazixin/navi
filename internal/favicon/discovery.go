@@ -17,6 +17,10 @@ import (
 
 const maxHTMLBytes = 256 * 1024
 
+// A remote page must not monopolize a worker with thousands of icon requests.
+// Keep a generous set of the best distinct declarations, plus the root fallback.
+const maxDeclaredCandidates = 16
+
 type candidate struct {
 	url   string
 	score int
@@ -64,8 +68,14 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 		if _, ok := seen[candidate.url]; ok {
 			continue
 		}
+		if len(urls) == maxDeclaredCandidates {
+			break
+		}
 		seen[candidate.url] = struct{}{}
 		urls = append(urls, candidate.url)
+	}
+	if _, ok := seen[origin.String()]; !ok {
+		urls = append(urls, origin.String())
 	}
 	return urls, nil
 }
@@ -115,6 +125,9 @@ func isIconRelation(value string) bool {
 }
 
 func resolveCandidate(base *url.URL, raw string) (string, bool) {
+	if strings.TrimSpace(raw) == "" {
+		return "", false
+	}
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
 		return "", false

@@ -8,8 +8,8 @@ web/test-results/
 web/playwright-report/
 web/.vite/
 /bin/
-/configs/config.local.yaml
-/configs/urls.yaml
+/configs/*
+!/configs/*.example.yaml
 .cache/
 data/
 coverage/

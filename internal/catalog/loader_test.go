@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,29 @@ func TestLoadFileAcceptsSingleDestinationVariants(t *testing.T) {
 				t.Fatalf("pages = %#v", loaded.Pages)
 			}
 		})
+	}
+}
+
+func TestCatalogPreservesDestinationFragments(t *testing.T) {
+	for _, destination := range []string{"https://Example.Test/docs#section", "https://Example.Test/docs?q=search#section", "https://Example.Test/#section"} {
+		t.Run(destination, func(t *testing.T) {
+			contents := fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Anchor, group: One, public_url: %q}\n", destination)
+			loaded, err := LoadFile(writeCatalog(t, contents))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual := loaded.Pages[0].Groups[0].Links[0].PublicURL; actual != strings.Replace(destination, "Example.Test", "example.test", 1) {
+				t.Fatalf("destination fragment changed: %q", actual)
+			}
+		})
+	}
+}
+
+func TestCatalogRejectsEmptyHostnameAndInvalidPort(t *testing.T) {
+	for _, destination := range []string{"http://:8080/", "https://example.test:65536/", "https://example.test:0/"} {
+		if _, err := normalizeURL(destination); err == nil {
+			t.Errorf("accepted invalid destination %q", destination)
+		}
 	}
 }
 

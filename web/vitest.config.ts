@@ -12,12 +12,13 @@ export default defineConfig({
     },
     exclude: ['e2e/**', 'e2e/production/**', 'node_modules/**'],
     globals: true,
+    maxWorkers: 4,
     setupFiles: ['./src/test/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary'],
-      include: ['src/**/*.ts'],
-      exclude: ['src/vite-env.d.ts', 'src/test/**'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/vite-env.d.ts', 'src/test/**', 'src/**/*.stories.tsx'],
       thresholds: {
         lines: 80,
         functions: 80,
