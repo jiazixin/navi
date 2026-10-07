@@ -19,7 +19,7 @@ go mod download
 npm --prefix web ci
 npm --prefix web run build
 CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi
-CONFIG_FILE=./configs/config.local.yaml ./bin/navi
+./bin/navi --config ./configs/config.local.yaml
 ```
 
 The default address is `http://127.0.0.1:8080`; health is available at `/health`. Edit both local YAML files first. Both credentials are empty by default, allowing direct access. Set both `auth.username` and `auth.password` to enable login.
@@ -28,7 +28,7 @@ The default address is `http://127.0.0.1:8080`; health is available at `/health`
 
 [config.example.yaml](configs/config.example.yaml) is the source for all fields, defaults, and constraints. See [urls.example.yaml](configs/urls.example.yaml) and the [catalog contract](docs/DESIGN.md#导航数据) for navigation data.
 
-- `CONFIG_FILE` explicitly selects the main configuration; relative paths resolve from the process working directory. Without it, only `./configs/config.local.yaml` is checked, and an absent file uses built-in defaults. An explicitly empty value, a missing/unreadable selected file, or invalid YAML fails startup. The catalog must exist and be valid.
+- `-f PATH` / `--config PATH` explicitly selects the main configuration and overrides `CONFIG_FILE`; without a flag, `CONFIG_FILE` remains available. Relative paths resolve from the process working directory. If neither is set, only `./configs/config.local.yaml` is checked, and an absent file uses built-in defaults. An explicitly empty value, a missing/unreadable selected file, or invalid YAML fails startup. The catalog must exist and be valid.
 - Priority is environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER_PORT=8081`, or `NAVI_CATALOG_WATCH=false`.
 - String variables are preserved literally; paths trim surrounding whitespace and credentials match exactly. An empty variable overrides the file: optional credentials may be cleared together, but required paths cannot be empty. Numbers, booleans, and durations must be single non-empty scalar values. Durations accept `250ms`, `3s`, and `168h`, rather than `7d`.
 - `storage` and `catalog.path`, including environment overrides, resolve from the selected configuration's directory. Without the implicit main file, the expected `configs/` directory remains the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployment.
@@ -104,7 +104,7 @@ The repository has no CI configuration and no verifiable external CI configurati
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-dev}
+VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || printf '%s\n' dev)}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
 BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 CGO_ENABLED=0 go build -trimpath -buildvcs=false \
@@ -113,7 +113,7 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ./bin/navi --version
 ```
 
-`bin/navi` includes the frontend, version, commit, and build time. Supply the release version through the environment. The commit field does not identify uncommitted changes; confirm the actual source being released.
+`bin/navi` includes the frontend, version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, falling back to `dev`. The tag is injected at build time, so the resulting binary does not depend on `.git`. The commit field does not identify uncommitted changes; confirm the actual source being released.
 
 ## Container
 
@@ -172,3 +172,4 @@ Completed plans and obsolete acceptance records remain in Git history and are no
 | Rule / standard path | Actual path or behavior | Reason and evidence | Scope | Reassessment condition |
 | --- | --- | --- | --- | --- |
 | Section 7.1: paths without a configuration file default to the working directory | Missing implicit configuration resolves built-in paths from the expected `configs/config.local.yaml` directory | Existing Load/finishConfig protocol in `internal/config/config.go`; paths remain stable whether the implicit file exists | Root Go service default startup | An explicitly authorized configuration-protocol change |
+| Section 7.1: `CONFIG_FILE` explicitly selects configuration | `-f PATH` / `--config PATH` are also supported and take precedence | This project is an executable service; the user explicitly requested standard CLI configuration flags while retaining environment selection for containers | `cmd/navi` configuration selection | An explicitly authorized CLI or configuration-protocol change |

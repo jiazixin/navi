@@ -7,8 +7,8 @@ auth:
   secure_cookie: false
 
 # Navi 主配置示例
-# 复制为 configs/config.local.yaml 后按部署环境修改。启动方式：CONFIG_FILE=/路径/config.local.yaml ./bin/navi
-# 配置选择：CONFIG_FILE 选择配置；未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
+# 复制为 configs/config.local.yaml 后按部署环境修改。启动方式：./bin/navi --config /路径/config.local.yaml
+# 配置选择：-f/--config 优先于 CONFIG_FILE；均未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
 # 主配置修改后需要重启；只有 catalog.path 指向的导航 YAML 支持热加载。
 # 未知字段、非法取值、重复 YAML 键和多个 YAML 文档会导致启动失败。
 # 下列值均为默认值；省略字段时使用默认值，不用空字符串代替省略。

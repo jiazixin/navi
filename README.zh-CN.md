@@ -19,7 +19,7 @@ go mod download
 npm --prefix web ci
 npm --prefix web run build
 CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi
-CONFIG_FILE=./configs/config.local.yaml ./bin/navi
+./bin/navi --config ./configs/config.local.yaml
 ```
 
 默认地址为 `http://127.0.0.1:8080`，健康检查为 `/health`。先编辑两份本地 YAML；账号密码默认均为空，服务允许直接访问。需要登录时同时设置 `auth.username` 和 `auth.password`。
@@ -28,7 +28,7 @@ CONFIG_FILE=./configs/config.local.yaml ./bin/navi
 
 完整字段、默认值和约束以 [config.example.yaml](configs/config.example.yaml) 为准。导航格式见 [urls.example.yaml](configs/urls.example.yaml) 和 [数据契约](docs/DESIGN.md#导航数据)。
 
-- `CONFIG_FILE` 显式选择主配置；相对路径以进程工作目录为基准。未设置时只查找 `./configs/config.local.yaml`，缺失时使用内置默认值；显式空值、文件不存在、不可读或 YAML 非法均启动失败。导航 YAML 必须存在且合法。
+- `-f PATH` / `--config PATH` 显式选择主配置，并覆盖 `CONFIG_FILE`；未传标志时仍可用 `CONFIG_FILE`。相对路径以进程工作目录为基准。两者都未设置时只查找 `./configs/config.local.yaml`，缺失时使用内置默认值；显式空值、文件不存在、不可读或 YAML 非法均启动失败。导航 YAML 必须存在且合法。
 - 优先级为环境变量 > 所选文件 > 内置默认值。字段映射为 `NAVI_<字段>` 或 `NAVI_<节>_<字段>`，例如 `NAVI_STORAGE=/var/cache/navi`、`NAVI_SERVER_PORT=8081`、`NAVI_CATALOG_WATCH=false`。
 - 字符串环境变量保留原值，路径解析时去掉首尾空白；凭证精确匹配。空字符串会覆盖文件值：允许清空可选认证，但不能清空必填路径。数字、布尔和时长必须是单个非空标量，非法值报错。时长使用 `250ms`、`3s`、`168h`，不支持 `7d`。
 - `storage` 和 `catalog.path`（包括环境覆盖）相对所选配置所在目录解析。没有隐式主配置时仍以预期的 `configs/` 为基准，因此默认目录为 `configs/urls.yaml`，缓存为 `.cache/`。部署优先使用绝对路径。
@@ -104,7 +104,7 @@ npm --prefix web run test:production
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-dev}
+VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || printf '%s\n' dev)}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
 BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 CGO_ENABLED=0 go build -trimpath -buildvcs=false \
@@ -113,7 +113,7 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ./bin/navi --version
 ```
 
-生成 `bin/navi`，包含前端以及版本、提交、构建时间。使用环境变量设置发布版本；工作区未提交的修改不会由 commit 字段标识，发布前应核对实际源码范围。
+生成 `bin/navi`，包含前端以及版本、提交、构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有时使用 `dev`。tag 是构建时注入的，成品二进制不依赖 `.git`。工作区未提交的修改不会由 commit 字段标识，发布前应核对实际源码范围。
 
 ## 容器
 
@@ -172,3 +172,4 @@ coverage/             Go 覆盖率报告（按需生成）
 | 规则 / 标准路径 | 实际路径或行为 | 原因与依据 | 适用范围 | 重新评估条件 |
 | --- | --- | --- | --- | --- |
 | 第 7.1 节：无配置文件时路径默认以工作目录为基准 | 缺失隐式主配置时，以预期 `configs/config.local.yaml` 所在目录解析内置路径 | `internal/config/config.go` 的既有 Load/finishConfig 协议；保持有无隐式文件时路径一致 | 根 Go 服务的默认启动 | 明确调整配置协议时 |
+| 第 7.1 节：通过 `CONFIG_FILE` 显式选择配置 | 同时支持 `-f PATH` / `--config PATH`，且命令行优先 | 本项目是可执行服务；用户明确要求标准 CLI 配置标志，环境变量继续用于容器部署 | `cmd/navi` 配置选择 | 明确调整 CLI 或配置协议时 |

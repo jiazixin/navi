@@ -3,6 +3,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/signal"
@@ -12,26 +14,21 @@ import (
 	"navi/internal/config"
 )
 
-var (
-	version   = "dev"
-	commit    = "unknown"
-	buildTime = "unknown"
-)
-
 func main() {
-	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "-version") {
-		fmt.Printf("Navi %s (%s, %s)\n", version, commit, buildTime)
+	options, err := parseCLI(os.Args[1:], os.Stdout)
+	if errors.Is(err, flag.ErrHelp) {
 		return
 	}
-	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
-		fmt.Fprintln(os.Stdout, "Usage: navi | navi --version (CONFIG_FILE selects configuration; default: ./configs/config.local.yaml)")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "navi: %v\n", err)
+		os.Exit(2)
+	}
+	if options.showVersion {
+		fmt.Fprintln(os.Stdout, formatVersion(version, commit, buildTime))
 		return
 	}
-	if len(os.Args) > 1 {
-		fmt.Fprintln(os.Stderr, "navi: unexpected arguments; select configuration with CONFIG_FILE")
-		os.Exit(1)
-	}
-	loaded, err := config.Load(os.LookupEnv)
+
+	loaded, err := config.Load(options.lookupEnv(os.LookupEnv))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "navi: %v\n", err)
 		os.Exit(1)
