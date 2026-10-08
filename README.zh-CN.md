@@ -18,7 +18,12 @@ cp -n configs/urls.example.yaml configs/urls.yaml
 go mod download
 npm --prefix web ci
 npm --prefix web run build
-CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
+COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+  -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -o bin/navi ./cmd/navi
 ./bin/navi --config ./configs/config.local.yaml
 ```
 
@@ -104,7 +109,7 @@ npm --prefix web run test:production
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || printf '%s\n' dev)}
+VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
 BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 CGO_ENABLED=0 go build -trimpath -buildvcs=false \
@@ -113,14 +118,21 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ./bin/navi --version
 ```
 
-生成 `bin/navi`，包含前端以及版本、提交、构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有时使用 `dev`。tag 是构建时注入的，成品二进制不依赖 `.git`。工作区未提交的修改不会由 commit 字段标识，发布前应核对实际源码范围。
+生成 `bin/navi`，包含前端以及版本、提交、构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有 tag 时使用当前提交的短 ID。没有显式注入时，程序也会读取 Go 内嵌的 VCS revision（或 Go 伪版本中的提交号）并回退到短 ID；只有两种构建信息都不存在时才使用 `dev`。tag 和提交信息均在构建时固化，成品二进制不依赖 `.git`。工作区未提交的修改不会由 commit 字段标识，发布前应核对实际源码范围。
 
 ## 容器
 
 Dockerfile 从锁文件安装前端依赖、构建 `web/dist`，再编译静态 Go 二进制；运行镜像不含 Node。准备本地配置后执行：
 
 ```sh
-docker build -t navi:local .
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
+COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker build \
+  --build-arg VERSION="$VERSION" \
+  --build-arg COMMIT="$COMMIT" \
+  --build-arg BUILD_TIME="$BUILD_TIME" \
+  -t navi:local .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/configs:/app/configs:ro" \
   -v navi-cache:/app/.cache \

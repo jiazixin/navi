@@ -18,7 +18,12 @@ cp -n configs/urls.example.yaml configs/urls.yaml
 go mod download
 npm --prefix web ci
 npm --prefix web run build
-CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
+COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+  -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -o bin/navi ./cmd/navi
 ./bin/navi --config ./configs/config.local.yaml
 ```
 
@@ -104,7 +109,7 @@ The repository has no CI configuration and no verifiable external CI configurati
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || printf '%s\n' dev)}
+VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
 COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
 BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
 CGO_ENABLED=0 go build -trimpath -buildvcs=false \
@@ -113,14 +118,21 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ./bin/navi --version
 ```
 
-`bin/navi` includes the frontend, version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, falling back to `dev`. The tag is injected at build time, so the resulting binary does not depend on `.git`. The commit field does not identify uncommitted changes; confirm the actual source being released.
+`bin/navi` includes the frontend, version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, falling back to the current short commit ID when no tag exists. Without explicit injection, the program also reads Go's embedded VCS revision (or the revision in a Go pseudo-version) and falls back to its short ID; `dev` is used only when neither source of build metadata exists. Tag and commit information are fixed at build time, so the resulting binary does not depend on `.git`. The commit field does not identify uncommitted changes; confirm the actual source being released.
 
 ## Container
 
 Dockerfile installs frontend dependencies from the lockfile, builds `web/dist`, and compiles a static Go binary. The runtime image does not include Node. After preparing local configuration:
 
 ```sh
-docker build -t navi:local .
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
+COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+docker build \
+  --build-arg VERSION="$VERSION" \
+  --build-arg COMMIT="$COMMIT" \
+  --build-arg BUILD_TIME="$BUILD_TIME" \
+  -t navi:local .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/configs:/app/configs:ro" \
   -v navi-cache:/app/.cache \

@@ -29,7 +29,12 @@ go mod verify
 go test ./internal/... ./cmd/... ./web
 go test -race ./internal/... ./cmd/... ./web
 go vet ./internal/... ./cmd/... ./web
-CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
+COMMIT=$(git rev-parse --short HEAD)
+BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+  -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
 
