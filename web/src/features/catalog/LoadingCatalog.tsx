@@ -1,29 +1,29 @@
 import styles from './LoadingCatalog.module.css';
 
-const skeletonGroups = [3, 2] as const;
+const groups = [6, 4, 5];
 
 export function LoadingCatalog(): React.JSX.Element {
   return (
-    <div className={styles.catalog} aria-busy="true" aria-label="正在加载导航目录">
-      {skeletonGroups.map((cardCount, groupIndex) => (
-        <section className={styles.group} key={groupIndex}>
-          <div className={styles.headingRow}>
-            <span className={`${styles.skeleton} ${styles.heading}`} />
-            <span className={`${styles.skeleton} ${styles.count}`} />
+    <div aria-busy="true" aria-label="正在加载目录" className={styles.loading} role="status">
+      {groups.map((count, group) => (
+        <div className={styles.group} key={group}>
+          <div className={styles.heading}>
+            <span className={styles.number} />
+            <span className={styles.title} />
             <span className={styles.rule} />
           </div>
           <div className={styles.grid}>
-            {Array.from({ length: cardCount }, (_, cardIndex) => (
-              <div className={styles.card} key={cardIndex}>
-                <span className={`${styles.skeleton} ${styles.icon}`} />
-                <span className={styles.copy}>
-                  <span className={`${styles.skeleton} ${styles.title}`} />
-                  <span className={`${styles.skeleton} ${styles.secondary}`} />
+            {Array.from({ length: count }, (_, card) => (
+              <div className={styles.card} key={card}>
+                <span className={styles.icon} />
+                <span className={styles.lines}>
+                  <span />
+                  <span />
                 </span>
               </div>
             ))}
           </div>
-        </section>
+        </div>
       ))}
     </div>
   );

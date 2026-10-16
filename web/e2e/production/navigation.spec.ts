@@ -18,7 +18,7 @@ test('production assets respect CSP and private destinations take priority', asy
   const response = await page.goto(app.url);
   expect(response?.headers()['content-security-policy']).toContain("default-src 'self'");
   await expect(page.getByRole('link', { name: '打开 部署测试' })).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mint-tide');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'celadon');
   const popupPromise = page.waitForEvent('popup');
   await page.getByRole('link', { name: '打开 部署测试' }).click();
   const popup = await popupPromise;
@@ -37,7 +37,7 @@ test('unreachable page has themed retry, return link and successful fresh retry'
   const response = await page.goto(app.url + path);
   expect(response?.status()).toBe(502);
   await expect(page.getByRole('heading', { name: '部署测试 当前无法访问' })).toBeVisible();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'mint-tide');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'celadon');
   await expect(page.getByRole('link', { name: '返回导航' })).toHaveAttribute('href', '/');
   await page.setViewportSize({ width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

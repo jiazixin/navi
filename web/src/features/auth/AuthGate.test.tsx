@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useContext } from 'react';
 import { getSession } from '../../app/api/auth';
-import type { CatalogTheme } from '../../app/api/theme';
 import { mockBrowserLocation } from '../../test/browserLocation';
+import { AppearanceProvider } from '../appearance/AppearanceProvider';
+import type { ThemePreference } from '../appearance/options';
 import { AuthGate } from './AuthGate';
 import { AuthRequiredContext } from './AuthContext';
 
@@ -15,11 +16,13 @@ function CatalogContent(): React.JSX.Element {
   return <div>目录内容{authRequired ? <button type="button">退出登录</button> : null}</div>;
 }
 
-function renderGate(configuredTheme: CatalogTheme = 'default') {
+function renderGate(configuredTheme: ThemePreference = 'default') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const rendered = render(
     <QueryClientProvider client={queryClient}>
-      <AuthGate configuredTheme={configuredTheme}><CatalogContent /></AuthGate>
+      <AppearanceProvider configuredPattern="none" configuredTheme={configuredTheme}>
+        <AuthGate><CatalogContent /></AuthGate>
+      </AppearanceProvider>
     </QueryClientProvider>,
   );
   return { ...rendered, queryClient };
@@ -38,33 +41,20 @@ afterEach(() => {
 });
 
 describe('AuthGate', () => {
-  it('keeps the login screen synchronized with the default system theme', async () => {
+  it('resolves the default theme to the light palette when the system is light', async () => {
     window.history.replaceState(null, '', '/login');
-    document.documentElement.dataset.theme = 'light';
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const subscribe = vi.spyOn(media, 'addEventListener');
-    const originalMatchMedia = window.matchMedia.bind(window);
-    vi.spyOn(window, 'matchMedia').mockImplementation((query) => (
-      query === media.media ? media : originalMatchMedia(query)
-    ));
     vi.mocked(getSession).mockResolvedValue({ authenticated: false, authRequired: true });
     renderGate();
     expect(await screen.findByLabelText('账号')).toBeInTheDocument();
-    const listener = subscribe.mock.calls[0]?.[1];
-    const change = Object.assign(new Event('change'), { matches: true, media: media.media });
-    act(() => {
-      if (typeof listener === 'function') listener.call(media, change);
-      else listener?.handleEvent(change);
-    });
-    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'paper');
   });
 
-  it('uses the configured theme on the login screen', async () => {
+  it('uses the configured palette on the login screen', async () => {
     window.history.replaceState(null, '', '/login');
     vi.mocked(getSession).mockResolvedValue({ authenticated: false, authRequired: true });
-    renderGate('navy-blossom');
+    renderGate('celadon');
     expect(await screen.findByLabelText('账号')).toBeInTheDocument();
-    expect(document.documentElement).toHaveAttribute('data-theme', 'navy-blossom');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'celadon');
   });
 
   it.each([

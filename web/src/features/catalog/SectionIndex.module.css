@@ -1,0 +1,107 @@
+.index {
+  position: sticky;
+  top: calc(var(--topbar-height) + 40px);
+  align-self: start;
+}
+
+.title {
+  margin: 0 0 16px;
+  color: var(--text-3);
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.24em;
+}
+
+.index ol {
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--line);
+  list-style: none;
+}
+
+.index a {
+  display: grid;
+  min-height: 36px;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  margin-left: -1px;
+  padding: 6px 8px 6px 16px;
+  border-left: 1px solid transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    padding var(--duration) var(--ease);
+}
+
+.number,
+.count {
+  font: 500 11px var(--font-mono);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.index a:hover {
+  color: var(--text-2);
+}
+
+.index a[aria-current='location'] {
+  padding-left: 22px;
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.index a[aria-current='location'] .number {
+  color: var(--accent);
+}
+
+@media (max-width: 1080px) {
+  .index {
+    position: sticky;
+    z-index: var(--z-rail);
+    top: var(--topbar-height);
+    margin: 0 calc(var(--gutter) * -1) 32px;
+    padding: 8px var(--gutter);
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--bg) 80%, transparent);
+    backdrop-filter: blur(16px);
+  }
+
+  .title {
+    display: none;
+  }
+
+  .index ol {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    border: 0;
+    scrollbar-width: none;
+  }
+
+  .index ol::-webkit-scrollbar {
+    display: none;
+  }
+
+  .index a,
+  .index a[aria-current='location'] {
+    display: flex;
+    min-height: var(--touch-target);
+    gap: 6px;
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .index a[aria-current='location'] {
+    border-color: rgba(var(--accent-rgb), 0.55);
+    background: rgba(var(--accent-rgb), 0.1);
+  }
+}

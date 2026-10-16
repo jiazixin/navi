@@ -1,6 +1,6 @@
 # Navi
 
-Navi is a self-hosted, read-only personal navigation system. The Go backend reads a YAML catalog and provides optional login, live catalog updates, private/public destination selection, and favicon caching. The React frontend is embedded in one Go binary, with search, pagination, themes, responsive layouts, and keyboard controls. Production does not require Node.
+Navi is a self-hosted, read-only personal navigation system. The Go backend reads a YAML catalog and provides optional login, live catalog updates, private/public destination selection, and favicon caching. The React frontend is embedded in one Go binary: a map-inspired start page with a live clock, unified link and web search, quick search (⌘K), a section index, four palettes and five animated canvas background patterns, responsive layouts, and keyboard controls. Production does not require Node.
 
 [中文说明](README.zh-CN.md) · [Design and protocol](docs/DESIGN.md) · [Development and verification](docs/IMPLEMENTATION.md) · [Current acceptance](docs/ACCEPTANCE.md)
 
@@ -38,6 +38,7 @@ The default address is `http://127.0.0.1:8080`; health is available at `/health`
 - String variables are preserved literally; paths trim surrounding whitespace and credentials match exactly. An empty variable overrides the file: optional credentials may be cleared together, but required paths cannot be empty. Numbers, booleans, and durations must be single non-empty scalar values. Durations accept `250ms`, `3s`, and `168h`, rather than `7d`.
 - `storage` and `catalog.path`, including environment overrides, resolve from the selected configuration's directory. Without the implicit main file, the expected `configs/` directory remains the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployment.
 - Main configuration changes require restart. Only the catalog supports live reload. Valid updates notify open pages through SSE; invalid updates retain the last valid catalog and report degraded status until repaired.
+- Appearance defaults: `theme` is `default` (follows the system: Ink when dark, Paper when light), `ink`, `paper`, `celadon` or `dusk`; `background_pattern` is `none`, `contour`, `flow`, `guilloche`, `stars` or `ridge`; `web_search` sets the default external search entry. Choices made in the page's Appearance panel are stored in that browser and take precedence.
 
 Catalog example:
 
@@ -164,8 +165,9 @@ web/                  Frontend manifests, tooling, HTML entry and embed.go
   src/layouts/        Page shell
   src/features/       Domain features, colocated tests and stories
   src/components/     Reusable UI
-  src/lib/keyboard/   Shared keyboard logic
-  src/styles/         Themes and motion
+  src/lib/            Shared keyboard, storage and URL helpers
+  src/styles/         Palettes, fonts and shared keyframes
+  public/             Static files copied as-is (film grain texture)
   src/test/           Unit-test setup
   tests/fixtures/     Development and integration inputs
   e2e/                Browser tests, real-server fixtures and reviewed snapshots

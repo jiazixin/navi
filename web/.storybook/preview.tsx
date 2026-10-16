@@ -1,4 +1,6 @@
 import type { Preview } from '@storybook/react-vite';
+import { AppearanceProvider } from '../src/features/appearance/AppearanceProvider';
+import { paletteIDs, parseThemePreference } from '../src/features/appearance/options';
 import '../src/styles/global.css';
 
 const preview: Preview = {
@@ -14,19 +16,19 @@ const preview: Preview = {
     },
   },
   decorators: [
-    (Story, context) => {
-      const theme = context.globals.theme === 'light' ? 'light' : 'dark';
-      document.documentElement.dataset.theme = theme;
-      return <Story />;
-    },
+    (Story, context) => (
+      <AppearanceProvider configuredPattern="none" configuredTheme={parseThemePreference(context.globals.palette, 'ink')}>
+        <Story />
+      </AppearanceProvider>
+    ),
   ],
   globalTypes: {
-    theme: {
-      description: 'Theme',
-      defaultValue: 'dark',
+    palette: {
+      description: 'Palette',
+      defaultValue: 'ink',
       toolbar: {
         icon: 'paintbrush',
-        items: ['dark', 'light'],
+        items: [...paletteIDs],
       },
     },
   },

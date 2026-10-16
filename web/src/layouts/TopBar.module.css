@@ -1,155 +1,207 @@
 .topBar {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
+  position: fixed;
+  z-index: var(--z-topbar);
+  inset: 0 0 auto;
   height: calc(var(--topbar-height) + env(safe-area-inset-top));
   padding-top: env(safe-area-inset-top);
-  border-bottom: var(--border-width) solid var(--border);
-  background: color-mix(in srgb, var(--chrome) 90%, transparent);
-  box-shadow: var(--topbar-shadow);
-  backdrop-filter: saturate(135%) blur(14px);
+  border-bottom: 1px solid transparent;
   transition:
-    background-color var(--motion-standard) var(--ease-standard),
-    border-color var(--motion-standard) var(--ease-standard),
-    box-shadow var(--motion-standard) var(--ease-standard);
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease);
+}
+
+.topBar[data-scrolled='true'] {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
 }
 
 .inner {
-  display: grid;
-  width: min(100%, var(--content-max-width));
+  display: flex;
+  max-width: var(--content-max);
   height: var(--topbar-height);
-  grid-template-columns: minmax(160px, 1fr) minmax(280px, 420px) minmax(96px, 1fr);
   align-items: center;
-  gap: var(--space-4);
-  margin-inline: auto;
-  padding-inline: var(--page-gutter);
+  gap: 24px;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
 }
 
-.identity {
+.brand {
   display: flex;
-  min-width: 0;
+  min-height: var(--touch-target);
+  flex: none;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
+  text-decoration: none;
 }
 
-.title {
+.mark {
+  transition: transform 1.2s var(--ease);
+}
+
+.brand:hover .mark {
+  transform: rotate(160deg);
+}
+
+.brand span {
+  font: 600 15px/1 var(--font-mono);
+  letter-spacing: 0.34em;
+}
+
+.pages {
+  min-width: 0;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.pageTrack {
+  position: relative;
   display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  overflow: hidden;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: min(52vw, 640px);
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
-.title::before {
-  width: 3px;
-  height: 18px;
-  flex: 0 0 auto;
-  border-radius: 1px;
-  background: var(--accent);
-  content: '';
-}
-
-.identityRule {
-  width: 1px;
-  height: 16px;
-  flex: 0 0 auto;
-  background: var(--border-strong);
-}
-
-.subtitle {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.desktopSearch {
-  display: flex;
-  min-width: 0;
-  justify-content: center;
-}
-
-.commands {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0;
-}
-
-.mobileSearch {
+.pageTrack::-webkit-scrollbar {
   display: none;
 }
 
-.refreshGlyph {
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.connectionDot {
+.indicator {
   position: absolute;
-  right: -2px;
-  bottom: -1px;
-  width: 6px;
-  height: 6px;
-  border: 1px solid var(--chrome);
+  top: 0;
+  bottom: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--surface-hi);
+  box-shadow: 0 6px 18px -8px var(--shadow);
+  transition:
+    left 0.5s var(--ease),
+    width 0.5s var(--ease);
+}
+
+.page {
+  position: relative;
+  min-height: var(--touch-target);
+  flex: none;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: color var(--duration) var(--ease);
+}
+
+.page:hover {
+  color: var(--text-2);
+}
+
+.page[aria-current='page'] {
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.searchButton,
+.iconButton {
+  position: relative;
+  display: inline-flex;
+  min-width: var(--touch-target);
+  height: var(--touch-target);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    border-color var(--duration) var(--ease),
+    color var(--duration) var(--ease);
+}
+
+.searchButton {
+  gap: 10px;
+  padding: 0 8px 0 14px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+.searchButton:hover,
+.iconButton:hover,
+.iconButton[aria-expanded='true'] {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  color: var(--accent);
+}
+
+.iconButton[data-loading='true'] svg {
+  animation: var(--anim-spin) 0.9s linear infinite;
+}
+
+.connection {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--bg);
   border-radius: 50%;
-  background: var(--status-success);
+  background: var(--success);
 }
 
-.connectionDot[data-state='connecting'] {
-  background: var(--status-warning);
+.connection[data-state='connecting'] {
+  background: var(--warning);
 }
 
-.connectionDot[data-state='reconnecting'] {
-  background: var(--status-danger);
+.connection[data-state='reconnecting'] {
+  background: var(--danger);
 }
 
-.refresh[data-loading='true'] svg {
-  animation: spin var(--motion-emphasis) linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (max-width: 1023px) {
-  .subtitle,
-  .identityRule {
-    display: none;
-  }
-}
-
-@media (max-width: 767px) {
+@media (max-width: 720px) {
   .inner {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-2);
+    gap: 10px;
   }
 
-  .desktopSearch {
+  .brand span,
+  .searchButton span,
+  .searchButton kbd {
     display: none;
   }
 
-  .mobileSearch {
-    display: inline-grid;
+  .searchButton {
+    padding: 0;
+  }
+
+  .actions {
+    gap: 4px;
+  }
+
+  .pageTrack {
+    max-width: none;
+  }
+
+  .page {
+    padding: 0 11px;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .refresh[data-loading='true'] svg {
-    animation: none;
+@media (max-width: 420px) {
+  .brand {
+    display: none;
+  }
+
+  .pages {
+    flex: 1;
   }
 }

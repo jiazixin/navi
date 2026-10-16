@@ -1,10 +1,7 @@
-import { CheckCircle2, CloudOff, TriangleAlert, X } from 'lucide-react';
-import { motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../styles/motion';
-import { IconButton } from '../../components/IconButton';
+import { X } from 'lucide-react';
 import styles from './StatusBanner.module.css';
 
-export type StatusBannerKind = 'degraded' | 'offline' | 'restored';
+export type StatusBannerKind = 'degraded' | 'offline';
 
 type StatusBannerProps = {
   kind: StatusBannerKind;
@@ -13,24 +10,14 @@ type StatusBannerProps = {
 };
 
 export function StatusBanner({ kind, message, onDismiss }: StatusBannerProps): React.JSX.Element {
-  const reduceMotion = useReducedMotion();
-  const Icon = kind === 'restored' ? CheckCircle2 : kind === 'offline' ? CloudOff : TriangleAlert;
-
   return (
-    <motion.div
-      animate={{ opacity: 1, y: 0 }}
-      className={styles.banner}
-      data-kind={kind}
-      exit={{ opacity: 0, y: reduceMotion ? 0 : -6 }}
-      initial={{ opacity: 0, y: reduceMotion ? 0 : -6 }}
-      role={kind === 'restored' ? 'status' : 'alert'}
-      transition={{ duration: reduceMotion ? motionTokens.instant : motionTokens.standard }}
-    >
-      <Icon aria-hidden="true" className={styles.statusIcon} size={18} strokeWidth={1.8} />
-      <p>{message}</p>
-      <IconButton className={styles.dismiss} label="关闭状态提示" onClick={onDismiss} tooltipAlign="end">
-        <X aria-hidden="true" size={18} strokeWidth={1.8} />
-      </IconButton>
-    </motion.div>
+    <div className={styles.banner} data-kind={kind} role="alert">
+      <span aria-hidden="true" className={styles.signal} />
+      <span className={styles.label}>{kind === 'offline' ? 'OFFLINE' : 'DEGRADED'}</span>
+      <p className={styles.message}>{message}</p>
+      <button aria-label="关闭提示" className={styles.dismiss} onClick={onDismiss} type="button">
+        <X aria-hidden="true" size={16} strokeWidth={1.8} />
+      </button>
+    </div>
   );
 }

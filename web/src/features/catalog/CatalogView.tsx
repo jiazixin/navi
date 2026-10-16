@@ -1,61 +1,105 @@
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { motionTokens } from '../../styles/motion';
+import { useEffect, useMemo, useState, type PointerEvent } from 'react';
 import type { CatalogPage } from '../../app/api/catalog';
-import { EmptyState } from '../../components/EmptyState';
-import { countLinks } from './filterCatalog';
-import { GroupSection } from './GroupSection';
+import { hostOf } from '../../lib/url/host';
+import { LinkCard } from './LinkCard';
+import { SectionIndex } from './SectionIndex';
 import styles from './CatalogView.module.css';
 
 type CatalogViewProps = {
   page: CatalogPage;
-  searching?: boolean;
-  entranceMode?: 'initial' | 'filter';
-  faviconVersions?: Readonly<Record<string, number>>;
+  faviconVersions: Readonly<Record<string, number>>;
 };
 
-export function CatalogView({
-  page,
-  searching = false,
-  entranceMode = 'initial',
-  faviconVersions,
-}: CatalogViewProps): React.JSX.Element {
-  const reduceMotion = useReducedMotion();
-  const linkCount = countLinks(page);
-  const enableLayoutMotion = linkCount <= 80;
+const sectionID = (pageID: string, index: number): string => `section-${pageID}-${index}`;
 
-  if (linkCount === 0) {
-    return (
-      <EmptyState
-        description={searching ? '换一个关键词，或清空搜索后查看全部链接。' : '在 urls.yaml 中添加链接后，这里会自动更新。'}
-        title={searching ? '没有匹配的链接' : '目录还是空的'}
-      />
+const pendingSpotlights = new WeakMap<HTMLElement, { x: number; y: number }>();
+
+/**
+ * Moves every card's spotlight in the hovered grid so neighbouring borders light up too.
+ * Layout is read at most once per frame per grid.
+ */
+function trackSpotlight(event: PointerEvent<HTMLDivElement>): void {
+  const grid = event.currentTarget;
+  const scheduled = pendingSpotlights.has(grid);
+  pendingSpotlights.set(grid, { x: event.clientX, y: event.clientY });
+  if (scheduled) return;
+  requestAnimationFrame(() => {
+    const point = pendingSpotlights.get(grid);
+    pendingSpotlights.delete(grid);
+    if (point === undefined) return;
+    for (const card of grid.children) {
+      if (!(card instanceof HTMLElement)) continue;
+      const rect = card.getBoundingClientRect();
+      card.style.setProperty('--spot-x', `${point.x - rect.left}px`);
+      card.style.setProperty('--spot-y', `${point.y - rect.top}px`);
+    }
+  });
+}
+
+function useActiveSection(ids: readonly string[]): number {
+  const [active, setActive] = useState(0);
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) setActive(ids.indexOf(entry.target.id));
+        }
+      },
+      { rootMargin: '-35% 0px -60% 0px' },
     );
-  }
+    for (const id of ids) {
+      const element = document.getElementById(id);
+      if (element !== null) observer.observe(element);
+    }
+    return () => observer.disconnect();
+  }, [ids]);
+  return active;
+}
+
+export function CatalogView({ page, faviconVersions }: CatalogViewProps): React.JSX.Element {
+  const ids = useMemo(() => page.groups.map((_, index) => sectionID(page.id, index)), [page]);
+  const active = useActiveSection(ids);
 
   return (
-    <>
-      <span className={styles.liveRegion} aria-live="polite">
-        {searching ? `找到 ${linkCount} 个链接` : ''}
-      </span>
-      <motion.div
-        animate={{ opacity: 1 }}
-        className={styles.catalog}
-        initial={{ opacity: 0 }}
-        transition={{ duration: reduceMotion ? motionTokens.instant : motionTokens.standard }}
-      >
-        <AnimatePresence initial={false} mode="popLayout">
-          {page.groups.map((group, index) => (
-            <GroupSection
-              key={group.name}
-              enableLayoutMotion={enableLayoutMotion}
-              entranceMode={entranceMode}
-              {...(faviconVersions === undefined ? {} : { faviconVersions })}
-              group={group}
-              index={index}
-            />
-          ))}
-        </AnimatePresence>
-      </motion.div>
-    </>
+    <div className={styles.layout}>
+      <SectionIndex active={active} groups={page.groups} ids={ids} />
+      <div className={styles.sections}>
+        {page.groups.map((group, groupIndex) => (
+          <section
+            aria-labelledby={`${ids[groupIndex] ?? ''}-title`}
+            className={styles.section}
+            id={ids[groupIndex]}
+            key={group.name}
+            style={{ '--section-delay': `${Math.min(groupIndex, 6) * 70}ms` } as React.CSSProperties}
+          >
+            <header className={styles.heading}>
+              <span aria-hidden="true" className={styles.number}>
+                {String(groupIndex + 1).padStart(2, '0')}
+              </span>
+              <h2 id={`${ids[groupIndex] ?? ''}-title`}>{group.name}</h2>
+              <span className={styles.count}>{group.links.length} LINKS</span>
+              <span aria-hidden="true" className={styles.rule} />
+            </header>
+            <div
+              className={styles.grid}
+              onPointerEnter={(event) => event.currentTarget.setAttribute('data-spotlight', 'on')}
+              onPointerLeave={(event) => event.currentTarget.removeAttribute('data-spotlight')}
+              onPointerMove={trackSpotlight}
+            >
+              {group.links.map((link, linkIndex) => (
+                <LinkCard
+                  host={hostOf(link)}
+                  iconVersion={faviconVersions[link.runtimeId]}
+                  key={link.runtimeId}
+                  link={link}
+                  order={linkIndex}
+                />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }

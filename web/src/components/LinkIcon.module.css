@@ -1,0 +1,65 @@
+.tile {
+  --tile-color: oklch(var(--tile-l) var(--tile-c) var(--hue));
+  position: relative;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--tile-color) 28%, transparent);
+  border-radius: 14px;
+  background: linear-gradient(
+    150deg,
+    color-mix(in oklch, var(--tile-color) 30%, transparent),
+    color-mix(in oklch, var(--tile-color) 8%, transparent)
+  );
+  color: oklch(var(--tile-l-ink) var(--tile-c) var(--hue));
+}
+
+.tile[data-size='small'] {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.tile[data-state='loaded'] {
+  border-color: var(--line-2);
+  background: var(--surface-hi);
+}
+
+.monogram {
+  font: 500 19px/1 var(--font-mono);
+}
+
+.tile[data-size='small'] .monogram {
+  font-size: 14px;
+}
+
+.tile[data-state='loaded'] .monogram {
+  visibility: hidden;
+}
+
+.image {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.tile[data-size='small'] .image {
+  width: 18px;
+  height: 18px;
+}
+
+.tile[data-state='loaded'] .image {
+  opacity: 1;
+}
+
+@media (forced-colors: active) {
+  .tile {
+    border-color: CanvasText;
+  }
+}

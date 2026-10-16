@@ -18,11 +18,8 @@ import (
 )
 
 type catalogResponse struct {
-	Revision          uint64         `json:"revision"`
-	Theme             string         `json:"theme"`
-	BackgroundPattern string         `json:"backgroundPattern"`
-	WebSearch         string         `json:"webSearch"`
-	Pages             []pageResponse `json:"pages"`
+	Revision uint64         `json:"revision"`
+	Pages    []pageResponse `json:"pages"`
 }
 
 type pageResponse struct {
@@ -86,11 +83,7 @@ func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse
 			ID: page.ID, Title: page.Title, Subtitle: page.Subtitle, Groups: groups,
 		}
 	}
-	return catalogResponse{
-		Revision: snapshot.Revision(), Theme: s.config.Theme,
-		BackgroundPattern: s.config.BackgroundPattern, WebSearch: s.config.WebSearch,
-		Pages: pages,
-	}
+	return catalogResponse{Revision: snapshot.Revision(), Pages: pages}
 }
 
 func (s *httpServer) serveStatus(writer http.ResponseWriter, request *http.Request) {
@@ -323,7 +316,7 @@ func (s *httpServer) serveStatic(writer http.ResponseWriter, request *http.Reque
 		writeJSONError(writer, http.StatusServiceUnavailable, "前端资源尚未构建。")
 		return
 	}
-	contents = bytes.Replace(contents, []byte(`id="root"`), []byte(`id="root" data-configured-theme="`+htmlEscape(s.config.Theme)+`"`), 1)
+	contents = bytes.Replace(contents, []byte(`id="root"`), fmt.Appendf(nil, `id="root"%s`, s.appearanceAttributes()), 1)
 	writer.Header().Set("Cache-Control", "no-store")
 	http.ServeContent(writer, request, "index.html", time.Time{}, bytes.NewReader(contents))
 }
@@ -373,7 +366,7 @@ func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.
 		retryPath += "?retry=1"
 	}
 	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, htmlEscape(message), htmlEscape(retryPath))
-	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s" data-configured-theme="%s">%s</div>`, htmlEscape(message), htmlEscape(retryPath), htmlEscape(s.config.Theme), fallback)
+	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, htmlEscape(message), htmlEscape(retryPath), s.appearanceAttributes(), fallback)
 	var contents []byte
 	var err error
 	if s.static != nil {
@@ -385,6 +378,13 @@ func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.
 		return
 	}
 	_, _ = fmt.Fprintf(writer, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navi</title><body>%s</body></html>`, fallback)
+}
+
+// appearanceAttributes exposes the configured appearance defaults to the shell before
+// authentication, so the login page and first paint use them without an API call.
+func (s *httpServer) appearanceAttributes() string {
+	return fmt.Sprintf(` data-configured-theme="%s" data-configured-pattern="%s" data-configured-search="%s"`,
+		htmlEscape(s.config.Theme), htmlEscape(s.config.BackgroundPattern), htmlEscape(s.config.WebSearch))
 }
 
 func htmlEscape(value string) string {

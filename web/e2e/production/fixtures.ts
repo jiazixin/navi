@@ -59,7 +59,7 @@ export const test = base.extend<{ app: ProductionApp } & Options>({
     await writeFile(join(directory, 'urls.yaml'), catalog('生产检查'));
     await writeFile(join(directory, 'config.local.yaml'), JSON.stringify({
       auth: authEnabled ? { username: 'tester', password: 'correct-password' } : { username: '', password: '' },
-      theme: 'mint-tide', background_pattern: 'none', storage: './.cache',
+      theme: 'celadon', background_pattern: 'none', storage: './.cache',
       server: { listen: '127.0.0.1', port, shutdown_timeout: '2s' },
       catalog: { watch: catalogWatch, reload_debounce: '30ms' },
       favicon: { refresh_interval: '200ms', fetch_timeout: '500ms' },

@@ -83,11 +83,15 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("listen on %s:%d: %w", loaded.Server.Listen, loaded.Server.Port, err)
 	}
+	unused := newUnusedConnections()
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: loaded.Server.ReadHeaderTimeout, ReadTimeout: loaded.Server.ReadTimeout,
 		WriteTimeout: loaded.Server.WriteTimeout, IdleTimeout: loaded.Server.IdleTimeout,
 		BaseContext: func(net.Listener) context.Context { return runCtx },
+		ConnState:   unused.track,
 	}
+	// Shutdown runs these after closing its listeners.
+	server.RegisterOnShutdown(unused.closeAll)
 	serverErrors := make(chan error, 1)
 	go func() {
 		serverErrors <- server.Serve(listener)

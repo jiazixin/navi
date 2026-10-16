@@ -80,81 +80,10 @@ describe('catalog API', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects an unknown configured theme', () => {
+  it('rejects appearance settings, which are served with the page shell', () => {
     const result = catalogSchema.safeParse({
       ...catalogFixture,
       theme: 'unknown-theme',
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('defaults a missing background pattern and accepts every documented value', () => {
-    const withoutPattern = catalogSchema.parse({
-      ...catalogFixture,
-      backgroundPattern: undefined,
-    });
-    expect(withoutPattern.backgroundPattern).toBe('meridian-grid');
-
-    for (const backgroundPattern of [
-      'none',
-      'meridian-grid',
-      'orbital-rings',
-      'pisces',
-      'sagittarius',
-      'roman-meander',
-      'rose-window',
-      'eight-point-star',
-      'star-trails',
-    ] as const) {
-      expect(
-        catalogSchema.safeParse({
-          ...catalogFixture,
-          backgroundPattern,
-        }).success,
-      ).toBe(true);
-    }
-  });
-
-  it('rejects an unknown configured background pattern', () => {
-    const result = catalogSchema.safeParse({
-      ...catalogFixture,
-      backgroundPattern: 'random-lines',
-    });
-
-    expect(result.success).toBe(false);
-  });
-
-  it('defaults a missing web search provider and accepts every documented value', () => {
-    const withoutProvider = catalogSchema.parse({
-      ...catalogFixture,
-      webSearch: undefined,
-    });
-    expect(withoutProvider.webSearch).toBe('baidu');
-
-    for (const webSearch of [
-      'baidu',
-      'google',
-      'yandex',
-      'bing',
-      'github',
-      'chatgpt',
-      'claude',
-      'gemini',
-    ] as const) {
-      expect(
-        catalogSchema.safeParse({
-          ...catalogFixture,
-          webSearch,
-        }).success,
-      ).toBe(true);
-    }
-  });
-
-  it('rejects an unknown configured web search provider', () => {
-    const result = catalogSchema.safeParse({
-      ...catalogFixture,
-      webSearch: 'unknown-search',
     });
 
     expect(result.success).toBe(false);

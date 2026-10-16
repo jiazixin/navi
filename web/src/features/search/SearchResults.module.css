@@ -1,0 +1,80 @@
+.list {
+  padding: 8px;
+}
+
+.caption,
+.empty {
+  margin: 6px 10px;
+  color: var(--text-3);
+  font: 500 10px/1.6 var(--font-mono);
+  letter-spacing: 0.2em;
+}
+
+.empty {
+  padding: 8px 2px;
+  font: 13px/1.6 var(--font-ui);
+  letter-spacing: 0;
+}
+
+.option {
+  display: grid;
+  min-height: var(--touch-target);
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.option[aria-selected='true'] {
+  background: rgba(var(--accent-rgb), 0.1);
+}
+
+.text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.name,
+.meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.option mark {
+  background: none;
+  color: var(--accent);
+}
+
+.go {
+  color: var(--text-3);
+}
+
+.option[aria-selected='true'] .go {
+  color: var(--accent);
+}
+
+.web {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px dashed var(--line-2);
+  border-radius: 10px;
+  color: var(--accent);
+}

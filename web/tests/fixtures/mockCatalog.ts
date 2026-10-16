@@ -3,9 +3,6 @@ import type { Catalog } from '../../src/app/api/catalog.ts';
 // Development-only catalog used by the Vite API mock. Production data still comes from urls.yaml.
 export const mockCatalog: Catalog = {
   revision: 10,
-  theme: 'default',
-  backgroundPattern: 'meridian-grid',
-  webSearch: 'baidu',
   pages: [
     {
       id: 'page1',

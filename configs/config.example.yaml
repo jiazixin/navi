@@ -20,21 +20,17 @@ auth:
 # 字段覆盖：NAVI_<字段> 或 NAVI_<节>_<字段>，如 NAVI_SERVER_PORT=8081。环境变量 > 文件 > 默认值。
 storage: ../.cache
 
-# 默认主题；default 跟随浏览器所在系统的深色/浅色模式。
-# 可选：default（默认）、navy-blossom（绀樱夜）、mint-tide（薄荷汐）、
-# moss-court（苔庭青）、tea-mist（茶雾青）、amber-tide（琥珀潮）、
-# sunny-coast（晴海橙）、violet-lime（藤萝青）。
-# 用户在页面选择的主题优先于此值，保存于该浏览器 localStorage。
+# 默认色调；default 跟随浏览器所在系统：深色用 ink（墨夜），浅色用 paper（宣纸）。
+# 可选：default、ink（墨夜）、paper（宣纸）、celadon（青瓷）、dusk（暮紫）。
+# 页面“外观”面板中的选择优先于此值，保存于该浏览器 localStorage。
 theme: default
 
-# 默认背景纹样；none 表示无纹样。系统开启“减少动态效果”时停止背景动画。
-# 可选：none（素幕）、meridian-grid（经纬阵）、orbital-rings（天游环）、
-# pisces（双鱼宫）、sagittarius（天弓宫）、roman-meander（回廊纹）、
-# rose-window（玫瑰窗）、eight-point-star（八芒阵）、star-trails（星轨幕）。
-# 页面中的本地选择会覆盖此值，与主题偏好分别保存。
-background_pattern: meridian-grid
+# 默认动态背景纹样；none 表示素净无纹样。系统开启“减少动态效果”时只绘制静态画面。
+# 可选：none（素净）、contour（等高线）、flow（流场）、guilloche（扭索纹）、
+# stars（星轨）、ridge（山峦）。页面中的本地选择会覆盖此值。
+background_pattern: contour
 
-# 外部搜索默认入口，不影响导航列表的本地筛选。
+# 外部搜索默认入口，不影响站内链接筛选。
 # 可选：baidu、google、yandex、bing、github、chatgpt、claude、gemini。
 # 页面切换入口只在当前会话有效，刷新后回到此值。
 # Claude/Gemini 打开站点并尝试复制查询；复制依赖浏览器权限和安全上下文。

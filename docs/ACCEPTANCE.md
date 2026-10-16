@@ -1,77 +1,48 @@
-# 上线前全量验收（2026-10-02）
+# 界面重构验收（2026-10-16）
 
-本轮验证针对提交 `9685e76` 之上的当前工作区，包含所有本轮未提交修改和新增文件。检查前工作区干净；未创建提交、发布或部署。以下结果均来自本轮实际执行，不沿用历史通过记录。
+本轮把 Web 前端整体重构为「等高 / Contour」设计（动态 Canvas 纹样、四种色调、JetBrains Mono 显示字体、站内与外部合一的搜索、快速搜索、分区目录），并同步调整后端外观配置与关闭流程。项目尚未上线，按用户授权不保留旧主题、旧纹样或旧接口的兼容代码。以下结果均来自本轮在最终代码上实际执行的检查，不沿用历史记录。
 
-结论：源码、自动化测试、依赖扫描、前后端构建和隔离启动检查通过，已修复本轮发现的问题。容器运行、真实设备和实际线上 HTTPS 代理尚未验证，不能将本记录视为这些环境的上线验收。
+结论：源码检查、单元测试、三浏览器 E2E、视觉基线、真实 Go 二进制三浏览器集成、前后端构建均通过。容器、真机和线上 HTTPS 代理未验证。
 
-## 审查方式与范围
+## 变更范围
 
-- 按 `use-modern-go` CLI 的 Go 1.27.1 完整规则审查、修复 Go，保持既有配置与 JSON 协议。
-- Open Code Review 的全仓 preview 选出 123 个可审查文件，完整读取 6 组规则并逐文件审查，覆盖 Go、前端生产源码、构建配置、配置示例和容器文件。工具默认排除的测试、文档、锁文件及二进制测试数据另行检查。
-- `ocr scan` 的直接模型调用因未配置 LLM endpoint 无法运行；采用 `open-code-review-delegate` 获取文件清单与规则，由当前代理及分工代理执行审查。未将不可运行的模型扫描记作通过。
-- 同时复核认证、会话、请求边界、CSP、SVG 隔离、并发与取消、热加载、资源嵌入、模块依赖和文档引用。
-
-审查清单、规则、浏览器结果、覆盖率日志、依赖扫描及截图保存在忽略的 `.cache/release-check/2026-10-02/`，不进入发布产物。清单保留 OCR 的默认排除原因。
-
-## 已修复的问题
-
-| 范围 | 问题与修复 |
+| 范围 | 内容 |
 | --- | --- |
-| 首页显示 | 普通动画模式下分组停在 `opacity: 0`，导致目录不可见；补全入场动画，并在真实浏览器断言最终不透明度 |
-| 键盘与移动搜索 | 修复三个选择菜单的 Tab/Shift+Tab 退出、搜索结果 Escape 关闭、Safari 的返回焦点和移动切换桌面后的焦点与 inert 清理；保留查询 |
-| 认证与快捷键 | 登录页跟随系统主题；斜杠快捷键不夺取嵌套可编辑区域的输入；补齐认证失败、失效、退出与焦点回归测试 |
-| 导航与资源 | URL 保留查询和片段，拒绝空主机及非法端口；缺失静态资源和资源目录返回 404；直接 `/index.html` 注入配置主题 |
-| 图标下载 | 去重后限制声明候选为 16 个，保留根图标回退；移除未支持的 AVIF 协商；校验图像头、容器边界和位图尺寸 |
-| 图标恢复 | 文件丢失及条件 304 后丢失均重新获取；拒绝异常无条件 304；启动重验旧缓存，损坏或过大的内容不进入有效索引并重新下载 |
-| 缓存与性能 | 认证图标使用 private 缓存；单链接跳转直接查找快照，避免克隆整份目录；卡片 memo 避免单图标更新重绘所有卡片 |
-| 构建与隔离 | Node engines 与实际依赖要求一致；覆盖率包含全部生产 TS/TSX；限制测试 worker；发布构建关闭 sourcemap；排除全部本地配置及已有产物的容器上下文 |
+| 前端 | 删除旧 UI（主题菜单、9 种纹样、分页、顶栏筛选、搜索弹层等）并按新设计重写；保留并沿用目录/状态/认证 API 客户端、SSE 订阅、外部搜索 provider 与图标 |
+| 外观配置 | `theme` 改为 `default/ink/paper/celadon/dusk`，`background_pattern` 改为 `none/contour/flow/guilloche/stars/ridge`（默认 contour）；三项外观默认值不再出现在 `/api/catalog`，改为注入页面根元素，登录页与失败页首帧即可使用 |
+| 关闭流程 | 新增 `internal/app/connections.go`：关闭时立即关闭从未发出请求的预连接，避免浏览器预开的空闲连接拖过 `shutdown_timeout`（Firefox 集成测试据此稳定复现并修复，附 Go 回归测试） |
+| 构建 | 新增 `@fontsource-variable/jetbrains-mono`，移除未再使用的 `motion`；`assetsInlineLimit: 0`，避免 `data:` 字体被 CSP 拒绝 |
+| 本地配置 | 未提交的 `configs/config.local.yaml` 中旧值 `violet-lime`/`star-trails` 会导致启动失败，已改为 `dusk`/`stars`，其余内容未动 |
 
-图像检查限制位图每边 1–2048 像素，启动缓存读取上限 4 MiB。PNG/JPEG/GIF 检查可解码的图像头，ICO/WebP 检查容器与尺寸，SVG 检查完整 XML；这些检查不等于完整像素解码。
+## 审查方式
+
+- Go 修改前按 `use-modern-go` CLI（Go 1.27 规则）列出准则并遵循。
+- `open-code-review-delegate`：`ocr delegate preview`（v1.12.13）选出 75 个可审查文件，按 5 组规则（Go、TS/React、CSS、YAML/JSON 键、package.json）逐文件审查，覆盖率 100%；工具默认排除的测试、文档、快照与锁文件另行检查。审查发现并已修复：首屏搜索 Tab 离开后结果层遮住引擎行、快速搜索点击链接后不关闭、聚光效果每次指针移动读取全部卡片布局（改为每帧一次）、`/go/` 与 `/api/icons/` 路径重复硬编码、嵌套三元表达式。未保留已确认未修复的问题。
+- E2E 期间另发现并修复：页标签高度不足 44px、`<time>` 上禁止的 `aria-label`、装饰遮罩造成的窄屏横向溢出（改为限制遮罩范围，而非隐藏溢出）。
 
 ## 实际验证
 
-执行环境：macOS arm64；Go 1.27.1、Node 26.8.2、npm 11.19.1、Playwright 1.62.1；Staticcheck 2026.2.1（0.8.1）、govulncheck 1.8.0、Modern Go Guidelines CLI 0.1.1。浏览器使用项目 Playwright 对应版本。
+环境：macOS arm64；Go 1.27.2、Node 26.12.0、npm 11.20.0、Playwright 1.62.1（本轮安装项目对应的 Chromium、Firefox、WebKit）。命令从仓库根执行，Go 检查在生成 `web/dist` 后运行。
 
-以下命令从仓库根执行；Go 检查均在生成 `web/dist` 后运行。本机工具缓存放临时目录，静态检查工具使用 `/tmp/navi-go-tools/`，浏览器缓存使用 `/tmp/navi-playwright`。
-
-| 命令 / 检查 | 本轮结果 |
+| 命令 / 检查 | 结果 |
 | --- | --- |
-| `npm --prefix web ci` | 锁文件安装通过；隔离副本重新安装通过 |
-| `npm --prefix web run lint`、`npm --prefix web run typecheck` | 通过，隔离副本再次通过 |
-| `npm --prefix web run test` | 29 个测试文件、134 项通过；语句 92.67%、分支 78.3%、函数 90.58%、行 92.59% |
-| `npm --prefix web run test:e2e` | Chromium、Firefox、WebKit 共 69 项通过；失败、跳过、flaky 均为 0 |
-| `npm --prefix web run test:visual` | 26 项通过；未更新视觉基线 |
-| `npm --prefix web run test:production` | 最后后端补丁之后重跑，真实 Go 三浏览器共 21 项通过；失败、跳过、flaky 均为 0 |
-| `npm --prefix web run storybook:test` | 测试模式构建通过；此命令不执行组件浏览器交互断言 |
-| `npm --prefix web run build` | 通过；产物没有 sourcemap |
-| `gofmt -l cmd internal web/embed.go`、`git diff --check` | 无格式问题 |
-| `go mod verify` | 所有模块校验通过 |
-| `go test -count=1 -race ./internal/... ./cmd/... ./web` | 最后缓存补丁之后全量通过；隔离副本普通 Go 测试与构建通过 |
-| `go vet ./internal/... ./cmd/... ./web`、`staticcheck ./internal/... ./cmd/... ./web` | 最后缓存补丁之后通过 |
-| `govulncheck ./internal/... ./cmd/... ./web` | 未发现已知漏洞 |
-| `govulncheck -mode=binary bin/navi` | 最后补丁构建的二进制未发现已知漏洞 |
-| `npm --prefix web audit` | 全部依赖（含开发依赖）已知漏洞数 0 |
-| `CGO_ENABLED=0 go build -trimpath -buildvcs=false -o bin/navi ./cmd/navi` | 本机二进制构建通过；Linux amd64 静态交叉编译通过 |
-| 干净副本启动 | 当前源码副本从零安装与构建；隐式、显式配置和默认值启动通过；health、目录、认证开关、嵌入首页、资源 404、SIGTERM 正常退出通过；显式空/缺失配置正确拒绝 |
-| 人工 UI 复核 | 查看普通动画稳定后的桌面 1440、移动 320 和移动搜索截图；目录可见，移动单列及搜索层正常 |
+| `npm --prefix web run lint`、`npm --prefix web run typecheck` | 通过 |
+| `npm --prefix web run test` | 20 个测试文件、100 项通过；语句 95.97%、分支 86.1%、函数 96.85%、行 97.18%（门槛未调整） |
+| `npm --prefix web run test:e2e` | Chromium、Firefox、WebKit 共 42 项通过 |
+| `npm --prefix web run test:visual` | 16 项通过；基线本轮重新生成（旧 UI 基线已删除），逐张人工查看后接受 |
+| `npm --prefix web run test:production` | 真实 Go 二进制三浏览器共 21 项通过（修复关闭流程前 Firefox 稳定失败 2–3 项） |
+| `npm --prefix web run storybook:test` | 测试模式构建通过 |
+| `npm --prefix web run build` | 通过；JS 361 kB（gzip 114 kB）、CSS 37 kB；字体以独立 woff2 文件输出，无 `data:` 资源 |
+| `gofmt -l cmd internal web/embed.go`、`go mod verify` | 无格式问题；模块校验通过 |
+| `go test`、`go test -race`、`go vet`（`./internal/... ./cmd/... ./web`） | 全部通过 |
+| 手工运行 `bin/navi` | 合成配置（含/不含认证）下首页、登录页、目录、图标 404 回退与 CSP 无报错；全部色调与纹样、桌面 1280/1440 与移动 375/390 人工查看 |
 
-覆盖率门槛保持原值：语句/函数/行 80%，分支 75%；没有通过排除未测生产文件或降低门槛达标。浏览器用例覆盖最大 1000 链接的筛选与 YAML 顺序恢复。macOS WebKit 用 Alt+Tab/Alt+Shift+Tab 包含按钮，尊重 Safari 默认 Tab 行为。
-
-发布 JS 为 492,500 字节，CSS 为 60,567 字节；关闭 sourcemap 去除约 7.56 MB 可重建映射文件。单图标更新的 500 卡片渲染次数实验由 500 降为 1，最终单元回归使用 100 卡片验证仅对应卡片更新。这些结果不代表生产网络延迟、背景动画 CPU 或设备帧率已完成基准测试。
-
-Storybook 构建仍出现依赖工具的 `DEP0205` 弃用提示及 Storybook chunk 超过 500 kB 提示；构建成功，默认产品 JS 小于 500 kB。未为消除工具提示修改第三方依赖。
-
-## 文档与目录整理
-
-精简中英文 README，更新设计、开发和 UI 约定；删除 5 份过期归档/已完成计划，历史内容可从 Git 追溯。保留根 `AGENTS.md` 对唯一目录基线的引用，未另建目录规范。同步配置示例、Node 版本要求、认证与容器权限说明，检查链接、命令及 Git/容器忽略规则；无已跟踪但应忽略的产物。
-
-未进行全仓目录迁移，未改写用户配置或真实业务数据。测试、启动与缓存故障验证使用合成配置和隔离目录。开发预览进程已关闭。
+E2E 覆盖：首屏与分区目录、所有可见按钮 ≥44px、卡片入场后不透明与跳转、首屏搜索与外部搜索、⌘K 快速搜索与焦点恢复、页签切换与记忆、外观面板切换与持久化、五种纹样在动态/静态下均绘制像素、纹样不拦截输入、降级提示、加载失败重试、1000 链接、320/390/768 视口无横向溢出及 axe 无 serious/critical 问题。
 
 ## 未执行与部署前剩余检查
 
-- Docker CLI 存在，但本机 Docker contexts 对应守护进程 socket 均不存在；未执行镜像构建、容器启动、UID 65532 的实际挂载读写。Linux 交叉编译及 Dockerfile 审查不能替代这些检查。
-- 未执行真机触控、高 DPI、高刷新率及实际浏览器 200%/400% 缩放；视口、键盘和无障碍自动化不等于这些手工检查。
-- 未在实际线上 HTTPS 反向代理验证 Secure Cookie、Host 转发、SSE 缓冲/长连接、目标站点网络可达性和部署资源限制。
-- 仓库没有已配置 CI；未读取或修改任何外部 CI。上述通过结果是本机与隔离副本验证。
-
-这些环境项仍需在实际部署条件下执行。本轮未留下已确认而未修复的源码问题；本地通过不能保证不同运行环境或未来输入不存在其他问题。
+- 未执行镜像构建、容器启动与 UID 65532 挂载读写。
+- 未执行真机触控、高 DPI、高刷新率、200%/400% 浏览器缩放；纹样的 CPU/电量占用未做设备基准测试。
+- 未在线上 HTTPS 反向代理验证 Secure Cookie、Host 转发与 SSE 长连接。
+- 本轮未执行 `staticcheck`、`govulncheck` 与 `npm audit`。
+- 仓库无已配置 CI；以上为本机结果。

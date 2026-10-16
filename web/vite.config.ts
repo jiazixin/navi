@@ -89,5 +89,7 @@ export default defineConfig(({ command }) => ({
     emptyOutDir: true,
     sourcemap: false,
     target: 'es2022',
+    // The server CSP (default-src 'self') rejects data: URLs, so every asset must be a file.
+    assetsInlineLimit: 0,
   },
 }));

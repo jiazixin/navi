@@ -58,8 +58,5 @@ export const secondaryPageFixture: CatalogPage = {
 
 export const catalogFixture: Catalog = {
   revision: 1,
-  theme: 'default',
-  backgroundPattern: 'meridian-grid',
-  webSearch: 'baidu',
   pages: [primaryPageFixture, secondaryPageFixture],
 };

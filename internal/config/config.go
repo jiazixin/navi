@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	// ThemeDefault follows the operating system color scheme.
+	// ThemeDefault follows the operating system color scheme: ink when dark, paper when light.
 	ThemeDefault = "default"
 
-	// BackgroundPatternMeridianGrid is the default background pattern.
-	BackgroundPatternMeridianGrid = "meridian-grid"
+	// BackgroundPatternContour is the default animated background pattern.
+	BackgroundPatternContour = "contour"
 
 	// WebSearchBaidu is the default external search provider.
 	WebSearchBaidu = "baidu"
@@ -29,12 +29,10 @@ const (
 
 var (
 	themes = map[string]struct{}{
-		"default": {}, "navy-blossom": {}, "mint-tide": {}, "moss-court": {},
-		"tea-mist": {}, "amber-tide": {}, "sunny-coast": {}, "violet-lime": {},
+		"default": {}, "ink": {}, "paper": {}, "celadon": {}, "dusk": {},
 	}
 	backgroundPatterns = map[string]struct{}{
-		"none": {}, "meridian-grid": {}, "orbital-rings": {}, "pisces": {}, "sagittarius": {},
-		"roman-meander": {}, "rose-window": {}, "eight-point-star": {}, "star-trails": {},
+		"none": {}, "contour": {}, "flow": {}, "guilloche": {}, "stars": {}, "ridge": {},
 	}
 	webSearchProviders = map[string]struct{}{
 		"baidu": {}, "google": {}, "yandex": {}, "bing": {}, "github": {}, "chatgpt": {},
@@ -201,7 +199,7 @@ func defaultConfig() Config {
 	return Config{
 		StorageDir:        "../.cache",
 		Theme:             ThemeDefault,
-		BackgroundPattern: BackgroundPatternMeridianGrid,
+		BackgroundPattern: BackgroundPatternContour,
 		WebSearch:         WebSearchBaidu,
 		Server: ServerConfig{
 			Listen: "127.0.0.1", Port: 8080, ReadHeaderTimeout: 5 * time.Second,

@@ -1,160 +1,164 @@
 .card {
+  --spot-x: -200px;
+  --spot-y: -200px;
   position: relative;
   display: grid;
   min-width: 0;
-  min-height: var(--link-card-height);
-  grid-template-columns: var(--link-icon-size) minmax(0, 1fr) 20px;
-  align-items: start;
-  gap: var(--space-3);
-  padding: var(--space-4);
-  border: var(--border-width) solid var(--border);
+  grid-template-columns: 46px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
   color: var(--text);
   text-decoration: none;
   isolation: isolate;
-  transform: translateY(0) scale(1);
   transition:
-    background-color var(--motion-fast) var(--ease-out),
-    border-color var(--motion-fast) var(--ease-out),
-    box-shadow var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+    transform var(--duration-slow) var(--ease),
+    background-color var(--duration) var(--ease),
+    border-color var(--duration) var(--ease),
+    box-shadow var(--duration-slow) var(--ease);
+  animation: var(--anim-rise) 0.9s var(--ease) both;
+  animation-delay: calc(var(--section-delay, 0ms) + var(--order) * 28ms);
 }
 
+/* Spotlight fill under the pointer. */
 .card::before {
   position: absolute;
-  top: var(--space-5);
-  bottom: var(--space-5);
-  left: -1px;
-  width: 2px;
-  border-radius: 0 1px 1px 0;
-  background: var(--accent-muted);
+  z-index: -1;
+  inset: 0;
+  background: radial-gradient(260px circle at var(--spot-x) var(--spot-y), rgba(var(--accent-rgb), 0.11), transparent 65%);
   content: '';
-  transform: scaleY(0.54);
-  transition:
-    background-color var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+
+/* Border glow shared by neighbouring cards in the hovered grid. */
+.card::after {
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: radial-gradient(200px circle at var(--spot-x) var(--spot-y), rgba(var(--accent-rgb), 0.75), transparent 70%);
+  content: '';
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s;
+}
+
+:global([data-spotlight='on']) > .card::after,
+.card:hover::before {
+  opacity: 1;
 }
 
 .card:hover {
-  z-index: 1;
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-  box-shadow: var(--shadow-hover);
-  transform: translateY(-2px);
+  background: var(--surface-hi);
+  box-shadow: 0 30px 50px -30px var(--shadow);
+  transform: translateY(-4px);
 }
 
-.card:hover::before,
-.card:focus-visible::before {
-  background: var(--accent);
-  transform: scaleY(1);
+.card:active {
+  transform: translateY(-1px) scale(0.985);
 }
 
-.card:focus-visible {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-hover);
+.card > :first-child {
+  transition: transform 0.7s var(--ease);
 }
 
-.card:active,
-.card[data-opening='true'] {
-  box-shadow: none;
-  transform: translateY(0) scale(0.985);
-}
-
-.iconSlot {
-  display: block;
-  width: var(--link-icon-size);
-  height: var(--link-icon-size);
-  transition: transform var(--motion-fast) var(--ease-out);
-}
-
-.card:hover .iconSlot {
-  transform: scale(1.04);
+.card:hover > :first-child {
+  transform: rotate(-8deg) scale(1.07);
 }
 
 .copy {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
 }
 
-.title {
-  display: -webkit-box;
+.name {
+  display: flex;
   min-width: 0;
-  overflow: hidden;
-  color: var(--text);
+  align-items: center;
+  gap: 8px;
   font-size: 15px;
-  font-weight: 650;
-  line-height: 20px;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-.secondary {
-  display: -webkit-box;
+.nameText,
+.description,
+.host {
   min-width: 0;
-  min-height: 36px;
   overflow: hidden;
-  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  flex: none;
+  padding: 3px 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  color: var(--text-3);
+  font: 500 10px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.description {
+  color: var(--text-2);
   font-size: 13px;
-  font-weight: 450;
-  line-height: 18px;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
-.trailing {
-  display: grid;
-  width: 20px;
-  height: 20px;
-  margin-top: 0;
-  place-items: center;
-  color: var(--text-tertiary);
-  opacity: 0.58;
-  transition:
-    color var(--motion-fast) var(--ease-out),
-    opacity var(--motion-fast) var(--ease-out),
-    transform var(--motion-fast) var(--ease-out);
+.host {
+  margin-top: 2px;
+  color: var(--text-3);
+  font: 11px/1.5 var(--font-mono);
 }
 
-.card:hover .trailing,
-.card:focus-visible .trailing {
+.arrow {
+  align-self: start;
   color: var(--accent);
+  opacity: 0;
+  transform: translate(-6px, 6px);
+  transition:
+    opacity var(--duration) var(--ease),
+    transform var(--duration-slow) var(--ease);
+}
+
+.card:hover .arrow,
+.card:focus-visible .arrow {
   opacity: 1;
-  transform: translate(1px, -1px);
+  transform: none;
 }
 
-.spinner {
-  animation: spin var(--motion-emphasis) linear infinite;
+@media (hover: none) {
+  .arrow {
+    opacity: 0.6;
+    transform: none;
+  }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+@media (max-width: 720px) {
+  .card {
+    padding: 14px;
+  }
+
+  .host {
+    display: none;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .card:hover,
   .card:active,
-  .card[data-opening='true'] {
+  .card:hover > :first-child {
     transform: none;
-  }
-
-  .card:hover .iconSlot {
-    transform: none;
-  }
-
-  .card:hover .trailing,
-  .card:focus-visible .trailing {
-    transform: none;
-  }
-
-  .spinner {
-    animation: none;
   }
 }
 

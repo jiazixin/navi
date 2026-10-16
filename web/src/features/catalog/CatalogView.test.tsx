@@ -1,43 +1,66 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { primaryPageFixture } from '../../../tests/fixtures/catalog';
+import { iconSource } from '../../app/api/routes';
+import { LinkIcon } from '../../components/LinkIcon';
+import { present } from '../../test/present';
 import { CatalogView } from './CatalogView';
+import { LoadingCatalog } from './LoadingCatalog';
 
 describe('CatalogView', () => {
-  it('renders groups and links in source order', () => {
-    render(<CatalogView page={primaryPageFixture} />);
-    expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)).toEqual([
-      '基础设施',
-      '开发',
-    ]);
-    expect(screen.getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual([
-      '打开 Grafana',
-      '打开 GitHub',
-    ]);
+  it('renders numbered sections, an index and cards that navigate through the server', () => {
+    render(<CatalogView faviconVersions={{ grafana: 3 }} page={primaryPageFixture} />);
+    expect(screen.getByRole('heading', { level: 2, name: '基础设施' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: '开发' })).toBeInTheDocument();
+
+    const grafana = screen.getByRole('link', { name: '打开 Grafana' });
+    expect(grafana).toHaveAttribute('href', '/go/grafana');
+    expect(grafana).toHaveAttribute('target', '_blank');
+    expect(grafana).toHaveAttribute('title', 'Grafana — grafana.example.com');
+    expect(within(grafana).getByText('内网')).toBeInTheDocument();
+    expect(within(grafana).getByText('Metrics and dashboards')).toBeInTheDocument();
+    expect(grafana.querySelector('img')).toHaveAttribute('src', '/api/icons/grafana?v=3');
+    expect(within(screen.getByRole('link', { name: '打开 GitHub' })).queryByText('内网')).not.toBeInTheDocument();
+
+    const index = screen.getByRole('navigation', { name: '分区目录' });
+    const entries = within(index).getAllByRole('link');
+    expect(entries.map((entry) => entry.getAttribute('href'))).toEqual(['#section-page1-0', '#section-page1-1']);
+    expect(entries[0]).toHaveAttribute('aria-current', 'location');
+    expect(within(index).getAllByLabelText('1 个链接')).toHaveLength(2);
   });
 
-  it('renders group headings without horizontal separators', () => {
-    render(<CatalogView page={primaryPageFixture} />);
-
-    const headingRow = screen.getByRole('heading', { name: '基础设施' }).parentElement;
-    expect(headingRow?.querySelector('[aria-hidden="true"]')).toBeNull();
+  it('tracks the pointer across a hovered grid for the shared spotlight', async () => {
+    render(<CatalogView faviconVersions={{}} page={primaryPageFixture} />);
+    const card = screen.getByRole('link', { name: '打开 Grafana' });
+    const grid = present(card.parentElement, 'grid');
+    fireEvent.pointerEnter(grid);
+    expect(grid).toHaveAttribute('data-spotlight', 'on');
+    fireEvent.pointerMove(grid, { clientX: 30, clientY: 12 });
+    fireEvent.pointerMove(grid, { clientX: 31, clientY: 12 });
+    await waitFor(() => expect(card.style.getPropertyValue('--spot-x')).toBe('31px'));
+    fireEvent.pointerLeave(grid);
+    expect(grid).not.toHaveAttribute('data-spotlight');
   });
 
-  it('labels each group independently when the catalog and search overlay coexist', () => {
-    render(<><CatalogView page={primaryPageFixture} /><CatalogView page={primaryPageFixture} /></>);
-    const headings = screen.getAllByRole('heading', { level: 2 });
-    expect(new Set(headings.map((heading) => heading.id)).size).toBe(headings.length);
-    for (const heading of headings) {
-      expect(heading.closest('section')).toHaveAttribute('aria-labelledby', heading.id);
-    }
+  it('announces the loading skeleton', () => {
+    render(<LoadingCatalog />);
+    expect(screen.getByRole('status', { name: '正在加载目录' })).toHaveAttribute('aria-busy', 'true');
   });
+});
 
-  it('renders the search empty state without a decorative container', () => {
-    render(<CatalogView page={{ ...primaryPageFixture, groups: [] }} searching />);
-    expect(screen.getByRole('heading', { name: '没有匹配的链接' })).toBeVisible();
-  });
+describe('LinkIcon', () => {
+  it('shows the monogram until the favicon loads and retries when the version changes', () => {
+    const { container, rerender } = render(<LinkIcon name="grafana" src={iconSource('grafana')} />);
+    const tile = present(container.firstElementChild, 'tile');
+    expect(tile).toHaveTextContent('G');
+    expect(tile).toHaveAttribute('data-state', 'pending');
+    fireEvent.error(present(tile.querySelector('img'), 'image'));
+    expect(tile).toHaveAttribute('data-state', 'fallback');
+    expect(tile.querySelector('img')).toBeNull();
 
-  it('uses the shorter filter entrance for returning search results', () => {
-    render(<CatalogView page={primaryPageFixture} entranceMode="filter" searching />);
-    expect(screen.getByText('找到 2 个链接')).toBeInTheDocument();
+    rerender(<LinkIcon name="grafana" src={iconSource('grafana', 1)} />);
+    const image = present(tile.querySelector('img'), 'image');
+    expect(image).toHaveAttribute('src', '/api/icons/grafana?v=1');
+    fireEvent.load(image);
+    expect(tile).toHaveAttribute('data-state', 'loaded');
   });
 });

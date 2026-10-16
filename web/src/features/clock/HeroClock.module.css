@@ -1,0 +1,124 @@
+.clock {
+  position: relative;
+  margin-bottom: 40px;
+}
+
+.dateline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 0;
+  color: var(--text-3);
+  font: 500 12px/1.4 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.bar {
+  width: 32px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.time {
+  display: flex;
+  align-items: flex-start;
+  margin: 26px 0 14px;
+  font: 160 calc(clamp(96px, 12.5vw, 184px) * 0.86) / 0.9 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.06em;
+}
+
+.time time {
+  display: flex;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.colon {
+  position: relative;
+  width: 0.3em;
+  align-self: stretch;
+  animation: var(--anim-breathe) 2s ease-in-out infinite;
+}
+
+.colon::before,
+.colon::after {
+  position: absolute;
+  left: 50%;
+  width: 0.085em;
+  height: 0.085em;
+  margin-left: -0.0425em;
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
+
+.colon::before {
+  top: 34%;
+}
+
+.colon::after {
+  top: 66%;
+}
+
+.seconds {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0.62em 0 0 22px;
+  color: var(--text-3);
+  font: 500 13px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.seconds i {
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--line-2);
+}
+
+.seconds i::after {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  content: '';
+  transform: scaleX(var(--progress, 0));
+  transform-origin: left;
+  transition: transform 1s linear;
+}
+
+.greeting {
+  margin: 0;
+  color: var(--text-2);
+  font: 400 clamp(20px, 2.3vw, 28px) / 1.5 var(--font-cn-serif);
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 720px) {
+  .time {
+    margin-top: 20px;
+    font-size: 88px;
+  }
+
+  .seconds {
+    margin-left: 14px;
+  }
+
+  .clock {
+    margin-bottom: 28px;
+  }
+}

@@ -42,7 +42,7 @@ func TestLoadAppliesPublicDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if loaded.Theme != ThemeDefault || loaded.BackgroundPattern != BackgroundPatternMeridianGrid || loaded.WebSearch != WebSearchBaidu {
+	if loaded.Theme != ThemeDefault || loaded.BackgroundPattern != BackgroundPatternContour || loaded.WebSearch != WebSearchBaidu {
 		t.Fatalf("defaults = %#v", loaded)
 	}
 }
@@ -107,7 +107,7 @@ func writeConfigFixture(t *testing.T, root, relativeConfig, catalogName, storage
 	if err := os.WriteFile(filepath.Join(configDir, catalogName), []byte("version: 1\npages:\n  - {id: page1, title: Navi, urls: []}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	contents := "auth: {username: tester, password: test-password}\nstorage: ./%s\ntheme: default\nbackground_pattern: meridian-grid\nweb_search: baidu\nserver:\n  listen: 127.0.0.1\n  port: 8080\n  read_header_timeout: 5s\n  read_timeout: 20s\n  write_timeout: 30s\n  idle_timeout: 90s\n  shutdown_timeout: 10s\nhealth:\n  uri: /health\nlogging:\n  level: info\n  format: json\n  access_log: true\n  log_health_checks: false\ncatalog:\n  path: ./%s\n  watch: true\n  reload_debounce: 250ms\nnavigation:\n  private_probe_timeout: 800ms\n  public_probe_timeout: 1200ms\n  probe_cache_ttl: 30s\n  max_concurrent_probes: 32\nfavicon:\n  fetch_timeout: 3s\n  refresh_interval: 168h\n  max_file_bytes: 1048576\n  workers: 4\n"
+	contents := "auth: {username: tester, password: test-password}\nstorage: ./%s\ntheme: default\nbackground_pattern: contour\nweb_search: baidu\nserver:\n  listen: 127.0.0.1\n  port: 8080\n  read_header_timeout: 5s\n  read_timeout: 20s\n  write_timeout: 30s\n  idle_timeout: 90s\n  shutdown_timeout: 10s\nhealth:\n  uri: /health\nlogging:\n  level: info\n  format: json\n  access_log: true\n  log_health_checks: false\ncatalog:\n  path: ./%s\n  watch: true\n  reload_debounce: 250ms\nnavigation:\n  private_probe_timeout: 800ms\n  public_probe_timeout: 1200ms\n  probe_cache_ttl: 30s\n  max_concurrent_probes: 32\nfavicon:\n  fetch_timeout: 3s\n  refresh_interval: 168h\n  max_file_bytes: 1048576\n  workers: 4\n"
 	if err := os.WriteFile(configPath, []byte(fmt.Sprintf(contents, storageDir, catalogName)), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -86,6 +86,34 @@ func TestRunGracefullyClosesPersistentSSEOnCancellation(t *testing.T) {
 	requestCancel()
 }
 
+func TestRunClosesUnusedConnectionsOnShutdown(t *testing.T) {
+	t.Parallel()
+
+	catalogPath := writeAppCatalog(t, "Initial")
+	port := freeAppPort(t)
+	loaded := appTestConfig(t, catalogPath, port, false)
+	loaded.Server.ShutdownTimeout = 300 * time.Millisecond
+	baseURL, stop := startTestApp(t, loaded)
+
+	// Browsers pre-open spare connections that may never carry a request.
+	var dialer net.Dialer
+	spare, err := dialer.DialContext(t.Context(), "tcp", strings.TrimPrefix(baseURL, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer spare.Close()
+	// Let the server accept the connection before shutting down.
+	time.Sleep(50 * time.Millisecond)
+
+	started := time.Now()
+	if err := stop(); err != nil {
+		t.Fatalf("Run() shutdown error = %v", err)
+	}
+	if elapsed := time.Since(started); elapsed >= loaded.Server.ShutdownTimeout {
+		t.Fatalf("shutdown took %s, should not wait for an unused connection", elapsed)
+	}
+}
+
 func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 	t.Parallel()
 
@@ -280,7 +308,7 @@ func appTestConfig(t *testing.T, catalogPath string, port int, watch bool) confi
 	return config.Config{
 		Auth: config.AuthConfig{Username: "tester", Password: "test-password"},
 		Path: filepath.Join(t.TempDir(), "config.yaml"), StorageDir: filepath.Join(t.TempDir(), "storage"),
-		Theme: config.ThemeDefault, BackgroundPattern: config.BackgroundPatternMeridianGrid, WebSearch: config.WebSearchBaidu,
+		Theme: config.ThemeDefault, BackgroundPattern: config.BackgroundPatternContour, WebSearch: config.WebSearchBaidu,
 		Server:     config.ServerConfig{Listen: "127.0.0.1", Port: port, ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second},
 		Health:     config.HealthConfig{URI: "/health"},
 		Logging:    config.LoggingConfig{Level: "info", Format: "json"},

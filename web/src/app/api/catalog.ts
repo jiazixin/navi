@@ -1,10 +1,4 @@
 import { z } from './schema';
-import {
-  catalogBackgroundPatternSchema,
-  DEFAULT_BACKGROUND_PATTERN,
-} from './backgroundPattern';
-import { catalogThemeSchema } from './theme';
-import { DEFAULT_WEB_SEARCH_PROVIDER, webSearchProviderSchema } from './webSearch';
 
 // Go counts Unicode code points, not UTF-16 code units.
 function textSchema(minimum: number, maximum: number) {
@@ -52,11 +46,6 @@ const catalogPageSchema = z
 export const catalogSchema = z
   .object({
     revision: z.number().int().nonnegative(),
-    theme: catalogThemeSchema.optional(),
-    backgroundPattern: catalogBackgroundPatternSchema
-      .optional()
-      .default(DEFAULT_BACKGROUND_PATTERN),
-    webSearch: webSearchProviderSchema.optional().default(DEFAULT_WEB_SEARCH_PROVIDER),
     pages: z
       .array(catalogPageSchema)
       .min(1)

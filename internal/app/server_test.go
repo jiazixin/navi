@@ -165,7 +165,7 @@ func newTestServer(t *testing.T, resolver *navigation.Resolver) *httpServer {
 	})
 	static := fs.FS(fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<main>Navi</main>")}})
 	server, err := newHTTPServer(httpOptions{
-		Config:  config.Config{Auth: config.AuthConfig{Username: "tester", Password: "test-password"}, Theme: "default", BackgroundPattern: "meridian-grid", WebSearch: "baidu", Health: config.HealthConfig{URI: "/health"}},
+		Config:  config.Config{Auth: config.AuthConfig{Username: "tester", Password: "test-password"}, Theme: "default", BackgroundPattern: "contour", WebSearch: "baidu", Health: config.HealthConfig{URI: "/health"}},
 		Catalog: store, Resolver: resolver, Static: static,
 	})
 	if err != nil {
@@ -182,7 +182,7 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	response := httptest.NewRecorder()
 	server.writeFailurePage(response, request, http.StatusBadGateway, `<script>alert("x")</script>`)
 	body := response.Body.String()
-	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one?retry=1"`) || !strings.Contains(body, `/assets/app.js`) {
+	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one?retry=1"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
 		t.Fatalf("failure response = %d %s", response.Code, body)
 	}
 	if strings.Contains(body, "secret") || strings.Contains(body, `<script>alert`) {
@@ -195,9 +195,11 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	}
 }
 
-func TestStaticRoutesRejectMissingAssetsAndInjectTheme(t *testing.T) {
+func TestStaticRoutesRejectMissingAssetsAndInjectAppearance(t *testing.T) {
 	server := newTestServer(t, nil)
-	server.config.Theme = "moss-court"
+	server.config.Theme = "celadon"
+	server.config.BackgroundPattern = "ridge"
+	server.config.WebSearch = "bing"
 	server.static = fstest.MapFS{
 		"index.html":    &fstest.MapFile{Data: []byte(`<html><div id="root"></div></html>`)},
 		"assets/app.js": &fstest.MapFile{Data: []byte(`console.log("Navi")`)},
@@ -213,7 +215,7 @@ func TestStaticRoutesRejectMissingAssetsAndInjectTheme(t *testing.T) {
 	for _, route := range []string{"/", "/index.html", "/login"} {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, authenticatedRequest(http.MethodGet, route, nil))
-		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `data-configured-theme="moss-court"`) {
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `data-configured-theme="celadon" data-configured-pattern="ridge" data-configured-search="bing"`) {
 			t.Errorf("%s did not serve the configured shell: %d %s", route, response.Code, response.Body)
 		}
 	}

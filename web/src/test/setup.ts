@@ -65,3 +65,15 @@ Object.defineProperty(window, 'localStorage', {
   configurable: true,
   value: new StorageStub(),
 });
+
+// jsdom does not implement scrolling into view.
+Object.defineProperty(Element.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: vi.fn(),
+});
+
+// jsdom has no canvas implementation; pattern stages stay inert when no 2D context exists.
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  value: () => null,
+});

@@ -1,100 +1,173 @@
 .app {
-  --page-gutter: var(--space-4);
   position: relative;
   isolation: isolate;
   min-height: 100vh;
-  background: var(--background);
-  color: var(--text);
-  transition:
-    background-color var(--motion-standard) var(--ease-standard),
-    color var(--motion-standard) var(--ease-standard);
-}
-
-.shell {
-  --pagination-reserve: 0px;
-  --main-bottom-space: var(--space-10);
-  position: relative;
-  z-index: 1;
-  display: flex;
-  min-height: 100vh;
-  flex-direction: column;
-}
-
-.shell[data-has-pagination='true'] {
-  --pagination-reserve: calc(
-    var(--touch-target) + var(--space-6) + max(var(--space-3), env(safe-area-inset-bottom))
-  );
-}
-
-@supports (min-height: 100dvh) {
-  .app {
-    min-height: 100dvh;
-  }
-}
-
-.bannerSlot {
-  position: relative;
-  z-index: var(--z-banner);
-  width: min(100%, var(--content-max-width));
-  margin: var(--space-3) auto 0;
-  padding-inline: var(--page-gutter);
 }
 
 .main {
-  width: min(100%, var(--content-max-width));
-  min-width: 0;
-  flex: 1;
-  margin-inline: auto;
-  padding: var(--space-6) var(--page-gutter)
-    calc(var(--main-bottom-space) + var(--pagination-reserve));
-  background: transparent;
-  overflow: clip;
+  position: relative;
+  z-index: var(--z-content);
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
 }
 
-.pagePanel {
-  min-width: 0;
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.paginationSlot {
-  position: fixed;
-  z-index: var(--z-pagination);
-  right: 0;
-  bottom: 0;
-  left: 0;
+.hero {
+  position: relative;
   display: flex;
-  min-width: 0;
-  align-items: center;
+  min-height: min(88vh, 860px);
+  flex-direction: column;
   justify-content: center;
-  padding: 0 max(var(--page-gutter), env(safe-area-inset-right))
-    max(var(--space-3), env(safe-area-inset-bottom))
-    max(var(--page-gutter), env(safe-area-inset-left));
+  padding: calc(var(--topbar-height) + 48px) 0 120px;
+}
+
+.banner {
+  position: absolute;
+  top: calc(var(--topbar-height) + 12px);
+  right: 0;
+  left: 0;
+  z-index: 6;
+  max-width: 760px;
+}
+
+.heroInner {
+  position: relative;
+  max-width: 700px;
+}
+
+/* Soft scrim keeps the clock and search legible over busy patterns; it stays inside the viewport. */
+.heroInner::before {
+  position: absolute;
+  z-index: -1;
+  inset: -100px calc(var(--gutter) * -1);
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 78%, transparent), transparent);
+  content: '';
   pointer-events: none;
 }
 
-.paginationSlot > * {
-  pointer-events: auto;
+.heroFoot {
+  position: absolute;
+  right: 0;
+  bottom: 36px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text-3);
+  font: 500 11px/1.4 var(--font-mono);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
-@media (min-width: 768px) {
-  .app {
-    --page-gutter: var(--space-6);
-  }
+.cue {
+  display: flex;
+  min-height: var(--touch-target);
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  transition: color var(--duration) var(--ease);
+}
 
-  .main {
-    --main-bottom-space: var(--space-12);
-    padding-top: var(--space-8);
+.cue:hover {
+  color: var(--text-2);
+}
+
+.cueLine {
+  width: 1px;
+  height: 28px;
+  background: linear-gradient(var(--accent), transparent);
+  animation: var(--anim-breathe) 2.4s ease-in-out infinite;
+}
+
+.patternBadge b {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.live {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+
+.patternBadge[data-animated='true'] .live {
+  animation: var(--anim-breathe) 1.6s ease-in-out infinite;
+}
+
+.patternBadge[data-animated='false'] .live {
+  opacity: 0.4;
+}
+
+.catalog {
+  padding-bottom: 120px;
+  scroll-margin-top: var(--topbar-height);
+}
+
+.footer {
+  position: relative;
+  z-index: var(--z-content);
+  border-top: 1px solid var(--line);
+}
+
+.footerInner {
+  display: flex;
+  max-width: var(--content-max);
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 auto;
+  padding: 20px var(--gutter) 32px;
+  color: var(--text-3);
+  font: 500 10px/1.6 var(--font-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.footerInner a {
+  display: inline-flex;
+  min-height: var(--touch-target);
+  align-items: center;
+  text-decoration: none;
+}
+
+.footerInner a:hover {
+  color: var(--accent);
+}
+
+@media (min-width: 1200px) {
+  .heroInner::before {
+    inset: -120px -180px -100px -260px;
   }
 }
 
-@media (min-width: 1024px) {
-  .app {
-    --page-gutter: var(--space-8);
+@media (max-width: 720px) {
+  .hero {
+    min-height: auto;
+    padding: calc(var(--topbar-height) + 48px) 0 96px;
   }
 
-}
 
-@media (min-width: 1920px) {
-  .app {
-    --page-gutter: var(--space-10);
+  .patternBadge {
+    display: none;
+  }
+
+  .footerInner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 }

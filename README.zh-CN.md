@@ -1,6 +1,6 @@
 # Navi
 
-Navi 是一个自托管、只读的个人导航系统。Go 后端读取 YAML 目录，提供可选登录、目录热加载、内外网链接选择和 favicon 缓存；React 前端嵌入单个 Go 二进制，支持搜索、分页、主题、响应式布局与键盘操作。生产运行不需要 Node。
+Navi 是一个自托管、只读的个人导航系统。Go 后端读取 YAML 目录，提供可选登录、目录热加载、内外网链接选择和 favicon 缓存；React 前端嵌入单个 Go 二进制：以地图为灵感的起始页，含实时时钟、站内链接与外部搜索合一的搜索框、快速搜索（⌘K）、分区目录、四种色调与五种动态 Canvas 纹样背景、响应式布局与键盘操作。生产运行不需要 Node。
 
 [English README](README.md) · [设计与协议](docs/DESIGN.md) · [开发与验证](docs/IMPLEMENTATION.md) · [本轮验收](docs/ACCEPTANCE.md)
 
@@ -38,6 +38,7 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 - 字符串环境变量保留原值，路径解析时去掉首尾空白；凭证精确匹配。空字符串会覆盖文件值：允许清空可选认证，但不能清空必填路径。数字、布尔和时长必须是单个非空标量，非法值报错。时长使用 `250ms`、`3s`、`168h`，不支持 `7d`。
 - `storage` 和 `catalog.path`（包括环境覆盖）相对所选配置所在目录解析。没有隐式主配置时仍以预期的 `configs/` 为基准，因此默认目录为 `configs/urls.yaml`，缓存为 `.cache/`。部署优先使用绝对路径。
 - 主配置修改后重启生效；仅 `catalog.path` 指向的导航文件支持热加载。合法更新通过 SSE 通知页面，非法更新保留最近有效目录并提示降级，修复后恢复。
+- 外观默认值：`theme` 为 `default`（跟随系统，深色墨夜 / 浅色宣纸）、`ink`、`paper`、`celadon`、`dusk`；`background_pattern` 为 `none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`；`web_search` 为默认外部搜索入口。页面右上角「外观」面板中的选择保存在当前浏览器，优先于配置。
 
 导航示例：
 
@@ -164,8 +165,9 @@ web/                  前端清单、工具配置、HTML 入口和 embed.go
   src/layouts/        页面外壳
   src/features/       业务功能与就近测试、故事
   src/components/     跨域 UI
-  src/lib/keyboard/   共享键盘逻辑
-  src/styles/         主题与动效
+  src/lib/            共享键盘、存储与 URL 能力
+  src/styles/         色调、字体与共享关键帧
+  public/             原样复制的静态文件（胶片颗粒纹理）
   src/test/           单元测试初始化
   tests/fixtures/     开发与集成固定输入
   e2e/                浏览器测试、真实服务 fixture、已评审快照

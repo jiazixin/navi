@@ -21,7 +21,9 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 `-f PATH` / `--config PATH` 选择主配置并覆盖 `CONFIG_FILE`；未传标志时可由 `CONFIG_FILE` 选择。两者都未设置时只查找 `./configs/config.local.yaml`，缺失使用内置默认值；显式空值、文件不存在或不可读时报错。优先级为命令行配置路径 > `CONFIG_FILE`，而配置值仍为 `NAVI_<字段>` / `NAVI_<节>_<字段>` 环境变量 > 文件 > 内置默认值。`storage` 与 `catalog.path`（包括环境覆盖）相对所选配置目录解析，缺失隐式文件时仍以预期的 `configs/` 为基准；项目例外已登记在 README。部署使用绝对路径。
 
-主配置更改需要重启，只有导航 YAML 支持热加载。未知字段、重复 YAML 键、多个 YAML 文档及非法值启动失败。YAML 使用 snake_case，JSON API 使用 camelCase。主题和背景可由浏览器本地选择覆盖，存储不可用时仍允许当前会话切换；外部搜索入口选择仅在当前会话有效。
+主配置更改需要重启，只有导航 YAML 支持热加载。未知字段、重复 YAML 键、多个 YAML 文档及非法值启动失败。YAML 使用 snake_case，JSON API 使用 camelCase。
+
+外观配置为 `theme`（`default`、`ink`、`paper`、`celadon`、`dusk`；default 按系统深浅色解析为 ink 或 paper）、`background_pattern`（`none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`）与 `web_search`。三者不属于目录数据：服务端把它们以 `data-configured-theme`、`data-configured-pattern`、`data-configured-search` 注入首页、登录页和跳转失败页的根元素，前端在首帧前应用色调，登录前也无需 API。色调、纹样、纹样强度和动态效果可由浏览器本地选择覆盖，存储不可用时仍允许当前会话切换；外部搜索入口选择仅在当前会话有效。
 
 ## 导航数据
 
@@ -62,16 +64,16 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | `/api/auth/session` | GET/HEAD；未启用认证返回 authenticated=true、authRequired=false；启用时有效会话 200（两字段 true），否则 401；no-store |
 | `/api/auth/logout` | POST；撤销当前会话、清除 Cookie，204 |
 | `/login` | 公开登录页面；登录成功进入首页 |
-| `/api/catalog` | revision、theme、backgroundPattern、webSearch、pages；无服务端写操作；no-store |
+| `/api/catalog` | revision、pages；无服务端写操作；no-store |
 | `/api/status` | health、revision、可选通用 message；no-store |
 | `/api/events` | SSE：catalog.updated、catalog.error、favicon.updated、status.updated；15 秒心跳；HEAD 立即返回 |
 | `/api/icons/{runtimeId}` | 图标、内容 ETag、no-cache；认证模式为 private，公开模式为 public；不存在返回 404 |
 | `/go/{runtimeId}` | 探测后 302 或失败 HTML，no-store |
 | 配置的健康路径 | `ok`/`degraded` 为 200，目录不可用为 503 |
 | `/assets/` | 仅提供实际存在的静态文件；缺失或目录请求为 404 |
-| 其他页面路径 | 带配置主题的嵌入首页或 SPA fallback；no-store |
+| 其他页面路径 | 注入外观默认值的嵌入首页或 SPA fallback；no-store |
 
-除登录和退出使用 POST 外，目录及静态路由仅接受 GET、HEAD、OPTIONS。认证写请求要求 `X-Navi-Request: 1`，存在 Origin 时校验同主机，拒绝 cross-site 请求；无跨域许可。生产入口无内联脚本，Zod 关闭 JIT；保持禁止 unsafe-inline/unsafe-eval 的 CSP。发布构建默认不生成 sourcemap，减少二进制体积；诊断时可显式生成，不将诊断产物当作默认发布包。SSE 是有界的失效通知流，不是持久事件日志；队列满时合并为全量刷新通知。每帧写入受 `server.write_timeout` 限制，空闲等待时清除写入期限，请求取消会中断阻塞写入。客户端首次连通及重连后补拉目录和状态，并重试图标。
+除登录和退出使用 POST 外，目录及静态路由仅接受 GET、HEAD、OPTIONS。认证写请求要求 `X-Navi-Request: 1`，存在 Origin 时校验同主机，拒绝 cross-site 请求；无跨域许可。生产入口无内联脚本，Zod 关闭 JIT；保持禁止 unsafe-inline/unsafe-eval 的 CSP。CSP 同样拒绝 `data:` 资源，因此 Vite 关闭资源内联（`assetsInlineLimit: 0`），字体与纹理均以独立文件随二进制嵌入。发布构建默认不生成 sourcemap，减少二进制体积；诊断时可显式生成，不将诊断产物当作默认发布包。关闭时先取消长连接处理（如 SSE），并立即关闭从未发出请求的预连接（浏览器常预开空闲连接，标准库会等待其 5 秒），再在 `server.shutdown_timeout` 内等待在途请求完成。SSE 是有界的失效通知流，不是持久事件日志；队列满时合并为全量刷新通知。每帧写入受 `server.write_timeout` 限制，空闲等待时清除写入期限，请求取消会中断阻塞写入。客户端首次连通及重连后补拉目录和状态，并重试图标。
 
 ## 部署边界
 

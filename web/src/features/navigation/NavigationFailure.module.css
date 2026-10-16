@@ -1,52 +1,26 @@
 .page {
-  display: grid;
-  background: var(--background);
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
-  min-height: 100dvh;
-  place-items: center;
-  padding: max(var(--space-6), env(safe-area-inset-top))
-    max(var(--space-6), env(safe-area-inset-right))
-    max(var(--space-6), env(safe-area-inset-bottom))
-    max(var(--space-6), env(safe-area-inset-left));
 }
 
-.title {
-  margin: 0;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-  overflow-wrap: anywhere;
+.layout {
+  position: relative;
+  z-index: var(--z-content);
+  display: grid;
+  min-height: 100vh;
+  align-content: center;
+  gap: 40px;
+  padding: 48px var(--gutter);
 }
 
-.actions {
+.brand {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-5);
-}
-
-.actions a {
-  margin-top: 0;
-  text-decoration: none;
-}
-
-.back {
-  display: inline-flex;
   min-height: var(--touch-target);
   align-items: center;
-  padding-inline: var(--space-2);
-  color: var(--text-secondary);
-}
-
-.back:hover {
-  color: var(--text);
-  text-decoration: underline;
-}
-
-.retry {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--background);
+  justify-content: center;
+  gap: 12px;
+  font: 600 15px/1 var(--font-mono);
+  letter-spacing: 0.34em;
+  text-decoration: none;
 }

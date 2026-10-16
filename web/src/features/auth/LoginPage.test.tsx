@@ -2,7 +2,16 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { getSession } from '../../app/api/auth';
 import { mockBrowserLocation } from '../../test/browserLocation';
+import { AppearanceProvider } from '../appearance/AppearanceProvider';
 import { LoginPage } from './LoginPage';
+
+function renderLogin(page: React.JSX.Element) {
+  return render(
+    <AppearanceProvider configuredPattern="contour" configuredTheme="default">
+      {page}
+    </AppearanceProvider>,
+  );
+}
 
 vi.mock('../../app/api/auth', () => ({ getSession: vi.fn() }));
 
@@ -25,7 +34,7 @@ describe('LoginPage', () => {
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })));
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, authRequired: true });
     const location = mockBrowserLocation('/login');
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     await fillCredentials(user);
     await user.click(screen.getByRole('button', { name: '登录并进入' }));
     await waitFor(() => expect(location.replace).toHaveBeenCalledWith('/'));
@@ -34,7 +43,7 @@ describe('LoginPage', () => {
 
   it('supports password visibility without changing the credential value', async () => {
     const user = userEvent.setup();
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     const password = screen.getByLabelText('密码');
     await user.type(password, 'secret');
     await user.click(screen.getByRole('button', { name: '显示密码' }));
@@ -52,7 +61,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status }));
     vi.stubGlobal('fetch', request);
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     await fillCredentials(user);
     await user.click(screen.getByRole('button', { name: '登录并进入' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -67,7 +76,7 @@ describe('LoginPage', () => {
   it('reports network failure and restores the submit control', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(new Error('offline')));
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     await fillCredentials(user);
     await user.click(screen.getByRole('button', { name: '登录并进入' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('连接失败，请检查网络后重试。');
@@ -78,7 +87,7 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })));
     vi.mocked(getSession).mockResolvedValue({ authenticated: false, authRequired: true });
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     await fillCredentials(user);
     await user.click(screen.getByRole('button', { name: '登录并进入' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('无法保存登录状态');
@@ -90,7 +99,7 @@ describe('LoginPage', () => {
     let completeRequest: ((response: Response) => void) | undefined;
     const request = vi.fn<typeof fetch>().mockReturnValue(new Promise((resolve) => { completeRequest = resolve; }));
     vi.stubGlobal('fetch', request);
-    render(<LoginPage />);
+    renderLogin(<LoginPage />);
     await fillCredentials(user);
     await user.click(screen.getByRole('button', { name: '登录并进入' }));
     expect(screen.getByRole('button', { name: '正在登录…' })).toBeDisabled();
@@ -102,13 +111,10 @@ describe('LoginPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '登录并进入' })).toBeEnabled());
   });
 
-  it('shows checking and service retry states without a credential form', async () => {
+  it('offers a service retry without a credential form', async () => {
     const user = userEvent.setup();
     const onRetry = vi.fn();
-    const { rerender } = render(<LoginPage checking />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在确认登录状态');
-    expect(screen.queryByLabelText('账号')).not.toBeInTheDocument();
-    rerender(<LoginPage connectionError onRetry={onRetry} />);
+    renderLogin(<LoginPage connectionError onRetry={onRetry} />);
     await user.click(screen.getByRole('button', { name: '重新连接' }));
     expect(onRetry).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText('密码')).not.toBeInTheDocument();
