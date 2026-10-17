@@ -63,7 +63,7 @@ export const test = base.extend<{ app: ProductionApp } & Options>({
       server: { listen: '127.0.0.1', port, shutdown_timeout: '2s' },
       catalog: { watch: catalogWatch, reload_debounce: '30ms' },
       favicon: { refresh_interval: '200ms', fetch_timeout: '500ms' },
-      navigation: { private_probe_timeout: '500ms', public_probe_timeout: '500ms', probe_cache_ttl: '30s' },
+      navigation: { private_probe_timeout: '500ms', probe_cache_ttl: '30s' },
       logging: { access_log: false },
     }));
     const child = spawn(binary, [], { env: { ...process.env, CONFIG_FILE: join(directory, 'config.local.yaml') }, stdio: ['ignore', 'pipe', 'pipe'] });

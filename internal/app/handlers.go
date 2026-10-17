@@ -14,7 +14,6 @@ import (
 
 	"navi/internal/catalog"
 	"navi/internal/favicon"
-	"navi/internal/navigation"
 )
 
 type catalogResponse struct {
@@ -278,21 +277,8 @@ func (s *httpServer) serveGo(writer http.ResponseWriter, request *http.Request) 
 		s.writeFailurePage(writer, request, http.StatusNotFound, "链接不存在")
 		return
 	}
-	resolve := s.resolver.Resolve
-	if request.URL.Query().Get("retry") == "1" {
-		resolve = s.resolver.Retry
-	}
-	target, err := resolve(request.Context(), link)
-	if errors.Is(err, navigation.ErrUnreachable) {
-		s.writeFailurePage(writer, request, http.StatusBadGateway, link.Name+" 当前无法访问")
-		return
-	}
-	if err != nil {
-		s.writeFailurePage(writer, request, http.StatusServiceUnavailable, "链接暂时不可用")
-		return
-	}
 	writer.Header().Set("Cache-Control", "no-store")
-	http.Redirect(writer, request, target, http.StatusFound)
+	http.Redirect(writer, request, s.resolver.Resolve(request.Context(), link), http.StatusFound)
 }
 
 func (s *httpServer) serveStatic(writer http.ResponseWriter, request *http.Request) {
@@ -362,8 +348,6 @@ func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.
 	// Only a local navigation route can be used as the retry destination.
 	if !strings.HasPrefix(retryPath, "/go/") {
 		retryPath = "/"
-	} else {
-		retryPath += "?retry=1"
 	}
 	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, htmlEscape(message), htmlEscape(retryPath))
 	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, htmlEscape(message), htmlEscape(retryPath), s.appearanceAttributes(), fallback)

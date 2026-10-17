@@ -58,7 +58,7 @@ pages:
 
 At least one of `private_url` and `public_url` is required, accepting only absolute HTTP(S) URLs. Pages follow `pages` order; groups follow their first occurrence and preserve relative YAML order within each group. Every page must explicitly include `urls`, allowing an empty array. Limits are 2 MiB, 20 pages, and 1000 links. Navi never writes the catalog and has no web editor, drag-and-drop sorting, database, or catalog write API.
 
-Link selection probes the private URL from the **Navi server**, then tries the public URL on failure. Server reachability does not guarantee browser reachability. Probes have timeouts, caching, and concurrency limits. Favicons are discovered in the background and cached under `storage/favicons`; initials provide a fallback without blocking the first render.
+A link with a single URL redirects directly without probing. When both URLs are set, the **Navi server** probes only the private URL and redirects there if reachable, otherwise straight to the public URL without probing it. Server reachability does not guarantee browser reachability. Probes have timeouts, caching, and concurrency limits. Favicons are discovered in the background and cached under `storage/favicons`; initials provide a fallback without blocking the first render.
 
 ## Authentication and deployment
 

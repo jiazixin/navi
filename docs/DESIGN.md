@@ -10,7 +10,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | --- | --- |
 | `internal/config` | 主配置选择、默认值、严格校验及相对路径解析 |
 | `internal/catalog` | YAML 校验、稳定链接 ID、不可变快照、文件监听及事件通知 |
-| `internal/navigation` | 有并发上限的 private/public 探测、缓存及选择 |
+| `internal/navigation` | 有并发上限的 private 探测、缓存及跳转目标选择 |
 | `internal/favicon` | 后台发现、下载、校验和可重建的磁盘缓存 |
 | `internal/app` | 组装、启动、关闭、后台维护、会话认证、HTTP API、SSE、跳转、健康检查与静态资源 |
 | `web/src` | React 页面、功能组件、协议校验与样式 |
@@ -44,7 +44,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 ## 跳转与图标
 
-点击 `/go/{runtimeId}`：先探测 private，成功即 302；否则探测 public；全部失败返回 502 失败页，复用前端主题与组件样式，提供重试和返回导航；禁用 JavaScript 时仍保留基本提示和可用链接。手动重试只清除不可达缓存，仍受超时和并发上限约束。可达性是 **Navi 服务端** 的网络视角，不能保证浏览器能访问相同地址。
+点击 `/go/{runtimeId}`：只配置一个地址时不探测，直接 302 到该地址；同时配置 private 和 public 时只探测 private，可达即 302 到 private，否则直接 302 到 public，public 不探测。链接不存在或目录不可用时返回失败页，复用前端主题与组件样式，提供重试和返回导航；禁用 JavaScript 时仍保留基本提示和可用链接。可达性是 **Navi 服务端** 的网络视角，不能保证浏览器能访问相同地址。
 
 探测使用 HEAD，405/501 回退 `Range: bytes=0-0` GET；100–499 视为可达，5xx/网络错误不可达。最多跟随 3 次重定向。排队和等待合并请求也计入调用超时。相同 URL 合并并发请求，取消/超时结果不写缓存，不转发浏览器 Cookie 或 Authorization。
 
@@ -68,7 +68,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | `/api/status` | health、revision、可选通用 message；no-store |
 | `/api/events` | SSE：catalog.updated、catalog.error、favicon.updated、status.updated；15 秒心跳；HEAD 立即返回 |
 | `/api/icons/{runtimeId}` | 图标、内容 ETag、no-cache；认证模式为 private，公开模式为 public；不存在返回 404 |
-| `/go/{runtimeId}` | 探测后 302 或失败 HTML，no-store |
+| `/go/{runtimeId}` | 302（双地址时先探测 private）或失败 HTML，no-store |
 | 配置的健康路径 | `ok`/`degraded` 为 200，目录不可用为 503 |
 | `/assets/` | 仅提供实际存在的静态文件；缺失或目录请求为 404 |
 | 其他页面路径 | 注入外观默认值的嵌入首页或 SPA fallback；no-store |

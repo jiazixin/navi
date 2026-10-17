@@ -28,24 +28,29 @@ test('production assets respect CSP and private destinations take priority', asy
   expect(errors.filter((error) => !error.includes('404'))).toEqual([]);
 });
 
-test('unreachable page has themed retry, return link and successful fresh retry', async ({ page, app }) => {
+test('unreachable private falls back to public without probing it', async ({ page, app }) => {
   app.state.privateReady = false;
   app.state.publicReady = false;
   await page.goto(app.url);
   const path = await page.getByRole('link', { name: '打开 部署测试' }).getAttribute('href');
   if (path === null) throw new Error('Missing navigation link');
-  const response = await page.goto(app.url + path);
-  expect(response?.status()).toBe(502);
-  await expect(page.getByRole('heading', { name: '部署测试 当前无法访问' })).toBeVisible();
+  await page.goto(app.url + path);
+  await expect(page).toHaveURL(`${app.targetURL}/public`);
+  expect(app.state.privateProbes).toBe(1);
+  expect(app.state.publicProbes).toBe(0);
+});
+
+test('missing link page has themed retry and return link', async ({ page, app }) => {
+  const response = await page.goto(`${app.url}/go/missing`);
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: '链接不存在' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'celadon');
+  await expect(page.getByRole('link', { name: '重试访问' })).toHaveAttribute('href', '/go/missing');
   await expect(page.getByRole('link', { name: '返回导航' })).toHaveAttribute('href', '/');
   await page.setViewportSize({ width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   const audit = await new AxeBuilder({ page }).analyze();
   expect(audit.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')).toEqual([]);
-  app.state.publicReady = true;
-  await page.getByRole('link', { name: '重试访问' }).click();
-  await expect(page).toHaveURL(`${app.targetURL}/public`);
 });
 
 test('atomic YAML reload and invalid-edit recovery reach the open browser', async ({ page, app }) => {

@@ -69,7 +69,6 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	resolver := navigation.NewResolver(
 		navigation.NewProber(loaded.Navigation.MaxConcurrentProbes),
 		loaded.Navigation.PrivateProbeTimeout,
-		loaded.Navigation.PublicProbeTimeout,
 		loaded.Navigation.ProbeCacheTTL,
 	)
 	handler, err := newHTTPServer(httpOptions{

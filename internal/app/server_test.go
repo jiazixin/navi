@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -109,11 +110,11 @@ func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
 func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 	t.Parallel()
 	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusNoContent)
+		t.Errorf("single destination was probed: %s %s", request.Method, request.URL)
 	}))
 	defer target.Close()
 	server := newTestServer(t, nil)
-	server.resolver = navigation.NewResolver(navigation.NewProber(1), time.Second, time.Second, time.Minute)
+	server.resolver = navigation.NewResolver(navigation.NewProber(1), time.Second, time.Minute)
 	server.catalog.Publish(catalog.Catalog{Pages: []catalog.Page{{ID: "page1", Title: "Navi", Groups: []catalog.Group{{Name: "One", Links: []catalog.Link{{RuntimeID: "one", Name: "One", PublicURL: target.URL}}}}}}})
 
 	redirect := httptest.NewRecorder()
@@ -130,24 +131,29 @@ func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 }
 
 func TestNavigationProbesDocumentAndPreservesAnchorInRedirect(t *testing.T) {
+	var probed atomic.Bool
 	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/docs" || request.URL.Fragment != "" {
 			t.Errorf("probe requested anchor as path data: %s", request.URL)
 		}
+		probed.Store(true)
 		writer.WriteHeader(http.StatusNoContent)
 	}))
 	defer target.Close()
 	destination := target.URL + "/docs#section"
-	directory, err := catalog.LoadFile(writeEventCatalog(t, fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Docs, group: One, public_url: %q}\n", destination)))
+	directory, err := catalog.LoadFile(writeEventCatalog(t, fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Docs, group: One, private_url: %q, public_url: https://public.example}\n", destination)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newTestServer(t, navigation.NewResolver(navigation.NewProber(1), time.Second, time.Second, time.Minute))
+	server := newTestServer(t, navigation.NewResolver(navigation.NewProber(1), time.Second, time.Minute))
 	server.catalog.Publish(directory)
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/go/"+directory.Pages[0].Groups[0].Links[0].RuntimeID, nil))
 	if response.Code != http.StatusFound || response.Header().Get("Location") != destination {
 		t.Fatalf("anchor redirect = %d %q", response.Code, response.Header().Get("Location"))
+	}
+	if !probed.Load() {
+		t.Fatal("private destination was not probed")
 	}
 }
 
@@ -182,7 +188,7 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	response := httptest.NewRecorder()
 	server.writeFailurePage(response, request, http.StatusBadGateway, `<script>alert("x")</script>`)
 	body := response.Body.String()
-	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one?retry=1"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
+	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
 		t.Fatalf("failure response = %d %s", response.Code, body)
 	}
 	if strings.Contains(body, "secret") || strings.Contains(body, `<script>alert`) {

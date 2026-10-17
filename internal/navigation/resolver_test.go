@@ -1,8 +1,6 @@
 package navigation
 
 import (
-	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -12,60 +10,48 @@ import (
 	"navi/internal/catalog"
 )
 
-func TestResolverPrefersPrivateAndFallsBackToPublic(t *testing.T) {
+func TestResolverPrefersPrivateAndFallsBackToPublicWithoutProbingIt(t *testing.T) {
 	t.Parallel()
 
+	var publicRequests atomic.Int32
 	public := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusNoContent)
+		publicRequests.Add(1)
 	}))
 	defer public.Close()
 	private := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusNoContent)
 	}))
 	defer private.Close()
-	resolver := NewResolver(NewProber(2), time.Second, time.Second, time.Minute)
+	resolver := NewResolver(NewProber(2), time.Second, time.Minute)
 
-	target, err := resolver.Resolve(t.Context(), catalog.Link{PrivateURL: private.URL, PublicURL: public.URL})
-	if err != nil || target != private.URL {
-		t.Fatalf("Resolve() = %q, %v", target, err)
+	if target := resolver.Resolve(t.Context(), catalog.Link{PrivateURL: private.URL, PublicURL: public.URL}); target != private.URL {
+		t.Fatalf("Resolve() = %q", target)
 	}
-
-	target, err = resolver.Resolve(t.Context(), catalog.Link{PrivateURL: "http://127.0.0.1:1", PublicURL: public.URL})
-	if err != nil || target != public.URL {
-		t.Fatalf("Resolve() fallback = %q, %v", target, err)
+	if target := resolver.Resolve(t.Context(), catalog.Link{PrivateURL: "http://127.0.0.1:1", PublicURL: public.URL}); target != public.URL {
+		t.Fatalf("Resolve() fallback = %q", target)
+	}
+	if publicRequests.Load() != 0 {
+		t.Fatalf("public requests = %d, want 0", publicRequests.Load())
 	}
 }
 
-func TestUserRetryDiscardsNegativeCache(t *testing.T) {
-	var ready atomic.Bool
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !ready.Load() {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
+func TestResolverReturnsSingleDestinationWithoutProbing(t *testing.T) {
+	t.Parallel()
+
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
-	resolver := NewResolver(NewProber(1), time.Second, time.Second, time.Hour)
-	link := catalog.Link{PublicURL: server.URL}
-	if _, err := resolver.Resolve(t.Context(), link); err == nil {
-		t.Fatal("expected unreachable")
-	}
-	ready.Store(true)
-	if _, err := resolver.Resolve(t.Context(), link); err == nil {
-		t.Fatal("negative cache not populated")
-	}
-	if target, err := resolver.Retry(t.Context(), link); err != nil || target != server.URL {
-		t.Fatalf("retry = %q, %v", target, err)
-	}
-}
+	resolver := NewResolver(NewProber(1), time.Second, time.Minute)
 
-func TestResolverPreservesCallerCancellation(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	resolver := NewResolver(NewProber(1), time.Second, time.Second, time.Hour)
-	_, err := resolver.Resolve(ctx, catalog.Link{PublicURL: "http://example.test"})
-	if !errors.Is(err, context.Canceled) || errors.Is(err, ErrUnreachable) {
-		t.Fatalf("canceled Resolve = %v", err)
+	for _, link := range []catalog.Link{{PrivateURL: server.URL}, {PublicURL: server.URL}} {
+		if target := resolver.Resolve(t.Context(), link); target != server.URL {
+			t.Fatalf("Resolve(%+v) = %q", link, target)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
 	}
 }

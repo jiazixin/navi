@@ -313,7 +313,7 @@ func appTestConfig(t *testing.T, catalogPath string, port int, watch bool) confi
 		Health:     config.HealthConfig{URI: "/health"},
 		Logging:    config.LoggingConfig{Level: "info", Format: "json"},
 		Catalog:    config.CatalogConfig{Path: catalogPath, Watch: watch, ReloadDebounce: 50 * time.Millisecond},
-		Navigation: config.NavigationConfig{PrivateProbeTimeout: 100 * time.Millisecond, PublicProbeTimeout: 100 * time.Millisecond, ProbeCacheTTL: time.Second, MaxConcurrentProbes: 2},
+		Navigation: config.NavigationConfig{PrivateProbeTimeout: 100 * time.Millisecond, ProbeCacheTTL: time.Second, MaxConcurrentProbes: 2},
 		Favicon:    config.FaviconConfig{FetchTimeout: 100 * time.Millisecond, RefreshInterval: time.Hour, MaxFileBytes: 1_024, Workers: 1},
 	}
 }

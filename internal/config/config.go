@@ -97,10 +97,9 @@ type CatalogConfig struct {
 	ReloadDebounce time.Duration `yaml:"reload_debounce"`
 }
 
-// NavigationConfig controls private and public destination probes.
+// NavigationConfig controls private destination probes.
 type NavigationConfig struct {
 	PrivateProbeTimeout time.Duration `yaml:"private_probe_timeout"`
-	PublicProbeTimeout  time.Duration `yaml:"public_probe_timeout"`
 	ProbeCacheTTL       time.Duration `yaml:"probe_cache_ttl"`
 	MaxConcurrentProbes int           `yaml:"max_concurrent_probes"`
 }
@@ -210,8 +209,7 @@ func defaultConfig() Config {
 		Logging: LoggingConfig{Level: "info", Format: "json", AccessLog: true},
 		Catalog: CatalogConfig{Path: "./urls.yaml", Watch: true, ReloadDebounce: 250 * time.Millisecond},
 		Navigation: NavigationConfig{
-			PrivateProbeTimeout: 800 * time.Millisecond, PublicProbeTimeout: 1200 * time.Millisecond,
-			ProbeCacheTTL: 30 * time.Second, MaxConcurrentProbes: 32,
+			PrivateProbeTimeout: 800 * time.Millisecond, ProbeCacheTTL: 30 * time.Second, MaxConcurrentProbes: 32,
 		},
 		Favicon: FaviconConfig{
 			FetchTimeout: 3 * time.Second, RefreshInterval: 168 * time.Hour,
@@ -309,7 +307,6 @@ func validate(loaded Config) error {
 		{"server.shutdown_timeout", loaded.Server.ShutdownTimeout},
 		{"catalog.reload_debounce", loaded.Catalog.ReloadDebounce},
 		{"navigation.private_probe_timeout", loaded.Navigation.PrivateProbeTimeout},
-		{"navigation.public_probe_timeout", loaded.Navigation.PublicProbeTimeout},
 		{"navigation.probe_cache_ttl", loaded.Navigation.ProbeCacheTTL},
 		{"favicon.fetch_timeout", loaded.Favicon.FetchTimeout},
 		{"favicon.refresh_interval", loaded.Favicon.RefreshInterval},

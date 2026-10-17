@@ -47,7 +47,7 @@ server:
   read_header_timeout: 5s
   # 读取整个请求的最长时间；必须大于 0。
   read_timeout: 20s
-  # 普通响应的写入超时；应留足 private/public 探测及响应时间。
+  # 普通响应的写入超时；应留足 private 探测及响应时间。
   # SSE /api/events 仅限制每帧写入时间，等待事件时取消期限，不会每 30 秒断开。
   write_timeout: 30s
   # HTTP keep-alive 连接等待下一个请求的最长空闲时间；必须大于 0。
@@ -85,11 +85,11 @@ catalog:
   reload_debounce: 250ms
 
 navigation:
-  # 点击卡片时，先从 Navi 服务器探测 private_url，再按需回退 public_url。
+  # 只配置一个地址的链接直接跳转，不探测。同时配置 private_url 和 public_url 时，
+  # 从 Navi 服务器探测 private_url，可达则跳 private，否则直接跳 public（public 不探测）。
   # 这是服务器网络视角；服务器可达不代表用户浏览器一定能到达。
   # 超时包含等待并发名额及合并请求的时间；以下时间均必须大于 0。
   private_probe_timeout: 800ms
-  public_probe_timeout: 1200ms
   # 同一目标的正常探测结果缓存时间；越短恢复感知越快，目标站点探测压力也越大。
   # 请求取消/超时不写入缓存；不会向目标转发浏览器 Cookie 或 Authorization。
   probe_cache_ttl: 30s
