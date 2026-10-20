@@ -27,7 +27,7 @@
 .grain {
   position: absolute;
   inset: 0;
-  background-image: url('/grain.svg');
+  background-image: url('./grain.svg');
   opacity: var(--grain);
 }
 

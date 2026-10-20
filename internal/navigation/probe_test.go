@@ -149,3 +149,16 @@ func TestProbeAllowsThreeRedirects(t *testing.T) {
 		t.Fatal("four redirects accepted")
 	}
 }
+
+func TestProberTreatsUntrustedCertificateAsReachable(t *testing.T) {
+	t.Parallel()
+	// Private services commonly use self-signed or internal-CA certificates that
+	// the user's browser trusts but the Navi host does not.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	if !NewProber(1).Probe(t.Context(), server.URL, time.Second, time.Minute) {
+		t.Fatal("certificate verification failure reported the host as unreachable")
+	}
+}

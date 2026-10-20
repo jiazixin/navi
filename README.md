@@ -37,7 +37,7 @@ The default address is `http://127.0.0.1:8080`; health is available at `/health`
 - Priority is environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER_PORT=8081`, or `NAVI_CATALOG_WATCH=false`.
 - String variables are preserved literally; paths trim surrounding whitespace and credentials match exactly. An empty variable overrides the file: optional credentials may be cleared together, but required paths cannot be empty. Numbers, booleans, and durations must be single non-empty scalar values. Durations accept `250ms`, `3s`, and `168h`, rather than `7d`.
 - `storage` and `catalog.path`, including environment overrides, resolve from the selected configuration's directory. Without the implicit main file, the expected `configs/` directory remains the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployment.
-- Main configuration changes require restart. Only the catalog supports live reload. Valid updates notify open pages through SSE; invalid updates retain the last valid catalog and report degraded status until repaired.
+- Main configuration changes require restart. Only the catalog supports live reload. Valid updates notify open pages through SSE; invalid updates retain the last valid catalog and report degraded status until repaired; the cause is logged as `catalog reload failed`.
 - Appearance defaults: `theme` is `default` (follows the system: Ink when dark, Paper when light), `ink`, `paper`, `celadon` or `dusk`; `background_pattern` is `none`, `contour`, `flow`, `guilloche`, `stars` or `ridge`; `web_search` sets the default external search entry. Choices made in the page's Appearance panel are stored in that browser and take precedence.
 
 Catalog example:
@@ -58,7 +58,7 @@ pages:
 
 At least one of `private_url` and `public_url` is required, accepting only absolute HTTP(S) URLs. Pages follow `pages` order; groups follow their first occurrence and preserve relative YAML order within each group. Every page must explicitly include `urls`, allowing an empty array. Limits are 2 MiB, 20 pages, and 1000 links. Navi never writes the catalog and has no web editor, drag-and-drop sorting, database, or catalog write API.
 
-A link with a single URL redirects directly without probing. When both URLs are set, the **Navi server** probes only the private URL and redirects there if reachable, otherwise straight to the public URL without probing it. Server reachability does not guarantee browser reachability. Probes have timeouts, caching, and concurrency limits. Favicons are discovered in the background and cached under `storage/favicons`; initials provide a fallback without blocking the first render.
+A link with a single URL redirects directly without probing. When both URLs are set, the **Navi server** probes only the private URL and redirects there if reachable, otherwise straight to the public URL without probing it. A TLS certificate the server cannot verify (self-signed or internal CA) still counts as reachable; the browser makes its own trust decision. Server reachability does not guarantee browser reachability. Probes have timeouts, caching, and concurrency limits. Favicons are discovered in the background and cached under `storage/favicons`; initials provide a fallback without blocking the first render.
 
 ## Authentication and deployment
 
@@ -167,7 +167,6 @@ web/                  Frontend manifests, tooling, HTML entry and embed.go
   src/components/     Reusable UI
   src/lib/            Shared keyboard, storage and URL helpers
   src/styles/         Palettes, fonts and shared keyframes
-  public/             Static files copied as-is (film grain texture)
   src/test/           Unit-test setup
   tests/fixtures/     Development and integration inputs
   e2e/                Browser tests, real-server fixtures and reviewed snapshots

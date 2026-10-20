@@ -35,7 +35,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open embedded UI: %w", err)
 	}
-	watcher := catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store)
+	watcher := catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store, logger)
 	var eventObserverDone chan struct{}
 	if loaded.Catalog.Watch {
 		if err := watcher.Start(runCtx); err != nil {
@@ -119,6 +119,7 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("serve HTTP: %w", err)
 		}
+		logger.Info("Navi stopped")
 		return nil
 	case err := <-serverErrors:
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
@@ -200,10 +201,6 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 					} else {
 						logger.Info("favicon cache recovered")
 					}
-					continue
-				}
-				if event.Type == catalog.EventCatalogError {
-					logger.Error("catalog reload failed", "revision", event.Revision, "message", event.Message)
 					continue
 				}
 				if event.Type != catalog.EventCatalogUpdated {

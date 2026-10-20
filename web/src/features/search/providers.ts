@@ -106,9 +106,6 @@ export const searchProviders: readonly SearchProvider[] = [
   },
 ] as const;
 
-export const webSearchProviders = searchProviders.filter((provider) => provider.category === 'web');
-export const aiSearchProviders = searchProviders.filter((provider) => provider.category === 'ai');
-
 export function getSearchProvider(providerID: SearchProviderID): SearchProvider {
   return searchProviders.find((provider) => provider.id === providerID) ?? defaultSearchProvider;
 }

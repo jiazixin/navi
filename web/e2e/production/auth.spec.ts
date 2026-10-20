@@ -5,12 +5,23 @@ test('login protects data, persists across reload and logout revokes access', as
   for (const endpoint of ['/api/catalog', '/api/status', '/api/icons/unknown', '/api/events']) {
     expect((await page.request.get(app.url + endpoint)).status()).toBe(401);
   }
+  // Every resource the login page draws must be public, not redirected to /login.
+  const blockedResources: string[] = [];
+  page.on('response', (response) => {
+    const type = response.request().resourceType();
+    if (['image', 'stylesheet', 'font', 'script'].includes(type) && response.status() !== 200) {
+      blockedResources.push(`${response.status()} ${response.url()}`);
+    }
+  });
+  const grain = page.waitForResponse((response) => /\/grain[^/]*\.svg$/.test(new URL(response.url()).pathname));
   await page.goto(app.url);
   await expect(page).toHaveURL(app.url + '/login');
   await expect(page.getByRole('heading', { name: '登录你的空间' })).toBeVisible();
   await expect(page.getByRole('link', { name: '打开 部署测试' })).toHaveCount(0);
   await page.locator('form').waitFor();
   await page.evaluate(async () => { await Promise.all(document.getAnimations().map((animation) => animation.finished)); });
+  expect((await grain).status()).toBe(200);
+  expect(blockedResources).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('login-desktop.png'), fullPage: true, animations: 'disabled' });
   await page.setViewportSize({ width: 320, height: 568 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

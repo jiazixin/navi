@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ type Watcher struct {
 	debounce  time.Duration
 	load      Loader
 	store     *Store
+	logger    *slog.Logger
 	events    *eventHub
 
 	mu       sync.RWMutex
@@ -72,14 +74,16 @@ func (s Subscription) Close() {
 	s.close()
 }
 
-// NewWatcher creates a file watcher for one catalog path.
-func NewWatcher(path string, debounce time.Duration, load Loader, store *Store) *Watcher {
+// NewWatcher creates a file watcher for one catalog path. Reload failures are
+// logged with their cause; subscribers receive only a generic message.
+func NewWatcher(path string, debounce time.Duration, load Loader, store *Store, logger *slog.Logger) *Watcher {
 	return &Watcher{
 		path:      filepath.Clean(path),
 		directory: filepath.Dir(path),
 		debounce:  debounce,
 		load:      load,
 		store:     store,
+		logger:    logger,
 		events:    newEventHub(),
 		done:      make(chan struct{}),
 	}
@@ -177,11 +181,11 @@ func (w *Watcher) run(ctx context.Context, watcher *fsnotify.Watcher) {
 		case <-ctx.Done():
 			_ = watcher.Close()
 			return
-		case _, ok := <-watcher.Errors:
+		case err, ok := <-watcher.Errors:
 			if !ok {
 				return
 			}
-			w.recordFailure()
+			w.recordFailure(fmt.Errorf("watch catalog directory: %w", err))
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return
@@ -201,7 +205,7 @@ func (w *Watcher) run(ctx context.Context, watcher *fsnotify.Watcher) {
 func (w *Watcher) reload() {
 	loaded, err := w.load(w.path)
 	if err != nil {
-		w.recordFailure()
+		w.recordFailure(err)
 		return
 	}
 	snapshot := w.store.Publish(loaded)
@@ -212,7 +216,7 @@ func (w *Watcher) reload() {
 	w.events.Publish(Event{Type: EventCatalogUpdated, Revision: snapshot.Revision()})
 }
 
-func (w *Watcher) recordFailure() {
+func (w *Watcher) recordFailure(err error) {
 	w.mu.Lock()
 	w.degraded = true
 	w.message = "目录更新失败，当前仍显示最近一次有效内容。"
@@ -221,6 +225,7 @@ func (w *Watcher) recordFailure() {
 	if snapshot, ok := w.store.Snapshot(); ok {
 		revision = snapshot.Revision()
 	}
+	w.logger.Error("catalog reload failed", "path", w.path, "revision", revision, "error", err)
 	w.events.Publish(Event{Type: EventCatalogError, Revision: revision, Message: "目录更新失败，当前仍显示最近一次有效内容。"})
 }
 

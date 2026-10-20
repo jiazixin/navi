@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -27,7 +28,7 @@ func TestServerStreamsCatalogEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.Publish(loaded)
-	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store)
+	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {
@@ -82,7 +83,7 @@ func TestServerKeepsSSEOpenPastServerWriteTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.Publish(loaded)
-	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store)
+	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {

@@ -139,11 +139,6 @@ func Load(lookupEnv LookupEnv) (Config, error) {
 	return finishConfig(defaultConfig(), absPath, lookupEnv)
 }
 
-// LoadFile loads and validates a specific main configuration file.
-func LoadFile(path string) (Config, error) {
-	return loadFile(path, nil)
-}
-
 func loadFile(path string, lookupEnv LookupEnv) (Config, error) {
 	if strings.TrimSpace(path) == "" {
 		return Config{}, fmt.Errorf("configuration path must not be empty")
@@ -340,17 +335,19 @@ func validate(loaded Config) error {
 	return nil
 }
 
+// validateCatalogPath errors name the resolved path, which may differ from the
+// configured relative value.
 func validateCatalogPath(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("cannot access catalog file")
+		return fmt.Errorf("cannot access catalog file: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("must be a regular file")
+		return fmt.Errorf("%s must be a regular file", path)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("must be readable")
+		return fmt.Errorf("catalog file must be readable: %w", err)
 	}
 	return file.Close()
 }

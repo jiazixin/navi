@@ -3,6 +3,7 @@ package navigation
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"maps"
 	"net/http"
@@ -100,7 +101,7 @@ func (p *Prober) probe(ctx context.Context, target string) bool {
 		response.Body.Close()
 	}
 	if err != nil {
-		return false
+		return completedHandshake(err)
 	}
 	if response.StatusCode != http.StatusMethodNotAllowed && response.StatusCode != http.StatusNotImplemented {
 		return reachableStatus(response.StatusCode)
@@ -109,7 +110,18 @@ func (p *Prober) probe(ctx context.Context, target string) bool {
 	if response != nil {
 		response.Body.Close()
 	}
-	return err == nil && reachableStatus(response.StatusCode)
+	if err != nil {
+		return completedHandshake(err)
+	}
+	return reachableStatus(response.StatusCode)
+}
+
+// completedHandshake reports a TLS peer whose certificate this host cannot verify.
+// Private services often use self-signed or internal-CA certificates; the host is
+// reachable, and the browser applies its own trust decision after the redirect.
+func completedHandshake(err error) bool {
+	var verification *tls.CertificateVerificationError
+	return errors.As(err, &verification)
 }
 
 func request(ctx context.Context, client *http.Client, method, target string) (*http.Response, error) {

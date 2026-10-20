@@ -1,48 +1,47 @@
-# 界面重构验收（2026-10-16）
+# 1.0 上线前验收（2026-10-20）
 
-本轮把 Web 前端整体重构为「等高 / Contour」设计（动态 Canvas 纹样、四种色调、JetBrains Mono 显示字体、站内与外部合一的搜索、快速搜索、分区目录），并同步调整后端外观配置与关闭流程。项目尚未上线，按用户授权不保留旧主题、旧纹样或旧接口的兼容代码。以下结果均来自本轮在最终代码上实际执行的检查，不沿用历史记录。
+本轮是 1.0 发布前的最后一次全量测试：在 `fix/direct-navigation`（基于 `10a36df`）的工作区上执行全部检查、实际运行生产二进制，并修复测试中发现的问题。项目尚未上线，按用户要求不保留兼容代码。以下结果均来自本轮在最终代码上实际执行的检查，不沿用历史记录（上一轮界面重构验收见 Git 历史）。
 
-结论：源码检查、单元测试、三浏览器 E2E、视觉基线、真实 Go 二进制三浏览器集成、前后端构建均通过。容器、真机和线上 HTTPS 代理未验证。
+结论：源码检查、单元测试、静态分析、漏洞扫描、三浏览器 E2E、视觉基线、真实 Go 二进制三浏览器集成、Storybook 与前后端构建全部通过。容器、真机和线上 HTTPS 代理未验证。
 
-## 变更范围
+## 发现并修复的问题
 
-| 范围 | 内容 |
-| --- | --- |
-| 前端 | 删除旧 UI（主题菜单、9 种纹样、分页、顶栏筛选、搜索弹层等）并按新设计重写；保留并沿用目录/状态/认证 API 客户端、SSE 订阅、外部搜索 provider 与图标 |
-| 外观配置 | `theme` 改为 `default/ink/paper/celadon/dusk`，`background_pattern` 改为 `none/contour/flow/guilloche/stars/ridge`（默认 contour）；三项外观默认值不再出现在 `/api/catalog`，改为注入页面根元素，登录页与失败页首帧即可使用 |
-| 关闭流程 | 新增 `internal/app/connections.go`：关闭时立即关闭从未发出请求的预连接，避免浏览器预开的空闲连接拖过 `shutdown_timeout`（Firefox 集成测试据此稳定复现并修复，附 Go 回归测试） |
-| 构建 | 新增 `@fontsource-variable/jetbrains-mono`，移除未再使用的 `motion`；`assetsInlineLimit: 0`，避免 `data:` 字体被 CSP 拒绝 |
-| 本地配置 | 未提交的 `configs/config.local.yaml` 中旧值 `violet-lime`/`star-trails` 会导致启动失败，已改为 `dusk`/`stars`，其余内容未动 |
-
-## 审查方式
-
-- Go 修改前按 `use-modern-go` CLI（Go 1.27 规则）列出准则并遵循。
-- `open-code-review-delegate`：`ocr delegate preview`（v1.12.13）选出 75 个可审查文件，按 5 组规则（Go、TS/React、CSS、YAML/JSON 键、package.json）逐文件审查，覆盖率 100%；工具默认排除的测试、文档、快照与锁文件另行检查。审查发现并已修复：首屏搜索 Tab 离开后结果层遮住引擎行、快速搜索点击链接后不关闭、聚光效果每次指针移动读取全部卡片布局（改为每帧一次）、`/go/` 与 `/api/icons/` 路径重复硬编码、嵌套三元表达式。未保留已确认未修复的问题。
-- E2E 期间另发现并修复：页标签高度不足 44px、`<time>` 上禁止的 `aria-label`、装饰遮罩造成的窄屏横向溢出（改为限制遮罩范围，而非隐藏溢出）。
+| 问题 | 发现方式 | 修复 |
+| --- | --- | --- |
+| 登录页的胶片颗粒纹理 `/grain.svg` 位于 `public/`，未登录时被 302 到 `/login`，登录页纹理缺失 | 浏览器网络记录 | 纹理移到 `web/src/features/appearance/grain.svg` 由 CSS 引用，构建进公开的 `/assets/`；删除 `web/public/`；生产集成新增断言：登录页图片、样式、字体、脚本均直接 200（已在旧代码上确认该断言失败） |
+| 导航 YAML 热加载失败时日志只有通用提示，没有解析或校验错误原因 | 实际编辑 YAML 观察日志 | `catalog.NewWatcher` 接收 logger，`catalog reload failed` 记录路径、revision 与 `error`；页面和 API 仍只显示通用提示；附 Go 回归测试 |
+| `catalog.path` 不存在时只报 `cannot access catalog file`，不显示解析后的绝对路径 | CLI 启动错误场景 | 错误包含解析后的路径与系统原因；附 Go 回归测试 |
+| 内网 HTTPS 使用自签或内部 CA 证书时，服务器无法验证证书，private 探测判为不可达，总是跳 public | 代码审查后用 TLS 测试服务器复现 | 证书验证失败（握手已到达对端）按可达处理，证书信任由浏览器决定；其他网络错误仍不可达；附 Go 回归测试，DESIGN/README 同步 |
+| `golang.org/x/net` v0.56.0 含 5 个 HTTP/2 公告（GO-2026-6603/6610/6611/6612/6617，代码未调用） | `govulncheck` | 升级到 v0.60.0（`golang.org/x/sys` 随之 v0.48.0） |
+| 开发依赖 `source-map-js` 1.2.1 高危公告 GHSA-68fv-2mgg-jv7q | `npm audit` | `npm audit fix` 仅更新锁文件到 1.2.2 |
+| 死代码：`config.LoadFile` 仅测试使用；`DEFAULT_WEB_SEARCH_PROVIDER`、`webSearchProviders`、`aiSearchProviders` 无使用方 | 导出引用扫描 | 删除测试专用导出与未用列表；`main.tsx` 改用 `DEFAULT_WEB_SEARCH_PROVIDER` 作为唯一默认值 |
+| Vite 开发 fixture 的 SSE 发送真实服务不存在的 `connected` 事件 | 协议对照 | 删除，fixture 与后端协议一致 |
+| 正常关闭没有结束日志；示例配置头部说明位于 `auth` 段之后 | 实测 / 审读 | 优雅关闭后记录 `Navi stopped`；示例配置头部移到文件开头 |
 
 ## 实际验证
 
-环境：macOS arm64；Go 1.27.2、Node 26.12.0、npm 11.20.0、Playwright 1.62.1（本轮安装项目对应的 Chromium、Firefox、WebKit）。命令从仓库根执行，Go 检查在生成 `web/dist` 后运行。
+环境：macOS arm64；Go 1.27.2、Node 26.12.0、npm 11.20.0、Playwright 1.62.1（Chromium、Firefox、WebKit）、staticcheck 2026.2.2 (0.8.2)、govulncheck（`golang.org/x/vuln` 最新版，联网数据库）。命令从仓库根执行，Go 检查在生成 `web/dist` 后运行。
 
 | 命令 / 检查 | 结果 |
 | --- | --- |
-| `npm --prefix web run lint`、`npm --prefix web run typecheck` | 通过 |
-| `npm --prefix web run test` | 20 个测试文件、100 项通过；语句 95.97%、分支 86.1%、函数 96.85%、行 97.18%（门槛未调整） |
-| `npm --prefix web run test:e2e` | Chromium、Firefox、WebKit 共 42 项通过 |
-| `npm --prefix web run test:visual` | 16 项通过；基线本轮重新生成（旧 UI 基线已删除），逐张人工查看后接受 |
-| `npm --prefix web run test:production` | 真实 Go 二进制三浏览器共 21 项通过（修复关闭流程前 Firefox 稳定失败 2–3 项） |
-| `npm --prefix web run storybook:test` | 测试模式构建通过 |
-| `npm --prefix web run build` | 通过；JS 361 kB（gzip 114 kB）、CSS 37 kB；字体以独立 woff2 文件输出，无 `data:` 资源 |
-| `gofmt -l cmd internal web/embed.go`、`go mod verify` | 无格式问题；模块校验通过 |
+| `npm --prefix web ci`、`lint`、`typecheck` | 通过 |
+| `npm --prefix web run test` | 通过；语句 95.95%、分支 86.1%、函数 96.83%、行 97.17%（门槛未调整） |
+| `npm --prefix web run build` | 通过；JS 362 kB（gzip 114 kB）、CSS 38 kB；纹理与字体为独立文件 |
+| `gofmt -l`、`go mod verify` | 无格式问题；模块校验通过 |
 | `go test`、`go test -race`、`go vet`（`./internal/... ./cmd/... ./web`） | 全部通过 |
-| 手工运行 `bin/navi` | 合成配置（含/不含认证）下首页、登录页、目录、图标 404 回退与 CSP 无报错；全部色调与纹样、桌面 1280/1440 与移动 375/390 人工查看 |
-
-E2E 覆盖：首屏与分区目录、所有可见按钮 ≥44px、卡片入场后不透明与跳转、首屏搜索与外部搜索、⌘K 快速搜索与焦点恢复、页签切换与记忆、外观面板切换与持久化、五种纹样在动态/静态下均绘制像素、纹样不拦截输入、降级提示、加载失败重试、1000 链接、320/390/768 视口无横向溢出及 axe 无 serious/critical 问题。
+| `staticcheck ./internal/... ./cmd/... ./web` | 无问题 |
+| `govulncheck` 源码模式与 `-mode=binary bin/navi` | 修复后均为 No vulnerabilities found |
+| `npm --prefix web audit` | 修复后 0 vulnerabilities |
+| `npm --prefix web run test:e2e` | 三浏览器 42 项通过 |
+| `npm --prefix web run test:visual` | 16 项通过，基线未改动 |
+| `npm --prefix web run test:production` | 真实 Go 二进制三浏览器 24 项通过 |
+| `npm --prefix web run storybook:test` | 构建通过 |
+| 手工运行 `bin/navi` | 合成配置（含认证）下：健康检查、未登录 401/302、错误/正确登录、6 次失败后 429、退出后 401、private 可达 / 不可达回退 public / 单地址不探测、`/go/` 不存在 404、YAML 非法更新降级与原子替换恢复、SIGTERM 正常关闭；CLI 的多余参数、空路径、缺失文件、非法环境变量均以非零码退出并给出原因 |
 
 ## 未执行与部署前剩余检查
 
 - 未执行镜像构建、容器启动与 UID 65532 挂载读写。
 - 未执行真机触控、高 DPI、高刷新率、200%/400% 浏览器缩放；纹样的 CPU/电量占用未做设备基准测试。
 - 未在线上 HTTPS 反向代理验证 Secure Cookie、Host 转发与 SSE 长连接。
-- 本轮未执行 `staticcheck`、`govulncheck` 与 `npm audit`。
+- `npm ci` 提示 esbuild、fsevents 的安装脚本未被 npm 允许运行；本轮构建与测试不受影响，未修改 npm 安装脚本策略。
 - 仓库无已配置 CI；以上为本机结果。

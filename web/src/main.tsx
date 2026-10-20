@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App';
-import { webSearchProviderSchema } from './app/api/webSearch';
+import { DEFAULT_WEB_SEARCH_PROVIDER, webSearchProviderSchema } from './app/api/webSearch';
 import { AppProviders } from './app/providers';
 import { AppearanceProvider } from './features/appearance/AppearanceProvider';
 import { applyPalette, parsePattern, parseThemePreference, resolvePalette, storageKeys } from './features/appearance/options';
@@ -18,7 +18,7 @@ if (rootElement === null) {
 // The Go server injects configured appearance defaults; apply the palette before the first paint.
 const configuredTheme = parseThemePreference(rootElement.dataset.configuredTheme);
 const configuredPattern = parsePattern(rootElement.dataset.configuredPattern);
-const configuredSearch = webSearchProviderSchema.catch('baidu').parse(rootElement.dataset.configuredSearch);
+const configuredSearch = webSearchProviderSchema.catch(DEFAULT_WEB_SEARCH_PROVIDER).parse(rootElement.dataset.configuredSearch);
 applyPalette(
   resolvePalette(
     parseThemePreference(readStored(storageKeys.theme), configuredTheme),

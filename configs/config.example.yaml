@@ -1,11 +1,3 @@
-# 账号密码都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
-# 仅填写其中一项会启动报错；修改后重启生效。
-# 通过 HTTPS（包括反向代理）访问时设置 secure_cookie: true。
-auth:
-  username: ""
-  password: ""
-  secure_cookie: false
-
 # Navi 主配置示例
 # 复制为 configs/config.local.yaml 后按部署环境修改。启动方式：./bin/navi --config /路径/config.local.yaml
 # 配置选择：-f/--config 优先于 CONFIG_FILE；均未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
@@ -13,6 +5,14 @@ auth:
 # 未知字段、非法取值、重复 YAML 键和多个 YAML 文档会导致启动失败。
 # 下列值均为默认值；省略字段时使用默认值，不用空字符串代替省略。
 # 时间使用 Go duration 写法，例如 250ms、3s、10m、168h；不支持 7d。
+
+# 账号密码都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
+# 仅填写其中一项会启动报错；修改后重启生效。
+# 通过 HTTPS（包括反向代理）访问时设置 secure_cookie: true。
+auth:
+  username: ""
+  password: ""
+  secure_cookie: false
 
 # 可重建缓存目录；相对路径以本配置文件所在目录为基准，不是进程工作目录。
 # 目录内的 favicons 保存图标及元数据，不保存第二份导航目录；可在停机后删除重建。

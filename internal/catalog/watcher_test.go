@@ -1,9 +1,12 @@
 package catalog
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,7 +21,7 @@ func TestWatcherReloadsWritesAndAtomicRenames(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.Publish(initial)
-	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store)
+	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
@@ -51,7 +54,8 @@ func TestWatcherKeepsLastValidSnapshotWhenReloadFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.Publish(initial)
-	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store)
+	var logs bytes.Buffer
+	watcher := NewWatcher(path, 20*time.Millisecond, LoadFile, store, slog.New(slog.NewTextHandler(&logs, nil)))
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
@@ -70,6 +74,10 @@ func TestWatcherKeepsLastValidSnapshotWhenReloadFails(t *testing.T) {
 	}
 	if degraded, _ := watcher.Degraded(); !degraded {
 		t.Fatal("watcher should be degraded after invalid reload")
+	}
+	// The operator log names the cause; the subscriber message stays generic.
+	if logged := logs.String(); !strings.Contains(logged, "catalog reload failed") || !strings.Contains(logged, "decode catalog") {
+		t.Fatalf("reload failure log = %q, want the decode cause", logged)
 	}
 
 	writeWatchedCatalog(t, path, "Recovered", false)
@@ -94,7 +102,7 @@ func TestWatcherDebouncesRapidChanges(t *testing.T) {
 		loads <- struct{}{}
 		return LoadFile(path)
 	}
-	watcher := NewWatcher(path, 80*time.Millisecond, loader, store)
+	watcher := NewWatcher(path, 80*time.Millisecond, loader, store, slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	if err := watcher.Start(ctx); err != nil {
@@ -144,7 +152,7 @@ func TestWatcherStopBeforeStartIsSafeAndPreventsReuse(t *testing.T) {
 	t.Parallel()
 
 	path := writeCatalog(t, catalogWithTitle("Initial"))
-	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore())
+	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore(), slog.New(slog.DiscardHandler))
 	stopped := make(chan struct{})
 	go func() {
 		watcher.Stop()
@@ -168,7 +176,7 @@ func TestWatcherStartRejectsSecondStart(t *testing.T) {
 	t.Parallel()
 
 	path := writeCatalog(t, catalogWithTitle("Initial"))
-	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore())
+	watcher := NewWatcher(path, time.Millisecond, LoadFile, NewStore(), slog.New(slog.DiscardHandler))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {

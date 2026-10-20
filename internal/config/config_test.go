@@ -38,7 +38,7 @@ func TestLoadAppliesPublicDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	loaded, err := LoadFile(configPath)
+	loaded, err := loadFile(configPath, nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -85,7 +85,7 @@ func TestLoadRejectsInvalidValues(t *testing.T) {
 				}
 			})
 
-			_, err = LoadFile(configPath)
+			_, err = loadFile(configPath, nil)
 			if err == nil {
 				t.Fatal("Load() error = nil, want validation error")
 			}
@@ -124,7 +124,7 @@ func TestRejectsEmptyStorageBeforeResolvingPaths(t *testing.T) {
 	if err := os.WriteFile(configPath, []byte(strings.Replace(string(contents), "storage: ./storage", "storage: '  '", 1)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadFile(configPath); err == nil || !strings.Contains(err.Error(), "storage") {
+	if _, err := loadFile(configPath, nil); err == nil || !strings.Contains(err.Error(), "storage") {
 		t.Fatalf("expected storage error: %v", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestAnnotatedExampleMatchesDefaults(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	loaded, err := LoadFile(filepath.Join(directory, "config.yaml"))
+	loaded, err := loadFile(filepath.Join(directory, "config.yaml"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestEmptyAuthIsOptional(t *testing.T) {
 		if err := os.WriteFile(file, []byte(updated), 0600); err != nil {
 			t.Fatal(err)
 		}
-		loaded, err := LoadFile(file)
+		loaded, err := loadFile(file, nil)
 		if err != nil || loaded.Auth.Enabled() {
 			t.Fatalf("empty auth: %v", err)
 		}
@@ -264,5 +264,19 @@ func TestEnvironmentOverridesFileAndDefaults(t *testing.T) {
 		if _, err := Load(lookup); err == nil {
 			t.Errorf("accepted invalid port override %q", invalid)
 		}
+	}
+}
+
+func TestLoadReportsResolvedCatalogPath(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	if err := os.WriteFile(configPath, []byte("catalog:\n  path: ./missing.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadFile(configPath, nil)
+	if err == nil || !strings.Contains(err.Error(), filepath.Join(root, "missing.yaml")) {
+		t.Fatalf("loadFile() error = %v, want the resolved catalog path", err)
 	}
 }

@@ -44,7 +44,6 @@ function devAPI(): Plugin {
           response.setHeader('Cache-Control', 'no-cache');
           response.setHeader('Connection', 'keep-alive');
           response.flushHeaders();
-          response.write(`event: connected\ndata: {"revision":${mockCatalog.revision}}\n\n`);
 
           const heartbeat = setInterval(() => {
             response.write(': heartbeat\n\n');

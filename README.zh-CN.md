@@ -37,7 +37,7 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 - 优先级为环境变量 > 所选文件 > 内置默认值。字段映射为 `NAVI_<字段>` 或 `NAVI_<节>_<字段>`，例如 `NAVI_STORAGE=/var/cache/navi`、`NAVI_SERVER_PORT=8081`、`NAVI_CATALOG_WATCH=false`。
 - 字符串环境变量保留原值，路径解析时去掉首尾空白；凭证精确匹配。空字符串会覆盖文件值：允许清空可选认证，但不能清空必填路径。数字、布尔和时长必须是单个非空标量，非法值报错。时长使用 `250ms`、`3s`、`168h`，不支持 `7d`。
 - `storage` 和 `catalog.path`（包括环境覆盖）相对所选配置所在目录解析。没有隐式主配置时仍以预期的 `configs/` 为基准，因此默认目录为 `configs/urls.yaml`，缓存为 `.cache/`。部署优先使用绝对路径。
-- 主配置修改后重启生效；仅 `catalog.path` 指向的导航文件支持热加载。合法更新通过 SSE 通知页面，非法更新保留最近有效目录并提示降级，修复后恢复。
+- 主配置修改后重启生效；仅 `catalog.path` 指向的导航文件支持热加载。合法更新通过 SSE 通知页面，非法更新保留最近有效目录并提示降级，具体错误见服务日志 `catalog reload failed`，修复后恢复。
 - 外观默认值：`theme` 为 `default`（跟随系统，深色墨夜 / 浅色宣纸）、`ink`、`paper`、`celadon`、`dusk`；`background_pattern` 为 `none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`；`web_search` 为默认外部搜索入口。页面右上角「外观」面板中的选择保存在当前浏览器，优先于配置。
 
 导航示例：
@@ -58,7 +58,7 @@ pages:
 
 `private_url` 和 `public_url` 至少一个，只接受绝对 HTTP(S) 地址。页顺序来自 `pages`；分组按首次出现排序，组内保持 YAML 相对顺序。每页必须显式写 `urls`，允许空数组。文件最多 2 MiB、20 页、1000 链接。Navi 不回写目录，不提供 Web 编辑器、拖拽排序、数据库或目录写入 API。
 
-只配置一个地址的链接直接跳转，不探测。同时配置两个地址时，从 **Navi 服务器** 探测 private URL，可达则跳 private，否则直接跳 public（不探测 public）；服务器可达不保证浏览器网络也可达。探测受超时、缓存和并发上限约束。图标后台发现并保存在 `storage/favicons`，没有图标时使用字标，不阻塞首屏。
+只配置一个地址的链接直接跳转，不探测。同时配置两个地址时，从 **Navi 服务器** 探测 private URL，可达则跳 private，否则直接跳 public（不探测 public）。服务器无法验证的 TLS 证书（自签或内部 CA）仍视为可达，由浏览器自行判断信任；服务器可达不保证浏览器网络也可达。探测受超时、缓存和并发上限约束。图标后台发现并保存在 `storage/favicons`，没有图标时使用字标，不阻塞首屏。
 
 ## 登录与部署
 
@@ -167,7 +167,6 @@ web/                  前端清单、工具配置、HTML 入口和 embed.go
   src/components/     跨域 UI
   src/lib/            共享键盘、存储与 URL 能力
   src/styles/         色调、字体与共享关键帧
-  public/             原样复制的静态文件（胶片颗粒纹理）
   src/test/           单元测试初始化
   tests/fixtures/     开发与集成固定输入
   e2e/                浏览器测试、真实服务 fixture、已评审快照
