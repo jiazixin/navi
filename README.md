@@ -1,131 +1,146 @@
+<div align="center">
+
 # Navi
 
-Navi is a self-hosted, read-only personal navigation system. The Go backend reads a YAML catalog and provides optional login, live catalog updates, private/public destination selection, and favicon caching. The React frontend is embedded in one Go binary: a map-inspired start page with a live clock, unified link and web search, quick search (⌘K), a section index, four palettes and five animated canvas background patterns, responsive layouts, and keyboard controls. Production does not require Node.
+**自托管、只读的个人导航起始页 —— 一个 YAML 文件，一个二进制。**
 
-[中文说明](README.zh-CN.md) · [Design and protocol](docs/DESIGN.md) · [Development and verification](docs/IMPLEMENTATION.md) · [Current acceptance](docs/ACCEPTANCE.md)
+[![CI](https://github.com/jiazixin/navi/actions/workflows/ci.yml/badge.svg)](https://github.com/jiazixin/navi/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jiazixin/navi?include_prereleases&sort=semver)](https://github.com/jiazixin/navi/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/jiazixin/navi)](go.mod)
 
-## Requirements and first run
+简体中文 · [English](README.en.md)
 
-- [go.mod](go.mod) declares the Go requirement, currently Go 1.27.1 or later.
-- [web/package.json](web/package.json) declares the Node requirement: Node 22.x from 22.22.2, 24.x from 24.15.0, or 26+. Use the npm version bundled with that Node release.
-- Install from the committed `web/package-lock.json` using `npm ci`. Browser checks also require Playwright browsers and their operating-system dependencies.
+![Navi 首页（等高线纹样、墨夜色调）](web/e2e/visual.spec.ts-snapshots/home-desktop-visual-darwin.png)
 
-Run these commands from the repository root. Initialization preserves existing configuration:
+</div>
+
+## 简介
+
+Navi 把一份 YAML 导航目录变成一个以地图为灵感的浏览器起始页。Go 后端负责读取目录、可选登录、热加载、内外网地址选择和 favicon 缓存；React 前端在构建时嵌入同一个 Go 二进制，生产运行不需要 Node、数据库或任何外部服务。
+
+项目类型：单个 Go 服务（`cmd/`、`internal/`）配套一个嵌入式 Web 应用（`web/`）。
+
+## 功能
+
+- **单文件目录**：多页、分组、标签，全部写在一个 YAML 中；修改后通过 SSE 实时推送到页面，非法修改保留最近有效目录并提示降级。
+- **内外网自动选择**：同时配置 `private_url` 与 `public_url` 时，由服务器探测内网地址，可达走内网，否则直接跳转公网。
+- **搜索合一**：首页搜索框同时筛选站内链接和调用外部搜索引擎；`⌘K` / `Ctrl+K` 打开快速搜索，全程可键盘操作。
+- **起始页体验**：实时时钟、分区目录索引、四种色调（墨夜、宣纸、青瓷、暮色）与五种动态 Canvas 纹样（等高线、流线、扭索纹、星空、山脊），响应式布局。
+- **Favicon 缓存**：后台发现并缓存站点图标，缺失时显示字标，不阻塞首屏。
+- **可选登录**：用户名密码登录、HttpOnly Cookie、24 小时内存会话、按 IP 限流。
+- **单一二进制**：前端随 Go 编译，支持 linux / darwin 的 amd64 / arm64，提供 distroless 容器镜像。
+
+Navi 刻意保持只读：不提供 Web 编辑器、拖拽排序、数据库或目录写入 API，目录只由 YAML 文件维护。
+
+## 快速开始
+
+### 下载预编译二进制
+
+从 [Releases](https://github.com/jiazixin/navi/releases) 下载对应平台的 `navi_<版本>_<系统>_<架构>.tar.gz`，用 `checksums.txt` 校验后解压。压缩包内含二进制、README 与两份示例配置：
 
 ```sh
+mkdir navi && tar -xzf navi_<版本>_<系统>_<架构>.tar.gz -C navi && cd navi
+cp -n configs/config.example.yaml configs/config.local.yaml
+cp -n configs/urls.example.yaml configs/urls.yaml
+./navi --config ./configs/config.local.yaml
+```
+
+打开 `http://127.0.0.1:8080`，健康检查位于 `/health`。
+
+### 从源码构建
+
+需要的运行时版本：
+
+| 工具 | 版本来源 | 当前要求 |
+| --- | --- | --- |
+| Go | [go.mod](go.mod) | Go 1.27.2 或以上 |
+| Node | [web/package.json](web/package.json) `engines` | 22.x（≥ 22.22.2）、24.x（≥ 24.15.0）或 26+，使用随附的 npm |
+
+以下命令从仓库根执行，初始化命令不会覆盖已有配置：
+
+```sh
+git clone https://github.com/jiazixin/navi.git
+cd navi
 cp -n configs/config.example.yaml configs/config.local.yaml
 cp -n configs/urls.example.yaml configs/urls.yaml
 go mod download
 npm --prefix web ci
 npm --prefix web run build
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
-COMMIT=$(git rev-parse --short HEAD)
-BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
-  -o bin/navi ./cmd/navi
+CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
 ./bin/navi --config ./configs/config.local.yaml
 ```
 
-The default address is `http://127.0.0.1:8080`; health is available at `/health`. Edit both local YAML files first. Both credentials are empty by default, allowing direct access. Set both `auth.username` and `auth.password` to enable login.
+`web/embed.go` 直接嵌入 `web/dist`，因此任何 Go 构建、测试或检查前都必须先执行 `npm --prefix web run build`。带版本信息的构建见[发布构建](#发布构建)。
 
-## Configuration
+### Docker
 
-[config.example.yaml](configs/config.example.yaml) is the source for all fields, defaults, and constraints. See [urls.example.yaml](configs/urls.example.yaml) and the [catalog contract](docs/DESIGN.md#导航数据) for navigation data.
+```sh
+docker build -t navi:local .
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v "$(pwd)/configs:/app/configs:ro" \
+  -v navi-cache:/app/.cache \
+  -e CONFIG_FILE=/app/configs/config.local.yaml \
+  -e NAVI_SERVER_LISTEN=0.0.0.0 \
+  -e NAVI_STORAGE=/app/.cache \
+  navi:local
+```
 
-- `-f PATH` / `--config PATH` explicitly selects the main configuration and overrides `CONFIG_FILE`; without a flag, `CONFIG_FILE` remains available. Relative paths resolve from the process working directory. If neither is set, only `./configs/config.local.yaml` is checked, and an absent file uses built-in defaults. An explicitly empty value, a missing/unreadable selected file, or invalid YAML fails startup. The catalog must exist and be valid.
-- Priority is environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER_PORT=8081`, or `NAVI_CATALOG_WATCH=false`.
-- String variables are preserved literally; paths trim surrounding whitespace and credentials match exactly. An empty variable overrides the file: optional credentials may be cleared together, but required paths cannot be empty. Numbers, booleans, and durations must be single non-empty scalar values. Durations accept `250ms`, `3s`, and `168h`, rather than `7d`.
-- `storage` and `catalog.path`, including environment overrides, resolve from the selected configuration's directory. Without the implicit main file, the expected `configs/` directory remains the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployment.
-- Main configuration changes require restart. Only the catalog supports live reload. Valid updates notify open pages through SSE; invalid updates retain the last valid catalog and report degraded status until repaired; the cause is logged as `catalog reload failed`.
-- Appearance defaults: `theme` is `default` (follows the system: Ink when dark, Paper when light), `ink`, `paper`, `celadon` or `dusk`; `background_pattern` is `none`, `contour`, `flow`, `guilloche`, `stars` or `ridge`; `web_search` sets the default external search entry. Choices made in the page's Appearance panel are stored in that browser and take precedence.
+注入版本信息、权限与挂载要求见[容器部署](#容器部署)。
 
-Catalog example:
+## 配置
+
+Navi 使用两份 YAML：主配置（服务、认证、外观等）和导航目录。完整字段、默认值和约束以 [config.example.yaml](configs/config.example.yaml) 为准；导航格式见 [urls.example.yaml](configs/urls.example.yaml) 与[数据契约](docs/DESIGN.md#导航数据)。
+
+### 导航目录
 
 ```yaml
 version: 1
 pages:
   - id: work
-    title: Work
+    title: 工作导航
     urls:
       - name: Grafana
-        group: Infrastructure
-        description: Metrics and dashboards
+        group: 基础设施
+        description: 指标与仪表盘
         private_url: http://grafana.lan:3000
         public_url: https://grafana.example.com
         tags: [monitoring, metrics]
 ```
 
-At least one of `private_url` and `public_url` is required, accepting only absolute HTTP(S) URLs. Pages follow `pages` order; groups follow their first occurrence and preserve relative YAML order within each group. Every page must explicitly include `urls`, allowing an empty array. Limits are 2 MiB, 20 pages, and 1000 links. Navi never writes the catalog and has no web editor, drag-and-drop sorting, database, or catalog write API.
+- `private_url` 和 `public_url` 至少填写一个，只接受绝对 HTTP(S) 地址。
+- 页顺序来自 `pages`；分组按首次出现排序，组内保持 YAML 中的相对顺序。每页必须显式写 `urls`，允许空数组。
+- 文件上限 2 MiB、20 页、1000 个链接。
 
-A link with a single URL redirects directly without probing. When both URLs are set, the **Navi server** probes only the private URL and redirects there if reachable, otherwise straight to the public URL without probing it. A TLS certificate the server cannot verify (self-signed or internal CA) still counts as reachable; the browser makes its own trust decision. Server reachability does not guarantee browser reachability. Probes have timeouts, caching, and concurrency limits. Favicons are discovered in the background and cached under `storage/favicons`; initials provide a fallback without blocking the first render.
+只有一个地址的链接直接跳转，不做探测。同时有两个地址时，由 **Navi 服务器** 探测 private URL，可达则跳 private，否则直接跳 public（不探测 public）。服务器无法验证的 TLS 证书（自签或内部 CA）仍视为可达，由浏览器自行判断信任；服务器可达不代表浏览器所在网络也可达。探测受超时、缓存和并发上限约束。
 
-## Authentication and deployment
+### 主配置与环境变量
 
-Both credentials empty, or omitted `auth`, disables authentication. Both configured enables login; a partial account or whitespace-only credential fails startup. Quote credentials containing YAML syntax. Sessions live in memory for 24 hours and expire on logout or restart. Cookies use HttpOnly and SameSite=Strict; passwords and tokens are never stored in localStorage.
+- **选择配置文件**：`-f PATH` / `--config PATH` 显式选择主配置并覆盖 `CONFIG_FILE`；未传标志时可用 `CONFIG_FILE`。相对路径以进程工作目录为基准。两者都未设置时只查找 `./configs/config.local.yaml`，缺失则使用内置默认值；显式空值、文件不存在、不可读或 YAML 非法均启动失败。导航 YAML 必须存在且合法。
+- **优先级**：环境变量 > 所选文件 > 内置默认值。字段映射为 `NAVI_<字段>` 或 `NAVI_<节>_<字段>`，例如 `NAVI_STORAGE=/var/cache/navi`、`NAVI_SERVER_PORT=8081`、`NAVI_CATALOG_WATCH=false`。
+- **取值语义**：字符串保留原值，路径解析时去掉首尾空白，凭证精确匹配。空字符串会覆盖文件值：可用于清空可选认证，但不能清空必填路径。数字、布尔和时长必须是单个非空标量，非法值报错。时长写作 `250ms`、`3s`、`168h`，不支持 `7d`。
+- **相对路径**：`storage` 和 `catalog.path`（包括环境覆盖）相对所选配置所在目录解析；没有隐式主配置时仍以预期的 `configs/` 为基准，因此默认目录为 `configs/urls.yaml`，缓存为 `.cache/`。部署时优先使用绝对路径。
+- **生效方式**：主配置修改后重启生效；只有 `catalog.path` 指向的导航文件支持热加载。非法更新的具体错误见服务日志 `catalog reload failed`，修复后自动恢复。
+- **外观默认值**：`theme` 可选 `default`（跟随系统：深色墨夜 / 浅色宣纸）、`ink`、`paper`、`celadon`、`dusk`；`background_pattern` 可选 `none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`；`web_search` 为默认外部搜索引擎。页面右上角「外观」面板的选择保存在当前浏览器，优先于配置。
 
-With authentication enabled, unauthenticated pages redirect to `/login`, and the backend protects catalog, status, SSE, icons, and navigation. Login, bundled static assets, and health remain public; health exposes only coarse status. Login is limited to five attempts per minute per directly connected IP. Proxy users share the proxy IP limit; forwarding headers are not trusted.
+## 登录与安全
 
-Use an HTTPS reverse proxy and set `NAVI_AUTH_SECURE_COOKIE=true` for remote deployment. Disable buffering for `/api/events`, allow connections longer than its 15-second heartbeat, and preserve the original Host header. Catalog APIs expose configured internal/public URLs; do not place credentials in those URLs. Only trusted users should edit YAML because the server fetches its destinations, icons, and redirect targets.
+- `auth.username` 与 `auth.password` 均为空或省略 `auth` 时关闭认证；两项都填写时启用登录；只填一项或纯空白凭证会启动失败。凭证中的 YAML 特殊字符需要加引号。
+- 会话保存在内存中，24 小时过期，退出或重启后失效。Cookie 使用 HttpOnly、SameSite=Strict，不在 localStorage 保存密码或令牌。
+- 启用认证后，未登录页面跳转到 `/login`；目录、状态、SSE、图标与跳转接口均由后端校验会话。登录页、打包静态资源和 `/health` 公开，健康端点只报告粗粒度状态。
+- 登录按直接连接 IP 限制每分钟 5 次。服务不信任转发头，反向代理后的用户共享代理 IP 的限额。
+- 导航 API 会返回配置的内外网地址，不要在 URL 中放凭证；只允许可信用户编辑 YAML，因为服务器会请求其中的站点、图标和重定向目标。
 
-## Development and verification
+### 反向代理
 
-```sh
-npm --prefix web run dev
-```
+远程部署请放在 HTTPS 反向代理之后，并设置 `NAVI_AUTH_SECURE_COOKIE=true`。代理需要：
 
-The development address is `http://127.0.0.1:10090`. Vite serves fixed read-only catalog and pre-authenticated fixtures, rather than local navigation YAML. Use the production binary or `test:production` to exercise actual authentication, configuration, and backend protocols. `npm --prefix web run preview` previews static output and does not provide a backend API.
+- 关闭 `/api/events` 的响应缓冲；
+- 允许超过 15 秒心跳间隔的长连接；
+- 转发原始 `Host`。
 
-Default check sequence:
+## 容器部署
 
-```sh
-npm --prefix web run lint
-npm --prefix web run typecheck
-npm --prefix web run test
-npm --prefix web run build
-test -z "$(gofmt -l cmd internal web/embed.go)"
-go mod verify
-go test ./internal/... ./cmd/... ./web
-go test -race ./internal/... ./cmd/... ./web
-go vet ./internal/... ./cmd/... ./web
-```
-
-`web/embed.go` embeds `web/dist` directly, so build the frontend before every Go check or build. Explicit Go package paths avoid scanning third-party Go code under `node_modules`.
-
-Run browser checks and component-documentation builds separately:
-
-```sh
-(cd web && npx playwright install)
-npm --prefix web run storybook:test
-npm --prefix web run test:e2e
-npm --prefix web run test:visual
-npm --prefix web run test:production
-```
-
-`storybook:test` builds Storybook in test mode; it does not run browser interaction assertions. Regular E2E uses Vite fixtures. Production integration uses real Go binaries, temporary directories, and synthetic configuration across three browsers for authentication, navigation, reload, and recovery. Existing visual baselines are macOS screenshots; establishing baselines on another OS requires manual review. [IMPLEMENTATION.md](docs/IMPLEMENTATION.md) covers full commands, tools, performance checks, and manual verification.
-
-CI runs on GitHub Actions, configured in [.github/workflows/](.github/workflows/). It orchestrates the native Go/npm commands above, building Web before Go: pushes to `main` and pull requests run Web lint/typecheck/unit tests/build and the Storybook build, Go formatting/vet/race tests, fixture and production-integration E2E in Chromium, and a [GoReleaser](.goreleaser.yaml) snapshot build. Visual baselines are macOS screenshots, so Firefox/WebKit and visual tests still run locally. See [ACCEPTANCE.md](docs/ACCEPTANCE.md) for current results and unexecuted checks.
-
-## Release build
-
-```sh
-npm --prefix web run build
-VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
-COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
-BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
-  -o bin/navi ./cmd/navi
-./bin/navi --version
-```
-
-`bin/navi` includes the frontend, version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, falling back to the current short commit ID when no tag exists. Without explicit injection, the program also reads Go's embedded VCS revision (or the revision in a Go pseudo-version) and falls back to its short ID; `dev` is used only when neither source of build metadata exists. Tag and commit information are fixed at build time, so the resulting binary does not depend on `.git`. The commit field does not identify uncommitted changes; confirm the actual source being released.
-
-Pushing a `vMAJOR.MINOR.PATCH` tag (optionally with a `-` pre-release suffix) triggers [release.yml](.github/workflows/release.yml): it first checks that the binary reports exactly that tag, then GoReleaser injects the tag, short commit, and commit time the same way and publishes linux/darwin amd64/arm64 archives plus `checksums.txt` as a GitHub Release. Preview locally with `goreleaser release --snapshot --clean`; output goes to the ignored `bin/release/`.
-
-## Container
-
-Dockerfile installs frontend dependencies from the lockfile, builds `web/dist`, and compiles a static Go binary. The runtime image does not include Node. After preparing local configuration:
+Dockerfile 从锁文件安装前端依赖并构建 `web/dist`，再编译静态 Go 二进制；运行镜像基于 distroless，不含 Node、shell 或 curl。带版本信息构建并运行：
 
 ```sh
 VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
@@ -145,46 +160,115 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   navi:local
 ```
 
-The container working directory is `/app` and the user is UID/GID 65532. This example binds the host port to localhost for a host-side reverse proxy; choose the binding explicitly for remote access. Add `-e NAVI_AUTH_SECURE_COOKIE=true` for HTTPS deployment. Environment overrides configure container listening and caching without changing the local file; `catalog.path: ./urls.yaml` resolves to `/app/configs/urls.yaml`.
+- 容器工作目录为 `/app`，以 UID/GID 65532 运行。示例把端口绑定到宿主机本地，供宿主机反向代理访问；需要远程直连时自行选择绑定地址。HTTPS 部署额外传入 `-e NAVI_AUTH_SECURE_COOKIE=true`。
+- 环境变量覆盖监听地址与缓存路径，无需修改本地配置；`catalog.path: ./urls.yaml` 解析为 `/app/configs/urls.yaml`。
+- 请只读挂载整个配置目录，避免编辑器原子替换文件后单文件挂载仍引用旧文件。配置目录须允许 UID 65532 遍历，两份 YAML 须可读；仅宿主机所有者可读的 `0600` 权限在容器内无法读取。
+- 命名缓存 volume 继承镜像中的所有权；已有 volume 或 bind mount 需确保 UID/GID 65532 可写。
+- 健康探测从容器外请求 `/health`。HTTP 200 也可能是 `degraded`，必要时再读取认证后的 `/api/status`。
 
-Mount the entire configuration directory read-only, allowing editor atomic replacements to remain visible. UID 65532 must be able to traverse the directory and read both YAML files; owner-only `0600` files need a container-aware ownership/access arrangement. A fresh named cache volume inherits image ownership; existing volumes and bind mounts must explicitly allow UID/GID 65532 to write. The image has no shell or curl, so request `/health` from outside the container. HTTP 200 can mean `degraded`; authenticated `/api/status` provides further status.
+## 数据与备份
 
-## Runtime state and backups
+- 需要备份的只有 `configs/config.local.yaml` 和 `configs/urls.yaml`。含凭证的配置只应允许管理员与运行用户读取。自定义配置实例也放在 `configs/`，仓库只提交 `*.example.yaml`；容器构建上下文排除整个 `configs/`，本地配置不会打入镜像。
+- 没有持久业务数据库或上传文件。`.cache/favicons/` 是可重建缓存，无需备份，清理应在停机后进行。
+- 日志输出到标准输出；会话在重启后失效。
 
-Back up `configs/config.local.yaml` and `configs/urls.yaml`; limit credential-file access to administrators and the runtime user. Custom local configurations also belong under `configs/`; only `*.example.yaml` is committed. The entire directory is excluded from the Docker context, preventing local instances from entering the image.
+## 开发
 
-There is no persistent business database or upload store. `.cache/favicons/` is rebuildable and does not need backup; stop the service before deleting it. Logs go to stdout and sessions expire on restart. Dependencies, builds, caches, coverage, and test output are ignored; preserve configuration during cleanup.
-
-## Layout and documentation
-
-[目录规范.md](目录规范.md) is the sole general directory baseline. Current ownership is:
-
-```text
-cmd/navi/             Executable entry point
-internal/             config, catalog, navigation, favicon, app and colocated Go tests
-web/                  Frontend manifests, tooling, HTML entry and embed.go
-  src/app/            Application assembly, APIs and global state
-  src/layouts/        Page shell
-  src/features/       Domain features, colocated tests and stories
-  src/components/     Reusable UI
-  src/lib/            Shared keyboard, storage and URL helpers
-  src/styles/         Palettes, fonts and shared keyframes
-  src/test/           Unit-test setup
-  tests/fixtures/     Development and integration inputs
-  e2e/                Browser tests, real-server fixtures and reviewed snapshots
-  dist/               Generated static bundle
-configs/              Examples and local configuration
-docs/                 DESIGN, UI_SPEC, IMPLEMENTATION and ACCEPTANCE
-bin/                  Generated binary
-.cache/               Rebuildable favicon cache
-coverage/             Go coverage reports, generated on demand
+```sh
+npm --prefix web run dev
 ```
 
-Completed plans and obsolete acceptance records remain in Git history and are not current command/result references. [UI_SPEC.md](docs/UI_SPEC.md) retains interface and accessibility contracts; current acceptance is recorded separately.
+开发服务器地址为 `http://127.0.0.1:10090`。Vite 提供固定的只读目录和已登录 fixture，不读取本地导航 YAML；验证真实登录、配置和后端协议时请使用生产二进制或 `test:production`。`npm --prefix web run preview` 只预览静态构建，不提供后端 API。
 
-### Directory exceptions
+### 测试与检查
 
-| Rule / standard path | Actual path or behavior | Reason and evidence | Scope | Reassessment condition |
+默认检查顺序（Go 检查前必须先构建前端）：
+
+```sh
+npm --prefix web run lint
+npm --prefix web run typecheck
+npm --prefix web run test
+npm --prefix web run build
+test -z "$(gofmt -l cmd internal web/embed.go)"
+go mod verify
+go test ./internal/... ./cmd/... ./web
+go test -race ./internal/... ./cmd/... ./web
+go vet ./internal/... ./cmd/... ./web
+```
+
+Go 包需要显式列出，避免 `./...` 扫入 `web/node_modules` 中的第三方 Go 代码。
+
+浏览器测试与组件文档构建：
+
+```sh
+(cd web && npx playwright install)
+npm --prefix web run storybook:test
+npm --prefix web run test:e2e
+npm --prefix web run test:visual
+npm --prefix web run test:production
+```
+
+`storybook:test` 是 Storybook 测试模式构建，不执行浏览器交互断言。常规 E2E 使用 Vite fixture；生产集成使用真实 Go 二进制、临时目录与合成配置，在三种浏览器中覆盖登录、跳转、热加载与故障恢复。视觉基线目前为 macOS 截图，跨操作系统首次建立基线需人工确认。完整命令、工具安装、性能检查与手工检查范围见 [IMPLEMENTATION.md](docs/IMPLEMENTATION.md)。
+
+### 持续集成
+
+CI 使用 GitHub Actions，配置位于 [.github/workflows/](.github/workflows/)，直接调用上述原生 Go / npm 命令并先构建 Web 再编译 Go。推送 `main` 与 Pull Request 会运行：Web lint / 类型 / 单元测试 / 构建与 Storybook 构建，Go 格式 / vet / race 测试，Chromium 下的 fixture E2E 与生产集成 E2E，以及 [GoReleaser](.goreleaser.yaml) 快照构建。Firefox / WebKit 与视觉测试仍在本地执行；当前通过与未执行项以 [ACCEPTANCE.md](docs/ACCEPTANCE.md) 为准。
+
+## 发布构建
+
+```sh
+npm --prefix web run build
+VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
+COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
+BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
+CGO_ENABLED=0 go build -trimpath -buildvcs=false \
+  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -o bin/navi ./cmd/navi
+./bin/navi --version
+```
+
+生成的 `bin/navi` 包含前端资源以及版本、提交和构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有时使用短提交 ID。未显式注入时，程序会读取 Go 内嵌的 VCS revision（或伪版本中的提交号）回退为短 ID；两者都不存在时才显示 `dev`。这些信息在构建时固化，二进制运行不依赖 `.git`；工作区未提交的修改不会体现在 commit 字段中。
+
+推送 `vMAJOR.MINOR.PATCH`（或带 `-` 预发布后缀）tag 会触发 [release.yml](.github/workflows/release.yml)：先核对二进制报告的版本与 tag 一致，再由 GoReleaser 以相同方式注入 tag、短提交和提交时间，生成 linux / darwin 的 amd64 / arm64 压缩包与 `checksums.txt`，并发布 GitHub Release。本地可用 `goreleaser release --snapshot --clean` 预览，产物位于被忽略的 `bin/release/`。
+
+## 项目结构
+
+通用目录归属只在 [目录规范.md](目录规范.md) 中维护；本项目实际结构如下：
+
+```text
+cmd/navi/             程序入口
+internal/             config、catalog、navigation、favicon、app 与就近 Go 测试
+web/                  前端清单、工具配置、HTML 入口和 embed.go
+  src/app/            应用装配、API 与全局状态
+  src/layouts/        页面外壳
+  src/features/       业务功能与就近测试、故事
+  src/components/     跨域 UI
+  src/lib/            共享键盘、存储与 URL 能力
+  src/styles/         色调、字体与共享关键帧
+  src/test/           单元测试初始化
+  tests/fixtures/     开发与集成固定输入
+  e2e/                浏览器测试、真实服务 fixture、已评审快照
+  dist/               生成的静态资源
+configs/              示例与本地配置
+docs/                 DESIGN、UI_SPEC、IMPLEMENTATION、ACCEPTANCE
+bin/                  生成的二进制
+.cache/               可重建图标缓存
+coverage/             Go 覆盖率报告（按需生成）
+```
+
+文档：[设计与协议](docs/DESIGN.md) · [界面规范](docs/UI_SPEC.md) · [开发与验证](docs/IMPLEMENTATION.md) · [本轮验收](docs/ACCEPTANCE.md)。已完成的计划与过期验收保留在 Git 历史中，不作为当前依据。
+
+### 目录例外
+
+| 规则 / 标准路径 | 实际路径或行为 | 原因与依据 | 适用范围 | 重新评估条件 |
 | --- | --- | --- | --- | --- |
-| Section 7.1: paths without a configuration file default to the working directory | Missing implicit configuration resolves built-in paths from the expected `configs/config.local.yaml` directory | Existing Load/finishConfig protocol in `internal/config/config.go`; paths remain stable whether the implicit file exists | Root Go service default startup | An explicitly authorized configuration-protocol change |
-| Section 7.1: `CONFIG_FILE` explicitly selects configuration | `-f PATH` / `--config PATH` are also supported and take precedence | This project is an executable service; the user explicitly requested standard CLI configuration flags while retaining environment selection for containers | `cmd/navi` configuration selection | An explicitly authorized CLI or configuration-protocol change |
+| 第 7.1 节：无配置文件时路径默认以工作目录为基准 | 缺失隐式主配置时，以预期 `configs/config.local.yaml` 所在目录解析内置路径 | `internal/config/config.go` 的既有 Load/finishConfig 协议；保持有无隐式文件时路径一致 | 根 Go 服务的默认启动 | 明确调整配置协议时 |
+| 第 7.1 节：通过 `CONFIG_FILE` 显式选择配置 | 同时支持 `-f PATH` / `--config PATH`，且命令行优先 | 本项目是可执行服务；用户明确要求标准 CLI 配置标志，环境变量继续用于容器部署 | `cmd/navi` 配置选择 | 明确调整 CLI 或配置协议时 |
+
+## 参与贡献
+
+欢迎提交 Issue 和 Pull Request。提交前请：
+
+1. 阅读 [目录规范.md](目录规范.md) 与 [AGENTS.md](AGENTS.md)，按既有目录归属放置文件；
+2. 在本地通过[测试与检查](#测试与检查)中的默认检查；
+3. 涉及界面变更时同步更新视觉基线，并在 PR 中说明。

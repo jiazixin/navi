@@ -1,6 +1,6 @@
 # 开发与验证
 
-使用入口见 [README.zh-CN.md](../README.zh-CN.md)，协议见 [DESIGN.md](DESIGN.md)，界面约定见 [UI_SPEC.md](UI_SPEC.md)，本轮结果见 [ACCEPTANCE.md](ACCEPTANCE.md)。已完成计划与过期验证记录由 Git 历史保留，不把历史通过结果当作当前验收。
+使用入口见 [README.md](../README.md)，协议见 [DESIGN.md](DESIGN.md)，界面约定见 [UI_SPEC.md](UI_SPEC.md)，本轮结果见 [ACCEPTANCE.md](ACCEPTANCE.md)。已完成计划与过期验证记录由 Git 历史保留，不把历史通过结果当作当前验收。
 
 ## 开发约定
 

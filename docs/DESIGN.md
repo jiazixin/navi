@@ -17,7 +17,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 ## 配置约定
 
-完整字段、默认值和约束仅维护在 [config.example.yaml](../configs/config.example.yaml)；初始化、环境变量空值语义和部署示例见 [README.zh-CN.md](../README.zh-CN.md#配置)。
+完整字段、默认值和约束仅维护在 [config.example.yaml](../configs/config.example.yaml)；初始化、环境变量空值语义和部署示例见 [README.md](../README.md#配置)。
 
 `-f PATH` / `--config PATH` 选择主配置并覆盖 `CONFIG_FILE`；未传标志时可由 `CONFIG_FILE` 选择。两者都未设置时只查找 `./configs/config.local.yaml`，缺失使用内置默认值；显式空值、文件不存在或不可读时报错。优先级为命令行配置路径 > `CONFIG_FILE`，而配置值仍为 `NAVI_<字段>` / `NAVI_<节>_<字段>` 环境变量 > 文件 > 内置默认值。`storage` 与 `catalog.path`（包括环境覆盖）相对所选配置目录解析，缺失隐式文件时仍以预期的 `configs/` 为基准；项目例外已登记在 README。部署使用绝对路径。
 
