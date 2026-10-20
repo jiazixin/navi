@@ -104,7 +104,7 @@ npm --prefix web run test:production
 
 `storybook:test` 是 Storybook 测试模式构建，不执行浏览器交互断言。常规 E2E 使用 Vite fixture；生产集成使用真实 Go 二进制、临时目录和合成配置，三浏览器覆盖登录、跳转、热加载与故障恢复。视觉基线目前为 macOS 截图；跨操作系统首次建立基线需人工确认。完整命令、工具安装、性能检查及手工范围见 [IMPLEMENTATION.md](docs/IMPLEMENTATION.md)。
 
-仓库未提供 CI 配置，也没有可验证的外部 CI 配置；上面的命令是本地检查入口。接入实际 CI 时直接编排原生 Go/npm 命令，先构建 Web 再编译 Go。当前通过与未执行项以 [ACCEPTANCE.md](docs/ACCEPTANCE.md) 为准。
+CI 使用 GitHub Actions，配置在 [.github/workflows/](.github/workflows/)，直接编排上述原生 Go/npm 命令并先构建 Web 再编译 Go：推送 `main` 和 Pull Request 运行 Web lint/类型/单元测试/构建与 Storybook 构建、Go 格式/vet/race 测试、Chromium 下的 fixture E2E 与生产集成 E2E，以及 [GoReleaser](.goreleaser.yaml) 快照构建。视觉基线为 macOS 截图，Firefox/WebKit 与视觉测试仍在本地执行。当前通过与未执行项以 [ACCEPTANCE.md](docs/ACCEPTANCE.md) 为准。
 
 ## 发布构建
 
@@ -120,6 +120,8 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ```
 
 生成 `bin/navi`，包含前端以及版本、提交、构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有 tag 时使用当前提交的短 ID。没有显式注入时，程序也会读取 Go 内嵌的 VCS revision（或 Go 伪版本中的提交号）并回退到短 ID；只有两种构建信息都不存在时才使用 `dev`。tag 和提交信息均在构建时固化，成品二进制不依赖 `.git`。工作区未提交的修改不会由 commit 字段标识，发布前应核对实际源码范围。
+
+推送 `vMAJOR.MINOR.PATCH`（或带 `-` 预发布后缀）tag 会触发 [release.yml](.github/workflows/release.yml)：先核对二进制报告的版本与 tag 一致，再由 GoReleaser 以相同方式注入 tag、短提交和提交时间，生成 linux/darwin 的 amd64/arm64 压缩包与 `checksums.txt` 并发布 GitHub Release。本地可用 `goreleaser release --snapshot --clean` 预览，产物位于被忽略的 `bin/release/`。
 
 ## 容器
 

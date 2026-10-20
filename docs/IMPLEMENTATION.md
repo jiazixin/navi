@@ -87,4 +87,4 @@ npm --prefix web audit
 - 人工检查真实触控、200%/400% 浏览器缩放、字体放大、高 DPI、reduced motion 和高刷新率；视口模拟不等于真机验收。
 - 容器按 README 用配置目录只读挂载、可写缓存 volume 和环境变量覆盖。验证 UID/GID 65532 的配置读取与缓存写入、外部 health、HTTPS Cookie、反向代理 Host、SSE 长连接与关闭。守护进程不可用时明确记录容器构建/运行未执行。
 
-仓库没有已配置的 CI，也无法证明外部 CI 存在。上述命令是本地等价入口；未来接入 CI 直接编排原生命令，并在流程中声明先 Web 后 Go 的依赖。
+CI 为 GitHub Actions（[ci.yml](../.github/workflows/ci.yml)、[release.yml](../.github/workflows/release.yml)），直接编排上述原生命令并声明先 Web 后 Go 的依赖；浏览器只在 Linux Chromium 上运行 fixture 与生产集成 E2E，Firefox/WebKit、视觉基线、静态检查与漏洞扫描及手工范围仍按本文在本地执行。

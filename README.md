@@ -104,7 +104,7 @@ npm --prefix web run test:production
 
 `storybook:test` builds Storybook in test mode; it does not run browser interaction assertions. Regular E2E uses Vite fixtures. Production integration uses real Go binaries, temporary directories, and synthetic configuration across three browsers for authentication, navigation, reload, and recovery. Existing visual baselines are macOS screenshots; establishing baselines on another OS requires manual review. [IMPLEMENTATION.md](docs/IMPLEMENTATION.md) covers full commands, tools, performance checks, and manual verification.
 
-The repository has no CI configuration and no verifiable external CI configuration. These commands are local check entry points. An actual CI should directly orchestrate native Go/npm commands, building Web before Go. See [ACCEPTANCE.md](docs/ACCEPTANCE.md) for current results and unexecuted checks.
+CI runs on GitHub Actions, configured in [.github/workflows/](.github/workflows/). It orchestrates the native Go/npm commands above, building Web before Go: pushes to `main` and pull requests run Web lint/typecheck/unit tests/build and the Storybook build, Go formatting/vet/race tests, fixture and production-integration E2E in Chromium, and a [GoReleaser](.goreleaser.yaml) snapshot build. Visual baselines are macOS screenshots, so Firefox/WebKit and visual tests still run locally. See [ACCEPTANCE.md](docs/ACCEPTANCE.md) for current results and unexecuted checks.
 
 ## Release build
 
@@ -120,6 +120,8 @@ CGO_ENABLED=0 go build -trimpath -buildvcs=false \
 ```
 
 `bin/navi` includes the frontend, version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, falling back to the current short commit ID when no tag exists. Without explicit injection, the program also reads Go's embedded VCS revision (or the revision in a Go pseudo-version) and falls back to its short ID; `dev` is used only when neither source of build metadata exists. Tag and commit information are fixed at build time, so the resulting binary does not depend on `.git`. The commit field does not identify uncommitted changes; confirm the actual source being released.
+
+Pushing a `vMAJOR.MINOR.PATCH` tag (optionally with a `-` pre-release suffix) triggers [release.yml](.github/workflows/release.yml): it first checks that the binary reports exactly that tag, then GoReleaser injects the tag, short commit, and commit time the same way and publishes linux/darwin amd64/arm64 archives plus `checksums.txt` as a GitHub Release. Preview locally with `goreleaser release --snapshot --clean`; output goes to the ignored `bin/release/`.
 
 ## Container
 

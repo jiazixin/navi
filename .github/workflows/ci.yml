@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Actions are pinned by commit; the comment names the reviewed tag.
+jobs:
+  web:
+    name: Web 检查、测试与构建
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci --ignore-scripts
+      - run: npm --prefix web run lint
+      - run: npm --prefix web run typecheck
+      - run: npm --prefix web run test
+      - run: npm --prefix web run build
+      - run: npm --prefix web run storybook:test
+
+  go:
+    name: Go 检查与测试
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      # The Go embed package needs web/dist before any vet, test or build.
+      - run: npm --prefix web ci --ignore-scripts
+      - run: npm --prefix web run build
+      - run: go mod verify
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l cmd internal web/embed.go)
+          [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
+      # Packages are listed explicitly so ./... does not reach web/node_modules.
+      - run: go vet ./internal/... ./cmd/... ./web
+      # macOS is cross-checked only; release-snapshot also cross-compiles it.
+      - run: GOOS=darwin GOARCH=arm64 go vet ./internal/... ./cmd/... ./web
+      - run: go test -race -count=1 ./internal/... ./cmd/... ./web
+
+  e2e:
+    name: E2E (Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - run: npm --prefix web ci --ignore-scripts
+      - name: 安装 Chromium
+        working-directory: web
+        run: npm exec -- playwright install --with-deps chromium
+      # Visual baselines are macOS screenshots, so the visual project is not run here.
+      - name: Vite fixture E2E
+        working-directory: web
+        run: npm exec -- playwright test --project=chromium
+      # The production suite builds and runs the real Go binary with web/dist embedded.
+      - run: npm --prefix web run build
+      - name: 生产集成 E2E
+        working-directory: web
+        run: npm exec -- playwright test --config playwright.production.config.ts --project=production-chromium
+
+  release-snapshot:
+    name: GoReleaser 多目标快照构建
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.18.3
+          install-only: true
+      - run: goreleaser check
+      - run: goreleaser release --snapshot --clean

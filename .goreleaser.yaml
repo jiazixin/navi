@@ -1,0 +1,55 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# Release artifacts for tags vMAJOR.MINOR.PATCH[-pre]; see README “发布构建”.
+version: 2
+
+project_name: navi
+
+# Kept under the ignored bin/ so the tree stays clean.
+dist: bin/release
+
+before:
+  hooks:
+    # The Go embed package needs web/dist before any Go build.
+    - npm --prefix web ci --ignore-scripts
+    - npm --prefix web run build
+
+builds:
+  - id: navi
+    main: ./cmd/navi
+    binary: navi
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    # Same metadata as the README release build: the exact tag, the short
+    # commit and, for reproducible archives, the commit time.
+    ldflags:
+      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .ShortCommit }} -X main.buildTime={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: navi
+    ids: [navi]
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - README.zh-CN.md
+      - configs/config.example.yaml
+      - configs/urls.example.yaml
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+
+release:
+  prerelease: auto
