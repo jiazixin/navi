@@ -7,6 +7,7 @@
 [![CI](https://github.com/jiazixin/navi/actions/workflows/ci.yml/badge.svg)](https://github.com/jiazixin/navi/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jiazixin/navi?include_prereleases&sort=semver)](https://github.com/jiazixin/navi/releases)
 [![Go](https://img.shields.io/github/go-mod/go-version/jiazixin/navi)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 简体中文 · [English](README.en.md)
 
@@ -36,7 +37,7 @@ Navi 刻意保持只读：不提供 Web 编辑器、拖拽排序、数据库或�
 
 ### 下载预编译二进制
 
-从 [Releases](https://github.com/jiazixin/navi/releases) 下载对应平台的 `navi_<版本>_<系统>_<架构>.tar.gz`，用 `checksums.txt` 校验后解压。压缩包内含二进制、README 与两份示例配置：
+从 [Releases](https://github.com/jiazixin/navi/releases) 下载对应平台的 `navi_<版本>_<系统>_<架构>.tar.gz`，用 `checksums.txt` 校验后解压。压缩包内含二进制、README、LICENSE 与两份示例配置：
 
 ```sh
 mkdir navi && tar -xzf navi_<版本>_<系统>_<架构>.tar.gz -C navi && cd navi
@@ -272,3 +273,7 @@ coverage/             Go 覆盖率报告（按需生成）
 1. 阅读 [目录规范.md](目录规范.md) 与 [AGENTS.md](AGENTS.md)，按既有目录归属放置文件；
 2. 在本地通过[测试与检查](#测试与检查)中的默认检查；
 3. 涉及界面变更时同步更新视觉基线，并在 PR 中说明。
+
+## 许可证
+
+Navi 基于 [Apache License 2.0](LICENSE) 开源。

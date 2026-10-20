@@ -7,6 +7,7 @@
 [![CI](https://github.com/jiazixin/navi/actions/workflows/ci.yml/badge.svg)](https://github.com/jiazixin/navi/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jiazixin/navi?include_prereleases&sort=semver)](https://github.com/jiazixin/navi/releases)
 [![Go](https://img.shields.io/github/go-mod/go-version/jiazixin/navi)](go.mod)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 [简体中文](README.md) · English
 
@@ -36,7 +37,7 @@ Navi is deliberately read-only: there is no web editor, drag-and-drop ordering, 
 
 ### Prebuilt binaries
 
-Download `navi_<version>_<os>_<arch>.tar.gz` for your platform from [Releases](https://github.com/jiazixin/navi/releases) and verify it against `checksums.txt`. Each archive contains the binary, the READMEs, and both example configs:
+Download `navi_<version>_<os>_<arch>.tar.gz` for your platform from [Releases](https://github.com/jiazixin/navi/releases) and verify it against `checksums.txt`. Each archive contains the binary, the READMEs, the LICENSE, and both example configs:
 
 ```sh
 mkdir navi && tar -xzf navi_<version>_<os>_<arch>.tar.gz -C navi && cd navi
@@ -272,3 +273,7 @@ Issues and pull requests are welcome. Before submitting:
 1. Read [目录规范.md](目录规范.md) and [AGENTS.md](AGENTS.md), and place files according to the existing layout;
 2. Pass the default checks in [Tests and checks](#tests-and-checks) locally;
 3. Update visual baselines for UI changes and mention it in the PR.
+
+## License
+
+Navi is licensed under the [Apache License 2.0](LICENSE).
