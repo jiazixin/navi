@@ -54,8 +54,8 @@ Required runtimes:
 
 | Tool | Declared in | Current requirement |
 | --- | --- | --- |
-| Go | [go.mod](go.mod) | Go 1.27.2 or later |
-| Node | [web/package.json](web/package.json) `engines` | 22.x (≥ 22.22.2), 24.x (≥ 24.15.0), or 26+, with its bundled npm |
+| Go | [go.mod](go.mod) | Go 1.27.3 or later |
+| Node | [web/package.json](web/package.json) `engines` | 22.x (≥ 22.23.4), 24.x (≥ 24.22.1), or 26.x (≥ 26.12.1), with its bundled npm |
 
 Run from the repository root. Initialization never overwrites existing configuration:
 

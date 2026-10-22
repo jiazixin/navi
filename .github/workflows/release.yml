@@ -13,6 +13,10 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+# Exact Node.js patch release (security fixes); keep within web/package.json engines.
+env:
+  NODE_VERSION: 24.22.1
+
 # Actions are pinned by commit; the comment names the reviewed tag.
 jobs:
   goreleaser:
@@ -28,7 +32,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24
+          node-version: ${{ env.NODE_VERSION }}
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

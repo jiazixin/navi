@@ -54,8 +54,8 @@ cp -n configs/urls.example.yaml configs/urls.yaml
 
 | 工具 | 版本来源 | 当前要求 |
 | --- | --- | --- |
-| Go | [go.mod](go.mod) | Go 1.27.2 或以上 |
-| Node | [web/package.json](web/package.json) `engines` | 22.x（≥ 22.22.2）、24.x（≥ 24.15.0）或 26+，使用随附的 npm |
+| Go | [go.mod](go.mod) | Go 1.27.3 或以上 |
+| Node | [web/package.json](web/package.json) `engines` | 22.x（≥ 22.23.4）、24.x（≥ 24.22.1）或 26.x（≥ 26.12.1），使用随附的 npm |
 
 以下命令从仓库根执行，初始化命令不会覆盖已有配置：
 
