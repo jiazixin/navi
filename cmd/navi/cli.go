@@ -11,11 +11,11 @@ const cliHelp = `Usage:
   navi [options]
 
 Options:
-  -f, --config PATH  configuration file (overrides CONFIG_FILE)
+  -c, --config PATH  configuration file (overrides CONFIG_FILE)
   -h, --help         show this help
       --version      show version information
 
-Without -f or --config, CONFIG_FILE selects the configuration file.
+Without -c or --config, CONFIG_FILE selects the configuration file.
 The default is ./configs/config.local.yaml.
 `
 
@@ -32,8 +32,9 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 	flags.Usage = func() {
 		_, _ = fmt.Fprint(output, cliHelp)
 	}
-	flags.StringVar(&options.configFile, "f", "", "configuration file")
-	flags.StringVar(&options.configFile, "config", "", "configuration file")
+	var shortConfig, longConfig string
+	flags.StringVar(&shortConfig, "c", "", "configuration file")
+	flags.StringVar(&longConfig, "config", "", "configuration file")
 	flags.BoolVar(&options.showVersion, "version", false, "show version information")
 
 	if err := flags.Parse(args); err != nil {
@@ -43,13 +44,24 @@ func parseCLI(args []string, output io.Writer) (cliOptions, error) {
 		return cliOptions{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
 	}
 
+	var configError error
 	flags.Visit(func(current *flag.Flag) {
-		if current.Name == "f" || current.Name == "config" {
+		if current.Name == "c" || current.Name == "config" {
 			options.configFileSet = true
+			if strings.TrimSpace(current.Value.String()) == "" {
+				configError = fmt.Errorf("configuration path must not be empty")
+			}
 		}
 	})
-	if !options.showVersion && options.configFileSet && strings.TrimSpace(options.configFile) == "" {
-		return cliOptions{}, fmt.Errorf("configuration path must not be empty")
+	if configError != nil {
+		return cliOptions{}, configError
+	}
+	if shortConfig != "" && longConfig != "" && shortConfig != longConfig {
+		return cliOptions{}, fmt.Errorf("-c and --config must specify the same path")
+	}
+	options.configFile = shortConfig
+	if longConfig != "" {
+		options.configFile = longConfig
 	}
 
 	return options, nil

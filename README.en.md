@@ -116,7 +116,16 @@ A link with one address redirects without probing. With both addresses, the **Na
 
 ### Main config and environment variables
 
-- **Choosing a config file**: `-f PATH` / `--config PATH` selects the main config and overrides `CONFIG_FILE`; without the flag, `CONFIG_FILE` may be used. Relative paths resolve against the process working directory. When neither is set, only `./configs/config.local.yaml` is checked and built-in defaults apply if it is missing. An explicitly empty value, or a missing, unreadable, or invalid file, fails startup. The catalog YAML must exist and be valid.
+```sh
+./navi -c ./configs/config.local.yaml
+./navi --config ./configs/config.local.yaml
+./navi -h          # or --help: show help
+./navi --version   # show version, commit, and build time
+```
+
+`-c` / `--config` also accept `=PATH`; when used together, they must specify the same path. `-f` has been removed. Help and version queries neither read configuration nor start the server.
+
+- **Choosing a config file**: `-c PATH` / `--config PATH` selects the main config and overrides `CONFIG_FILE`; without the flag, `CONFIG_FILE` may be used. Relative paths resolve against the process working directory. When neither is set, only `./configs/config.local.yaml` is checked and built-in defaults apply if it is missing. An explicitly empty value, or a missing, unreadable, or invalid file, fails startup. The catalog YAML must exist and be valid.
 - **Precedence**: environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER_PORT=8081`, `NAVI_CATALOG_WATCH=false`.
 - **Value semantics**: strings are kept as-is, paths are trimmed during resolution, and credentials must match exactly. An empty string overrides the file value: it can clear optional auth but not required paths. Numbers, booleans, and durations must be a single non-empty scalar; invalid values are errors. Durations use `250ms`, `3s`, `168h`; `7d` is not supported.
 - **Relative paths**: `storage` and `catalog.path` (including environment overrides) resolve relative to the selected config's directory. Without an implicit main config, the expected `configs/` directory is still the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployments.
@@ -264,7 +273,7 @@ Docs (Chinese): [Design and protocol](docs/DESIGN.md) · [UI spec](docs/UI_SPEC.
 | Rule / standard path | Actual path or behavior | Reason and basis | Scope | Revisit when |
 | --- | --- | --- | --- | --- |
 | §7.1: without a config file, paths default to the working directory | Without an implicit main config, built-in paths resolve from the directory of the expected `configs/config.local.yaml` | Existing Load/finishConfig protocol in `internal/config/config.go`; keeps paths consistent with or without the implicit file | Default startup of the root Go service | The config protocol is deliberately changed |
-| §7.1: select config explicitly via `CONFIG_FILE` | Also supports `-f PATH` / `--config PATH`, with the flag taking precedence | Navi is an executable service; standard CLI config flags were explicitly requested, while the environment variable remains for container deployments | Config selection in `cmd/navi` | The CLI or config protocol is deliberately changed |
+| §7.1: select config explicitly via `CONFIG_FILE` | Also supports `-c PATH` / `--config PATH`, with the flag taking precedence | Navi is an executable service; standard CLI config flags were explicitly requested, while the environment variable remains for container deployments | Config selection in `cmd/navi` | The CLI or config protocol is deliberately changed |
 
 ## Contributing
 

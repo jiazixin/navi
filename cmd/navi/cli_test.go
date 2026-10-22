@@ -13,10 +13,12 @@ func TestParseCLIConfigAliases(t *testing.T) {
 		name string
 		args []string
 	}{
-		{name: "short", args: []string{"-f", "custom.yaml"}},
-		{name: "short equals", args: []string{"-f=custom.yaml"}},
+		{name: "short", args: []string{"-c", "custom.yaml"}},
+		{name: "short equals", args: []string{"-c=custom.yaml"}},
 		{name: "long", args: []string{"--config", "custom.yaml"}},
 		{name: "long equals", args: []string{"--config=custom.yaml"}},
+		{name: "matching aliases", args: []string{"-c", "custom.yaml", "--config=custom.yaml"}},
+		{name: "matching aliases reversed", args: []string{"--config", "custom.yaml", "-c=custom.yaml"}},
 	}
 
 	for _, tt := range tests {
@@ -43,7 +45,7 @@ func TestParseCLIHelpAliases(t *testing.T) {
 			if !errors.Is(err, flag.ErrHelp) {
 				t.Fatalf("parseCLI() error = %v, want flag.ErrHelp", err)
 			}
-			for _, want := range []string{"Usage:", "-f, --config", "-h, --help", "--version"} {
+			for _, want := range []string{"Usage:", "-c, --config", "-h, --help", "--version"} {
 				if !strings.Contains(output.String(), want) {
 					t.Errorf("help output %q does not contain %q", output.String(), want)
 				}
@@ -68,8 +70,16 @@ func TestParseCLIErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "missing short value", args: []string{"-f"}, want: "flag needs an argument"},
+		{name: "missing short value", args: []string{"-c"}, want: "flag needs an argument"},
+		{name: "missing long value", args: []string{"--config"}, want: "flag needs an argument"},
+		{name: "empty short value", args: []string{"-c="}, want: "configuration path must not be empty"},
+		{name: "blank short value", args: []string{"-c", "  "}, want: "configuration path must not be empty"},
 		{name: "empty long value", args: []string{"--config="}, want: "configuration path must not be empty"},
+		{name: "conflicting aliases", args: []string{"-c", "a.yaml", "--config", "b.yaml"}, want: "must specify the same path"},
+		{name: "conflicting aliases reversed", args: []string{"--config", "a.yaml", "-c", "b.yaml"}, want: "must specify the same path"},
+		{name: "empty alias with valid path", args: []string{"-c=", "--config=custom.yaml"}, want: "configuration path must not be empty"},
+		{name: "empty config with version", args: []string{"--version", "--config="}, want: "configuration path must not be empty"},
+		{name: "removed short flag", args: []string{"-f", "custom.yaml"}, want: "flag provided but not defined"},
 		{name: "unknown flag", args: []string{"--unknown"}, want: "flag provided but not defined"},
 		{name: "positional argument", args: []string{"config.yaml"}, want: "unexpected arguments"},
 	}
