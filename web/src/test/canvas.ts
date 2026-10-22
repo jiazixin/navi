@@ -1,5 +1,5 @@
 // Minimal 2D canvas doubles: jsdom implements neither CanvasRenderingContext2D nor Path2D.
-export class RecordingPath2D {
+class RecordingPath2D {
   readonly commands: string[] = [];
 
   constructor(source?: RecordingPath2D) {
@@ -38,8 +38,6 @@ export function createRecordingContext() {
     createRadialGradient: vi.fn(() => gradient),
   };
 }
-
-export type RecordingContext = ReturnType<typeof createRecordingContext>;
 
 export function installPath2D(): void {
   vi.stubGlobal('Path2D', RecordingPath2D);

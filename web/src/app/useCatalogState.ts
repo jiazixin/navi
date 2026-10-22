@@ -46,7 +46,7 @@ export function useCatalogState() {
     ]);
   }, [queryClient]);
 
-  const handleCatalogError = useCallback((): void => {
+  const refreshStatus = useCallback((): void => {
     void queryClient.invalidateQueries({ queryKey: ['status'] });
   }, [queryClient]);
 
@@ -59,7 +59,7 @@ export function useCatalogState() {
 
   const connection = useCatalogEvents({
     onCatalogUpdate: refreshCatalog,
-    onCatalogError: handleCatalogError,
+    onStatusChange: refreshStatus,
     onFaviconUpdate: handleFaviconUpdate,
   });
 

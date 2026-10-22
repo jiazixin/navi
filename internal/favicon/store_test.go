@@ -8,12 +8,27 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 )
+
+// readCachedIcon returns an in-memory copy of one cached icon.
+func readCachedIcon(store *Store, runtimeID string) (Entry, []byte, error) {
+	entry, file, err := store.Open(runtimeID)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	defer file.Close()
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return Entry{}, nil, err
+	}
+	return entry, contents, nil
+}
 
 func TestStorePersistsAndReloadsValidatedEntries(t *testing.T) {
 	t.Parallel()
@@ -23,11 +38,11 @@ func TestStorePersistsAndReloadsValidatedEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	validImage := testPNG(t)
-	created, err := store.Put("example", "https://example.test/favicon.png", "image/png", "", validImage)
+	created, err := store.Put("example", "https://example.test/favicon.png", "image/png", "", "", validImage)
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, contents, err := store.ReadAll("example")
+	entry, contents, err := readCachedIcon(store, "example")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,10 +54,10 @@ func TestStorePersistsAndReloadsValidatedEntries(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := reopened.ReadAll("example"); err != nil {
+	if _, _, err := readCachedIcon(reopened, "example"); err != nil {
 		t.Fatalf("reopened store did not load entry: %v", err)
 	}
-	_, _, err = reopened.ReadAll("missing")
+	_, _, err = readCachedIcon(reopened, "missing")
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("ReadAll(missing) error = %v", err)
 	}
@@ -54,7 +69,7 @@ func TestStoreSerializesConcurrentReplacementAndReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("one", "https://example.test/icon", "image/svg+xml", "", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)); err != nil {
+	if _, err := store.Put("one", "https://example.test/icon", "image/svg+xml", "", "", []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)); err != nil {
 		t.Fatal(err)
 	}
 	var work sync.WaitGroup
@@ -62,11 +77,11 @@ func TestStoreSerializesConcurrentReplacementAndReads(t *testing.T) {
 		work.Go(func() {
 			for iteration := range 20 {
 				body := []byte(fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg"><text>%d %d</text></svg>`, worker, iteration))
-				if _, err := store.Put("one", "https://example.test/icon", "image/svg+xml", "", body); err != nil {
+				if _, err := store.Put("one", "https://example.test/icon", "image/svg+xml", "", "", body); err != nil {
 					t.Error(err)
 					return
 				}
-				entry, body, err := store.ReadAll("one")
+				entry, body, err := readCachedIcon(store, "one")
 				if err != nil {
 					t.Error(err)
 					return
@@ -84,7 +99,7 @@ func TestStoreSerializesConcurrentReplacementAndReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	current, _ := store.Entry("one")
-	persisted, body, err := reopened.ReadAll("one")
+	persisted, body, err := readCachedIcon(reopened, "one")
 	if err != nil || persisted.ETag != current.ETag {
 		t.Fatalf("persisted entry disagrees with current entry: %v", err)
 	}
@@ -116,7 +131,7 @@ func TestStoreReloadRejectsOldMalformedAndOversizedBlobsWithoutDeletingFiles(t *
 			}
 			// Put is the persistence boundary; simulate metadata written by an old
 			// version that accepted MIME signatures without the current checks.
-			entry, err := store.PutWithValidators("old", "https://example.test/icon", testCase.contentType, `"remote-old"`, "", testCase.body)
+			entry, err := store.Put("old", "https://example.test/icon", testCase.contentType, `"remote-old"`, "", testCase.body)
 			if err != nil {
 				t.Fatal(err)
 			}

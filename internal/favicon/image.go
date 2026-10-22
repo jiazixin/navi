@@ -99,11 +99,12 @@ func validICO(contents []byte) bool {
 		}
 		headerSize := binary.LittleEndian.Uint32(body[:4])
 		var width, height int64
-		if headerSize == 12 {
+		switch {
+		case headerSize == 12: // BITMAPCOREHEADER
 			width, height = int64(binary.LittleEndian.Uint16(body[4:6])), int64(binary.LittleEndian.Uint16(body[6:8]))
-		} else if headerSize >= 40 && uint64(headerSize) <= size {
+		case headerSize >= 40 && uint64(headerSize) <= size: // BITMAPINFOHEADER and later
 			width, height = int64(int32(binary.LittleEndian.Uint32(body[4:8]))), int64(int32(binary.LittleEndian.Uint32(body[8:12])))
-		} else {
+		default:
 			return false
 		}
 		// ICO bitmap height includes the equally sized transparency mask.

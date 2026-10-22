@@ -38,6 +38,8 @@ var (
 		"baidu": {}, "google": {}, "yandex": {}, "bing": {}, "github": {}, "chatgpt": {},
 		"claude": {}, "gemini": {},
 	}
+	loggingLevels  = map[string]struct{}{"debug": {}, "info": {}, "warn": {}, "error": {}}
+	loggingFormats = map[string]struct{}{"json": {}, "logfmt": {}}
 )
 
 // Config is the validated process configuration with paths resolved from its file.
@@ -273,9 +275,6 @@ func validate(loaded Config) error {
 	if loaded.Auth.Enabled() && (strings.TrimSpace(loaded.Auth.Password) == "" || len(loaded.Auth.Password) > 1024) {
 		return fieldError("auth.password", "must contain 1–1024 bytes and not be blank")
 	}
-	if loaded.StorageDir == "" {
-		return fieldError("storage", "must not be empty")
-	}
 	if _, ok := themes[loaded.Theme]; !ok {
 		return fieldError("theme", "must be a supported theme")
 	}
@@ -306,18 +305,17 @@ func validate(loaded Config) error {
 		{"favicon.fetch_timeout", loaded.Favicon.FetchTimeout},
 		{"favicon.refresh_interval", loaded.Favicon.RefreshInterval},
 	} {
-		path, duration := durationField.path, durationField.duration
-		if duration <= 0 {
-			return fieldError(path, "must be greater than zero")
+		if durationField.duration <= 0 {
+			return fieldError(durationField.path, "must be greater than zero")
 		}
 	}
 	if isReservedHealthURI(loaded.Health.URI) {
 		return fieldError("health.uri", "must be an unreserved absolute path")
 	}
-	if _, ok := map[string]struct{}{"debug": {}, "info": {}, "warn": {}, "error": {}}[loaded.Logging.Level]; !ok {
+	if _, ok := loggingLevels[loaded.Logging.Level]; !ok {
 		return fieldError("logging.level", "must be debug, info, warn, or error")
 	}
-	if _, ok := map[string]struct{}{"json": {}, "logfmt": {}}[loaded.Logging.Format]; !ok {
+	if _, ok := loggingFormats[loaded.Logging.Format]; !ok {
 		return fieldError("logging.format", "must be json or logfmt")
 	}
 	if err := validateCatalogPath(loaded.Catalog.Path); err != nil {

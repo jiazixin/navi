@@ -14,7 +14,7 @@ function loginError(status: number): string {
 }
 
 export function LoginPage({ connectionError = false, onRetry }: LoginPageProps): React.JSX.Element {
-  const [visible, setVisible] = useState(false);
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
@@ -110,15 +110,15 @@ export function LoginPage({ connectionError = false, onRetry }: LoginPageProps):
                   name="password"
                   placeholder="请输入密码"
                   required
-                  type={visible ? 'text' : 'password'}
+                  type={passwordVisible ? 'text' : 'password'}
                 />
                 <button
-                  aria-label={visible ? '隐藏密码' : '显示密码'}
-                  aria-pressed={visible}
-                  onClick={() => setVisible(!visible)}
+                  aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={passwordVisible}
+                  onClick={() => setPasswordVisible(!passwordVisible)}
                   type="button"
                 >
-                  {visible ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
+                  {passwordVisible ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
                 </button>
               </div>
               <div aria-live="polite" className={styles.feedback}>

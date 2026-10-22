@@ -47,9 +47,9 @@ describe('useCatalogEvents', () => {
 
   it('tracks connection state and routes catalog events', () => {
     const onCatalogUpdate = vi.fn();
-    const onCatalogError = vi.fn();
+    const onStatusChange = vi.fn();
     const { result, unmount } = renderHook(() =>
-      useCatalogEvents({ onCatalogUpdate, onCatalogError }),
+      useCatalogEvents({ onCatalogUpdate, onStatusChange }),
     );
     const source = EventSourceMock.instances[0];
     expect(source?.url).toBe('/api/events');
@@ -62,7 +62,7 @@ describe('useCatalogEvents', () => {
     act(() => source?.emit('catalog.error'));
     act(() => source?.emit('status.updated'));
     expect(onCatalogUpdate).toHaveBeenCalledTimes(3);
-    expect(onCatalogError).toHaveBeenCalledTimes(2);
+    expect(onStatusChange).toHaveBeenCalledTimes(2);
 
     unmount();
     expect(source?.closed).toBe(true);
@@ -70,9 +70,9 @@ describe('useCatalogEvents', () => {
 
   it('reconnects with exponential backoff after an error', async () => {
     const onCatalogUpdate = vi.fn();
-    const onCatalogError = vi.fn();
+    const onStatusChange = vi.fn();
     const { result } = renderHook(() =>
-      useCatalogEvents({ onCatalogUpdate, onCatalogError }),
+      useCatalogEvents({ onCatalogUpdate, onStatusChange }),
     );
     const first = EventSourceMock.instances[0];
 
@@ -94,7 +94,7 @@ describe('useCatalogEvents', () => {
     const { unmount } = renderHook(() =>
       useCatalogEvents({
         onCatalogUpdate,
-        onCatalogError: vi.fn(),
+        onStatusChange: vi.fn(),
         onFaviconUpdate,
       }),
     );

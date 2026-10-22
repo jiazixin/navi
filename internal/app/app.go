@@ -36,7 +36,6 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("open embedded UI: %w", err)
 	}
 	watcher := catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store, logger)
-	var eventObserverDone chan struct{}
 	if loaded.Catalog.Watch {
 		if err := watcher.Start(runCtx); err != nil {
 			logger.Error("catalog watcher unavailable", "error", err)
@@ -47,20 +46,12 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	if iconManager != nil {
 		iconManager.Start(runCtx)
 	}
-	eventObserverDone = observeCatalogEvents(runCtx, watcher, store, iconManager, logger, loaded.Favicon.RefreshInterval)
-	if iconManager != nil {
-		if err := iconManager.Schedule(snapshot.Catalog()); err != nil {
-			logger.Error("favicon cache maintenance failed", "error", err)
-		}
-	}
+	eventObserverDone := observeCatalogEvents(runCtx, watcher, store, iconManager, logger, loaded.Favicon.RefreshInterval)
+	scheduleIcons(iconManager, store, logger)
 	defer func() {
 		cancel()
-		if watcher != nil {
-			watcher.Stop()
-		}
-		if eventObserverDone != nil {
-			<-eventObserverDone
-		}
+		watcher.Stop()
+		<-eventObserverDone
 		if iconManager != nil {
 			iconManager.Stop()
 		}
@@ -139,29 +130,40 @@ func catalogCounts(directory catalog.Catalog) (entries, groups int) {
 	return entries, groups
 }
 
+// iconCacheUnavailable reports a permanently degraded icon cache; the UI falls back to monograms.
+func iconCacheUnavailable() (bool, string) {
+	return true, "图标缓存暂不可用，当前使用字标。"
+}
+
 func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *catalog.Watcher) (*favicon.Store, *favicon.Manager, func() (bool, string)) {
 	store, err := favicon.NewStore(loaded.StorageDir)
 	if err != nil {
 		logger.Error("favicon cache unavailable", "error", err)
-		return nil, nil, func() (bool, string) {
-			return true, "图标缓存暂不可用，当前使用字标。"
-		}
-	}
-	publish := func(event catalog.Event) {}
-	if watcher != nil {
-		publish = watcher.Publish
+		return nil, nil, iconCacheUnavailable
 	}
 	manager, err := favicon.NewManager(favicon.Config{
 		FetchTimeout: loaded.Favicon.FetchTimeout, RefreshInterval: loaded.Favicon.RefreshInterval,
 		MaxFileBytes: loaded.Favicon.MaxFileBytes, Workers: loaded.Favicon.Workers,
-	}, store, publish)
+	}, store, watcher.Publish)
 	if err != nil {
 		logger.Error("favicon manager unavailable", "error", err)
-		return store, nil, func() (bool, string) {
-			return true, "图标缓存暂不可用，当前使用字标。"
-		}
+		return store, nil, iconCacheUnavailable
 	}
 	return store, manager, manager.Degraded
+}
+
+// scheduleIcons queues icon work for the current snapshot; logArgs add context to failures.
+func scheduleIcons(manager *favicon.Manager, store *catalog.Store, logger *slog.Logger, logArgs ...any) {
+	if manager == nil {
+		return
+	}
+	snapshot, ok := store.Snapshot()
+	if !ok {
+		return
+	}
+	if err := manager.Schedule(snapshot.Catalog()); err != nil {
+		logger.Error("favicon cache maintenance failed", append(logArgs, "error", err)...)
+	}
 }
 
 func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager, logger *slog.Logger, refreshInterval time.Duration) chan struct{} {
@@ -183,13 +185,7 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if manager != nil {
-					if snapshot, ok := store.Snapshot(); ok {
-						if err := manager.Schedule(snapshot.Catalog()); err != nil {
-							logger.Error("favicon cache maintenance failed", "error", err)
-						}
-					}
-				}
+				scheduleIcons(manager, store, logger)
 			case event, ok := <-events:
 				if !ok {
 					return
@@ -207,13 +203,7 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 					continue
 				}
 				logger.Info("catalog reloaded", "revision", event.Revision)
-				if manager != nil {
-					if snapshot, ok := store.Snapshot(); ok {
-						if err := manager.Schedule(snapshot.Catalog()); err != nil {
-							logger.Error("favicon cache maintenance failed", "revision", event.Revision, "error", err)
-						}
-					}
-				}
+				scheduleIcons(manager, store, logger, "revision", event.Revision)
 			}
 		}
 	}()

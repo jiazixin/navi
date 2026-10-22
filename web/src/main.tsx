@@ -26,7 +26,7 @@ applyPalette(
   ),
 );
 
-const message = rootElement.dataset.navigationError;
+const navigationError = rootElement.dataset.navigationError;
 const retryPath = rootElement.dataset.retryPath;
 
 createRoot(rootElement).render(
@@ -34,10 +34,10 @@ createRoot(rootElement).render(
     <AppProviders>
       <AppearanceProvider configuredPattern={configuredPattern} configuredTheme={configuredTheme}>
         <AuthGate>
-          {message === undefined ? (
+          {navigationError === undefined ? (
             <App configuredSearch={configuredSearch} />
           ) : (
-            <NavigationFailure message={message} retryPath={retryPath?.startsWith('/go/') === true ? retryPath : '/'} />
+            <NavigationFailure message={navigationError} retryPath={retryPath?.startsWith('/go/') === true ? retryPath : '/'} />
           )}
         </AuthGate>
       </AppearanceProvider>

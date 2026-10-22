@@ -19,7 +19,6 @@ export function CommandPalette({ index, providerID, faviconVersions, onClose }: 
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
   const listID = `palette-results-${useId().replace(/:/g, '')}`;
   const provider = getSearchProvider(providerID);
   const list = useSearchList(index, query, 12);
@@ -70,7 +69,6 @@ export function CommandPalette({ index, providerID, faviconVersions, onClose }: 
         aria-modal="true"
         className={styles.dialog}
         onKeyDown={handleKeyDown}
-        ref={dialogRef}
         role="dialog"
       >
         <div className={styles.inputRow}>

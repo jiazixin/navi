@@ -8,7 +8,7 @@ export const patternIDs = ['contour', 'flow', 'guilloche', 'stars', 'ridge', 'no
 export type PatternID = (typeof patternIDs)[number];
 export type AnimatedPatternID = Exclude<PatternID, 'none'>;
 
-export type PaletteOption = {
+type PaletteOption = {
   id: PaletteID;
   name: string;
   en: string;
@@ -25,7 +25,7 @@ const paletteByID: Record<PaletteID, PaletteOption> = {
 
 export const palettes: readonly PaletteOption[] = paletteIDs.map((id) => paletteByID[id]);
 
-export type PatternOption = { id: PatternID; name: string; en: string };
+type PatternOption = { id: PatternID; name: string; en: string };
 
 const patternByID: Record<PatternID, PatternOption> = {
   contour: { id: 'contour', name: '等高线', en: 'Contour' },
@@ -38,8 +38,13 @@ const patternByID: Record<PatternID, PatternOption> = {
 
 export const patterns: readonly PatternOption[] = patternIDs.map((id) => patternByID[id]);
 
-export const DEFAULT_THEME: ThemePreference = 'default';
-export const DEFAULT_PATTERN: PatternID = 'contour';
+const DEFAULT_THEME: ThemePreference = 'default';
+const DEFAULT_PATTERN: PatternID = 'contour';
+
+/** Pattern opacity bounds and default, in percent. */
+export const minPatternStrength = 20;
+export const maxPatternStrength = 100;
+export const defaultPatternStrength = 90;
 
 function isOneOf<T extends string>(values: readonly T[], value: unknown): value is T {
   return typeof value === 'string' && (values as readonly string[]).includes(value);

@@ -14,15 +14,15 @@ function iconState(loaded: boolean | null): 'pending' | 'loaded' | 'fallback' {
   return loaded ? 'loaded' : 'fallback';
 }
 
-function IconImage({ src, onLoad }: { src: string; onLoad: (loaded: boolean) => void }): React.JSX.Element {
+function IconImage({ src, onSettle }: { src: string; onSettle: (loaded: boolean) => void }): React.JSX.Element {
   return (
     <img
       alt=""
       className={styles.image}
       decoding="async"
       loading="lazy"
-      onError={() => onLoad(false)}
-      onLoad={() => onLoad(true)}
+      onError={() => onSettle(false)}
+      onLoad={() => onSettle(true)}
       src={src}
     />
   );
@@ -42,7 +42,7 @@ export function LinkIcon({ name, src, size = 'regular' }: LinkIconProps): React.
     >
       <span className={styles.monogram}>{monogramOf(name)}</span>
       {loaded === false ? null : (
-        <IconImage key={src} onLoad={(result) => setState({ src, loaded: result })} src={src} />
+        <IconImage key={src} onSettle={(result) => setState({ src, loaded: result })} src={src} />
       )}
     </span>
   );

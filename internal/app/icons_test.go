@@ -14,7 +14,7 @@ func TestServerServesCachedIconWithETag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := store.Put("one", "https://example.test/favicon.png", "image/png", "", []byte("\x89PNG\r\n\x1a\nimage"))
+	entry, err := store.Put("one", "https://example.test/favicon.png", "image/png", "", "", []byte("\x89PNG\r\n\x1a\nimage"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,11 +40,11 @@ func TestIconRefreshRevalidatesSameURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := store.Put("one", "https://example.test/icon.png", "image/png", "", []byte("old"))
+	old, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("old"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", []byte("new")); err != nil {
+	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("new")); err != nil {
 		t.Fatal(err)
 	}
 	server := newTestServer(t, nil)
@@ -63,7 +63,7 @@ func TestPublicIconCanUseSharedCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", []byte("icon")); err != nil {
+	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("icon")); err != nil {
 		t.Fatal(err)
 	}
 	server := newTestServer(t, nil)

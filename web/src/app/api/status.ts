@@ -1,5 +1,5 @@
 import { z } from './schema';
-import { APIError } from './catalog';
+import { fetchJSON } from './client';
 
 export const serviceStatusSchema = z
   .object({
@@ -11,22 +11,12 @@ export const serviceStatusSchema = z
 
 type ServiceStatus = z.infer<typeof serviceStatusSchema>;
 
-export async function getServiceStatus(signal?: AbortSignal): Promise<ServiceStatus> {
-  const requestInit: RequestInit = {
-    headers: { Accept: 'application/json' },
-    ...(signal === undefined ? {} : { signal }),
-  };
-  const response = await fetch('/api/status', requestInit);
+const statusFailures = {
+  http: '无法读取服务状态。',
+  unreadable: '服务状态数据无效。',
+  invalid: '服务状态数据无效。',
+};
 
-  if (!response.ok) {
-    throw new APIError('无法读取服务状态。', response.status);
-  }
-
-  const payload: unknown = await response.json();
-  const result = serviceStatusSchema.safeParse(payload);
-  if (!result.success) {
-    throw new APIError('服务状态数据无效。', response.status, { cause: result.error });
-  }
-
-  return result.data;
+export function getServiceStatus(signal?: AbortSignal): Promise<ServiceStatus> {
+  return fetchJSON('/api/status', serviceStatusSchema, statusFailures, signal);
 }

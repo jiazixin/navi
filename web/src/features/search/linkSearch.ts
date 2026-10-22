@@ -56,7 +56,7 @@ export function searchLinks(index: readonly SearchEntry[], query: string, limit:
     .map((result) => result.entry);
 }
 
-export type HighlightParts = { before: string; match: string; after: string };
+type HighlightParts = { before: string; match: string; after: string };
 
 export function highlight(text: string, query: string): HighlightParts | null {
   const normalized = query.trim().toLocaleLowerCase();

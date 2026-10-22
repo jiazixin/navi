@@ -15,14 +15,15 @@ const previewSize = { width: 960, height: 600 };
 export function PatternCanvas({ pattern, animated, className, preview = false }: PatternCanvasProps): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<PatternStage | null>(null);
-  const initial = useRef({ pattern, animated });
+  // Latest props, read when the stage is (re)created.
+  const latest = useRef({ pattern, animated });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) return undefined;
     const stage = new PatternStage(canvas, preview ? { virtualSize: previewSize } : { interactive: true });
-    stage.setPattern(initial.current.pattern);
-    stage.setAnimated(initial.current.animated);
+    stage.setPattern(latest.current.pattern);
+    stage.setAnimated(latest.current.animated);
     stageRef.current = stage;
     let resizeTimer: number | undefined;
     const handleResize = (): void => {
@@ -39,12 +40,12 @@ export function PatternCanvas({ pattern, animated, className, preview = false }:
   }, [preview]);
 
   useEffect(() => {
-    initial.current.pattern = pattern;
+    latest.current.pattern = pattern;
     stageRef.current?.setPattern(pattern);
   }, [pattern]);
 
   useEffect(() => {
-    initial.current.animated = animated;
+    latest.current.animated = animated;
     stageRef.current?.setAnimated(animated);
   }, [animated]);
 

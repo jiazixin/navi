@@ -12,7 +12,7 @@ func TestStoreCleanupKeepsCandidatesForGracePeriod(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("removed", "https://example.test/favicon.png", "image/png", "", []byte("icon")); err != nil {
+	if _, err := store.Put("removed", "https://example.test/favicon.png", "image/png", "", "", []byte("icon")); err != nil {
 		t.Fatal(err)
 	}
 	if removed, err := store.Cleanup(map[string]struct{}{}, 24*time.Hour); err != nil || removed != 0 {
@@ -29,7 +29,7 @@ func TestStoreCleanupKeepsCandidatesForGracePeriod(t *testing.T) {
 	if removed, err := store.Cleanup(map[string]struct{}{}, 24*time.Hour); err != nil || removed != 1 {
 		t.Fatalf("expired cleanup = removed %d, err %v", removed, err)
 	}
-	if _, _, err := store.ReadAll("removed"); !errors.Is(err, ErrNotFound) {
+	if _, _, err := readCachedIcon(store, "removed"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("removed cache error = %v", err)
 	}
 }
@@ -40,7 +40,7 @@ func TestStoreCleanupClearsCandidateWhenLinkReturns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("restored", "https://example.test/favicon.png", "image/png", "", []byte("icon")); err != nil {
+	if _, err := store.Put("restored", "https://example.test/favicon.png", "image/png", "", "", []byte("icon")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Cleanup(map[string]struct{}{}, time.Hour); err != nil {

@@ -7,13 +7,14 @@ export type ConnectionState =
 
 type UseCatalogEventsOptions = {
   onCatalogUpdate: () => void;
-  onCatalogError: () => void;
+  /** A reload failed or service health changed; re-read /api/status. */
+  onStatusChange: () => void;
   onFaviconUpdate?: (runtimeId: string) => void;
 };
 
 export function useCatalogEvents({
   onCatalogUpdate,
-  onCatalogError,
+  onStatusChange,
   onFaviconUpdate,
 }: UseCatalogEventsOptions): ConnectionState {
   const [connection, setConnection] = useState<ConnectionState>({ kind: 'connecting' });
@@ -37,14 +38,14 @@ export function useCatalogEvents({
       source.addEventListener('catalog.updated', onCatalogUpdate);
       source.addEventListener('favicon.updated', (event) => {
         const runtimeId = parseFaviconRuntimeId(event);
-        if (runtimeId !== undefined) {
-          onFaviconUpdate?.(runtimeId);
-          if (onFaviconUpdate !== undefined) return;
+        if (runtimeId !== undefined && onFaviconUpdate !== undefined) {
+          onFaviconUpdate(runtimeId);
+          return;
         }
         onCatalogUpdate();
       });
-      source.addEventListener('catalog.error', onCatalogError);
-      source.addEventListener('status.updated', onCatalogError);
+      source.addEventListener('catalog.error', onStatusChange);
+      source.addEventListener('status.updated', onStatusChange);
       source.addEventListener('error', () => {
         source?.close();
         attempt += 1;
@@ -62,7 +63,7 @@ export function useCatalogEvents({
         window.clearTimeout(reconnectTimer);
       }
     };
-  }, [onCatalogError, onCatalogUpdate, onFaviconUpdate]);
+  }, [onCatalogUpdate, onFaviconUpdate, onStatusChange]);
 
   return connection;
 }

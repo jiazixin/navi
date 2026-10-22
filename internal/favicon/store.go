@@ -47,6 +47,22 @@ type metadata struct {
 	FileName     string    `json:"file_name"`
 }
 
+func (e Entry) metadata() metadata {
+	return metadata{
+		RuntimeID: e.RuntimeID, SourceURL: e.SourceURL, ContentType: e.ContentType,
+		SourceETag: e.SourceETag, ETag: e.ETag, LastModified: e.LastModified,
+		FetchedAt: e.FetchedAt, StaleSince: e.StaleSince, FileName: e.fileName,
+	}
+}
+
+func (m metadata) entry() Entry {
+	return Entry{
+		RuntimeID: m.RuntimeID, SourceURL: m.SourceURL, ContentType: m.ContentType,
+		SourceETag: m.SourceETag, ETag: m.ETag, LastModified: m.LastModified,
+		FetchedAt: m.FetchedAt, StaleSince: m.StaleSince, fileName: m.FileName,
+	}
+}
+
 // Store owns the favicon directory and its small derived metadata index.
 type Store struct {
 	directory string
@@ -103,15 +119,10 @@ func (s *Store) Open(runtimeID string) (Entry, *os.File, error) {
 	return entry, file, nil
 }
 
-// Put atomically persists a validated icon and updates the in-memory index.
-func (s *Store) Put(runtimeID, sourceURL, contentType, lastModified string, body []byte) (Entry, error) {
-	return s.PutWithValidators(runtimeID, sourceURL, contentType, "", lastModified, body)
-}
-
-// PutWithValidators atomically persists an icon and the validators returned by
-// its remote source. ETag is derived locally from the validated bytes and is
-// kept separate from SourceETag, which is only used for conditional refreshes.
-func (s *Store) PutWithValidators(runtimeID, sourceURL, contentType, sourceETag, lastModified string, body []byte) (Entry, error) {
+// Put atomically persists an icon and the validators returned by its remote
+// source. ETag is derived locally from the validated bytes and is kept separate
+// from SourceETag, which is only used for conditional refreshes.
+func (s *Store) Put(runtimeID, sourceURL, contentType, sourceETag, lastModified string, body []byte) (Entry, error) {
 	if runtimeID == "" {
 		return Entry{}, fmt.Errorf("favicon runtime ID must not be empty")
 	}
@@ -133,26 +144,14 @@ func (s *Store) PutWithValidators(runtimeID, sourceURL, contentType, sourceETag,
 	if err := writeAtomically(s.directory, fileName, body, 0o640); err != nil {
 		return Entry{}, err
 	}
-	meta := metadata{
-		RuntimeID: entry.RuntimeID, SourceURL: entry.SourceURL, ContentType: entry.ContentType,
-		SourceETag: entry.SourceETag, ETag: entry.ETag, LastModified: entry.LastModified, FetchedAt: entry.FetchedAt,
-		StaleSince: entry.StaleSince, FileName: entry.fileName,
-	}
-	encoded, err := json.Marshal(meta)
-	if err != nil {
-		return Entry{}, fmt.Errorf("encode favicon metadata: %w", err)
-	}
-	if err := writeAtomically(s.directory, metadataName(runtimeID), encoded, 0o640); err != nil {
+	if err := s.writeMetadataLocked(entry); err != nil {
 		return Entry{}, err
 	}
 	s.entries[runtimeID] = entry
 	if hadPrevious && previous.fileName != "" && previous.fileName != fileName {
-		// The new entry is already published; an orphaned old blob is safe to
-		// reclaim on a later cache cleanup pass.
-		if err := os.Remove(filepath.Join(s.directory, previous.fileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			// Keep the new entry usable; an orphaned derived blob is harmless and
-			// can be removed by a later maintenance pass.
-		}
+		// The new entry is already published. A failed removal leaves only a
+		// harmless orphaned blob, so the error does not fail the update.
+		_ = os.Remove(filepath.Join(s.directory, previous.fileName))
 	}
 	return entry, nil
 }
@@ -259,22 +258,13 @@ func (s *Store) loadMetadata() error {
 		if actualType, ok := validatedContentType(meta.ContentType, contents); !ok || actualType != meta.ContentType {
 			continue
 		}
-		s.entries[meta.RuntimeID] = Entry{
-			RuntimeID: meta.RuntimeID, SourceURL: meta.SourceURL, ContentType: meta.ContentType,
-			SourceETag: meta.SourceETag, ETag: meta.ETag, LastModified: meta.LastModified, FetchedAt: meta.FetchedAt,
-			StaleSince: meta.StaleSince, fileName: meta.FileName,
-		}
+		s.entries[meta.RuntimeID] = meta.entry()
 	}
 	return nil
 }
 
 func (s *Store) writeMetadataLocked(entry Entry) error {
-	meta := metadata{
-		RuntimeID: entry.RuntimeID, SourceURL: entry.SourceURL, ContentType: entry.ContentType,
-		SourceETag: entry.SourceETag, ETag: entry.ETag, LastModified: entry.LastModified,
-		FetchedAt: entry.FetchedAt, StaleSince: entry.StaleSince, FileName: entry.fileName,
-	}
-	encoded, err := json.Marshal(meta)
+	encoded, err := json.Marshal(entry.metadata())
 	if err != nil {
 		return fmt.Errorf("encode favicon metadata: %w", err)
 	}
@@ -335,18 +325,4 @@ func extensionFor(contentType string) string {
 	default:
 		return ".ico"
 	}
-}
-
-// ReadAll is used by tests and small API responses that need an in-memory icon copy.
-func (s *Store) ReadAll(runtimeID string) (Entry, []byte, error) {
-	entry, file, err := s.Open(runtimeID)
-	if err != nil {
-		return Entry{}, nil, err
-	}
-	defer file.Close()
-	contents, err := io.ReadAll(file)
-	if err != nil {
-		return Entry{}, nil, fmt.Errorf("read favicon cache entry: %w", err)
-	}
-	return entry, contents, nil
 }

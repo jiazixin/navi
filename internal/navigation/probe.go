@@ -96,24 +96,14 @@ func (p *Prober) probe(ctx context.Context, target string) bool {
 	}
 
 	client := &http.Client{CheckRedirect: limitRedirects}
-	response, err := request(ctx, client, http.MethodHead, target)
-	if response != nil {
-		response.Body.Close()
+	status, err := requestStatus(ctx, client, http.MethodHead, target)
+	if err == nil && (status == http.StatusMethodNotAllowed || status == http.StatusNotImplemented) {
+		status, err = requestStatus(ctx, client, http.MethodGet, target)
 	}
 	if err != nil {
 		return completedHandshake(err)
 	}
-	if response.StatusCode != http.StatusMethodNotAllowed && response.StatusCode != http.StatusNotImplemented {
-		return reachableStatus(response.StatusCode)
-	}
-	response, err = request(ctx, client, http.MethodGet, target)
-	if response != nil {
-		response.Body.Close()
-	}
-	if err != nil {
-		return completedHandshake(err)
-	}
-	return reachableStatus(response.StatusCode)
+	return reachableStatus(status)
 }
 
 // completedHandshake reports a TLS peer whose certificate this host cannot verify.
@@ -124,15 +114,22 @@ func completedHandshake(err error) bool {
 	return errors.As(err, &verification)
 }
 
-func request(ctx context.Context, client *http.Client, method, target string) (*http.Response, error) {
+// requestStatus sends one probe request and returns its status code; GET asks
+// for a single byte so a reachable page is not downloaded.
+func requestStatus(ctx context.Context, client *http.Client, method, target string) (int, error) {
 	request, err := http.NewRequestWithContext(ctx, method, target, nil)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	if method == http.MethodGet {
 		request.Header.Set("Range", "bytes=0-0")
 	}
-	return client.Do(request)
+	response, err := client.Do(request)
+	if err != nil {
+		return 0, err
+	}
+	response.Body.Close()
+	return response.StatusCode, nil
 }
 
 func reachableStatus(status int) bool {

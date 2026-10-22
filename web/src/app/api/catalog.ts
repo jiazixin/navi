@@ -1,3 +1,4 @@
+import { fetchJSON } from './client';
 import { z } from './schema';
 
 // Go counts Unicode code points, not UTF-16 code units.
@@ -61,44 +62,12 @@ export type CatalogPage = Catalog['pages'][number];
 export type CatalogGroup = CatalogPage['groups'][number];
 export type CatalogLink = CatalogGroup['links'][number];
 
-export class APIError extends Error {
-  readonly status: number | undefined;
+const catalogFailures = {
+  http: '请求暂时无法完成。',
+  unreadable: '服务返回了无法读取的数据。',
+  invalid: '服务返回的数据不符合目录协议。',
+};
 
-  constructor(message: string, status?: number, options?: ErrorOptions) {
-    super(message, options);
-    this.name = 'APIError';
-    this.status = status;
-  }
-}
-
-async function decodeResponse<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
-  if (!response.ok) {
-    throw new APIError('请求暂时无法完成。', response.status);
-  }
-
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch (error: unknown) {
-    throw new APIError('服务返回了无法读取的数据。', response.status, { cause: error });
-  }
-
-  const result = schema.safeParse(payload);
-  if (!result.success) {
-    throw new APIError('服务返回的数据不符合目录协议。', response.status, {
-      cause: result.error,
-    });
-  }
-
-  return result.data;
-}
-
-export async function getCatalog(signal?: AbortSignal): Promise<Catalog> {
-  const requestInit: RequestInit = {
-    headers: { Accept: 'application/json' },
-    ...(signal === undefined ? {} : { signal }),
-  };
-  const response = await fetch('/api/catalog', requestInit);
-
-  return decodeResponse(response, catalogSchema);
+export function getCatalog(signal?: AbortSignal): Promise<Catalog> {
+  return fetchJSON('/api/catalog', catalogSchema, catalogFailures, signal);
 }

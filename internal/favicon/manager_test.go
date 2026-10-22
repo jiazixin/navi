@@ -31,7 +31,7 @@ func TestManagerRepairsMissingFreshCacheWithoutConditionalRequest(t *testing.T) 
 		_, _ = writer.Write(testPNG(t))
 	}))
 	defer target.Close()
-	entry, err := store.PutWithValidators("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
+	entry, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestManagerRepairsMissingFreshCacheWithoutConditionalRequest(t *testing.T) 
 		t.Fatal("fresh metadata suppressed download after blob removal")
 	}
 	manager.fetch(t.Context(), link)
-	if _, body, err := store.ReadAll("one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
+	if _, body, err := readCachedIcon(store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
 		t.Fatalf("cache repair body=%q, err=%v, conditional=%v", body, err, conditional.Load())
 	}
 }
@@ -75,7 +75,7 @@ func TestManagerReDownloadsOldInvalidCacheAfterRestart(t *testing.T) {
 		_, _ = writer.Write(testPNG(t))
 	}))
 	defer target.Close()
-	if _, err := store.PutWithValidators("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("\x89PNG\r\n\x1a\ninvalid")); err != nil {
+	if _, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("\x89PNG\r\n\x1a\ninvalid")); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := NewStore(directory)
@@ -100,7 +100,7 @@ func TestManagerReDownloadsOldInvalidCacheAfterRestart(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("startup revalidation did not schedule a replacement")
 	}
-	if _, body, err := reopened.ReadAll("one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
+	if _, body, err := readCachedIcon(reopened, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
 		t.Fatalf("restart repair body=%x, err=%v, conditional=%v", body, err, conditional.Load())
 	}
 }
@@ -129,7 +129,7 @@ func TestManagerRepairsCacheDeletedDuringConditionalRefresh(t *testing.T) {
 		_, _ = writer.Write(testPNG(t))
 	}))
 	defer target.Close()
-	entry, err := store.PutWithValidators("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
+	entry, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestManagerRepairsCacheDeletedDuringConditionalRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.fetch(t.Context(), catalog.Link{RuntimeID: "one", PublicURL: target.URL})
-	if _, body, err := store.ReadAll("one"); err != nil || !bytes.Equal(body, testPNG(t)) || requests.Load() != 2 {
+	if _, body, err := readCachedIcon(store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || requests.Load() != 2 {
 		t.Fatalf("cache repair body=%q, err=%v, requests=%d", body, err, requests.Load())
 	}
 	if degraded, _ := manager.Degraded(); degraded {
@@ -206,7 +206,7 @@ func TestManagerNegotiatesSupportedImageAndSkipsMalformedCandidate(t *testing.T)
 		t.Fatal(err)
 	}
 	manager.fetch(t.Context(), catalog.Link{RuntimeID: "one", PublicURL: target.URL})
-	entry, body, err := store.ReadAll("one")
+	entry, body, err := readCachedIcon(store, "one")
 	if err != nil || entry.SourceURL != target.URL+"/favicon.ico" || !bytes.Equal(body, testPNG(t)) {
 		t.Fatalf("negotiated icon = %+v, err=%v", entry, err)
 	}

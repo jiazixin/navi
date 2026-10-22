@@ -18,7 +18,7 @@ export class PatternStage {
   readonly #interactive: boolean;
   #renderer: PatternRenderer | null = null;
   #fps = 30;
-  #last = 0;
+  #lastFrameTime = 0;
   #animated = false;
   #dirty = true;
   #scale = 1;
@@ -85,8 +85,8 @@ export class PatternStage {
       this.#draw(context, STILL_TIME, true);
       return;
     }
-    if (now - this.#last < 1000 / this.#fps - 3) return;
-    this.#last = now;
+    if (now - this.#lastFrameTime < 1000 / this.#fps - 3) return;
+    this.#lastFrameTime = now;
     this.#dirty = false;
     this.#draw(context, now, false);
   }

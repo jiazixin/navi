@@ -44,37 +44,37 @@ func newAuthState() *authState {
 	return &authState{sessions: make(map[string]time.Time), attempts: make(map[string]loginAttempt)}
 }
 
-func (server *httpServer) authenticated(request *http.Request) bool {
-	if !server.config.Auth.Enabled() {
+func (s *httpServer) authenticated(request *http.Request) bool {
+	if !s.config.Auth.Enabled() {
 		return true
 	}
 	cookie, err := request.Cookie(sessionCookie)
 	if err != nil {
 		return false
 	}
-	server.auth.mu.Lock()
-	defer server.auth.mu.Unlock()
-	expiresAt, ok := server.auth.sessions[cookie.Value]
+	s.auth.mu.Lock()
+	defer s.auth.mu.Unlock()
+	expiresAt, ok := s.auth.sessions[cookie.Value]
 	if !ok {
 		return false
 	}
 	if !time.Now().Before(expiresAt) {
-		delete(server.auth.sessions, cookie.Value)
+		delete(s.auth.sessions, cookie.Value)
 		return false
 	}
 	return true
 }
 
-func (server *httpServer) authorize(writer http.ResponseWriter, request *http.Request) bool {
+func (s *httpServer) authorize(writer http.ResponseWriter, request *http.Request) bool {
 	requestPath := request.URL.Path
-	if requestPath == server.config.Health.URI || requestPath == "/login" || strings.HasPrefix(requestPath, "/assets/") {
+	if requestPath == s.config.Health.URI || requestPath == "/login" || strings.HasPrefix(requestPath, "/assets/") {
 		return true
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	if server.authenticated(request) {
+	if s.authenticated(request) {
 		return true
 	}
-	if requestPath == "/api" || strings.HasPrefix(requestPath, "/api/") {
+	if isAPIPath(requestPath) {
 		writeJSONError(writer, http.StatusUnauthorized, "请先登录。")
 	} else {
 		http.Redirect(writer, request, "/login", http.StatusFound)
@@ -82,7 +82,7 @@ func (server *httpServer) authorize(writer http.ResponseWriter, request *http.Re
 	return false
 }
 
-func (server *httpServer) serveAuth(writer http.ResponseWriter, request *http.Request) bool {
+func (s *httpServer) serveAuth(writer http.ResponseWriter, request *http.Request) bool {
 	requestPath := request.URL.Path
 	if requestPath != "/api/auth/login" && requestPath != "/api/auth/logout" && requestPath != "/api/auth/session" {
 		return false
@@ -92,10 +92,10 @@ func (server *httpServer) serveAuth(writer http.ResponseWriter, request *http.Re
 		if request.Method != http.MethodGet && request.Method != http.MethodHead {
 			writer.Header().Set("Allow", "GET, HEAD")
 			writeJSONError(writer, http.StatusMethodNotAllowed, "请求方法不支持。")
-		} else if !server.authenticated(request) {
+		} else if !s.authenticated(request) {
 			writeJSONError(writer, http.StatusUnauthorized, "请先登录。")
 		} else {
-			writeJSON(writer, http.StatusOK, map[string]bool{"authenticated": true, "authRequired": server.config.Auth.Enabled()})
+			s.writeSession(writer)
 		}
 		return true
 	}
@@ -112,15 +112,15 @@ func (server *httpServer) serveAuth(writer http.ResponseWriter, request *http.Re
 	}
 	if requestPath == "/api/auth/logout" {
 		if cookie, err := request.Cookie(sessionCookie); err == nil {
-			server.auth.mu.Lock()
-			delete(server.auth.sessions, cookie.Value)
-			server.auth.mu.Unlock()
+			s.auth.mu.Lock()
+			delete(s.auth.sessions, cookie.Value)
+			s.auth.mu.Unlock()
 		}
-		server.setSessionCookie(writer, request, "", -1)
+		s.setSessionCookie(writer, request, "", -1)
 		writer.WriteHeader(http.StatusNoContent)
 		return true
 	}
-	server.login(writer, request)
+	s.login(writer, request)
 	return true
 }
 
@@ -142,13 +142,13 @@ func isAllowedAuthOrigin(request *http.Request) bool {
 		originURL.Fragment == "" && originURL.Path == ""
 }
 
-func (server *httpServer) setSessionCookie(writer http.ResponseWriter, request *http.Request, token string, maxAge int) {
+func (s *httpServer) setSessionCookie(writer http.ResponseWriter, request *http.Request, token string, maxAge int) {
 	http.SetCookie(writer, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   server.config.Auth.SecureCookie || request.TLS != nil,
+		Secure:   s.config.Auth.SecureCookie || request.TLS != nil,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   maxAge,
 	})
@@ -159,13 +159,13 @@ type loginCredentials struct {
 	Password string `json:"password"`
 }
 
-func (server *httpServer) login(writer http.ResponseWriter, request *http.Request) {
+func (s *httpServer) login(writer http.ResponseWriter, request *http.Request) {
 	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
 	if err != nil {
 		clientIP = request.RemoteAddr
 	}
 	now := time.Now()
-	if !server.auth.recordLoginAttempt(clientIP, now) {
+	if !s.auth.recordLoginAttempt(clientIP, now) {
 		writer.Header().Set("Retry-After", strconv.Itoa(int(loginAttemptWindow.Seconds())))
 		writeJSONError(writer, http.StatusTooManyRequests, "尝试次数过多，请一分钟后重试。")
 		return
@@ -176,7 +176,7 @@ func (server *httpServer) login(writer http.ResponseWriter, request *http.Reques
 		writeJSONError(writer, http.StatusBadRequest, "登录请求格式无效。")
 		return
 	}
-	if !server.credentialsMatch(credentials) {
+	if !s.credentialsMatch(credentials) {
 		writeJSONError(writer, http.StatusUnauthorized, "账号或密码不正确。")
 		return
 	}
@@ -191,12 +191,17 @@ func (server *httpServer) login(writer http.ResponseWriter, request *http.Reques
 	if cookie, err := request.Cookie(sessionCookie); err == nil {
 		previousToken = cookie.Value
 	}
-	if !server.auth.createSession(clientIP, token, previousToken, now) {
+	if !s.auth.createSession(clientIP, token, previousToken, now) {
 		writeJSONError(writer, http.StatusServiceUnavailable, "会话已满，请稍后重试。")
 		return
 	}
-	server.setSessionCookie(writer, request, token, int(sessionLifetime.Seconds()))
-	writeJSON(writer, http.StatusOK, map[string]bool{"authenticated": true, "authRequired": server.config.Auth.Enabled()})
+	s.setSessionCookie(writer, request, token, int(sessionLifetime.Seconds()))
+	s.writeSession(writer)
+}
+
+// writeSession reports an authenticated session and whether login is configured.
+func (s *httpServer) writeSession(writer http.ResponseWriter) {
+	writeJSON(writer, http.StatusOK, map[string]bool{"authenticated": true, "authRequired": s.config.Auth.Enabled()})
 }
 
 // recordLoginAttempt checks the fixed window and counts this attempt atomically.
@@ -231,14 +236,14 @@ func decodeLoginCredentials(body io.Reader) (loginCredentials, error) {
 	return credentials, nil
 }
 
-func (server *httpServer) credentialsMatch(credentials loginCredentials) bool {
+func (s *httpServer) credentialsMatch(credentials loginCredentials) bool {
 	usernameHash := sha256.Sum256([]byte(credentials.Username))
-	expectedUsernameHash := sha256.Sum256([]byte(server.config.Auth.Username))
+	expectedUsernameHash := sha256.Sum256([]byte(s.config.Auth.Username))
 	passwordHash := sha256.Sum256([]byte(credentials.Password))
-	expectedPasswordHash := sha256.Sum256([]byte(server.config.Auth.Password))
+	expectedPasswordHash := sha256.Sum256([]byte(s.config.Auth.Password))
 	credentialsEqual := subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) &
 		subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:])
-	return credentialsEqual == 1 && server.config.Auth.Username != "" && server.config.Auth.Password != ""
+	return credentialsEqual == 1 && s.config.Auth.Username != "" && s.config.Auth.Password != ""
 }
 
 // createSession prunes expired sessions, replaces the caller's cookie, and resets

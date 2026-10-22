@@ -56,6 +56,7 @@ export function TopBar({
   const authRequired = useContext(AuthRequiredContext);
   const pagesRef = useRef<HTMLDivElement>(null);
   const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
+  const refreshLabel = connectionLabel(connection, isRefreshing);
 
   useLayoutEffect(() => {
     const container = pagesRef.current;
@@ -105,11 +106,11 @@ export function TopBar({
             <kbd aria-hidden="true">⌘K</kbd>
           </button>
           <button
-            aria-label={connectionLabel(connection, isRefreshing)}
+            aria-label={refreshLabel}
             className={styles.iconButton}
             data-loading={isRefreshing ? 'true' : 'false'}
             onClick={onRefresh}
-            title={connectionLabel(connection, isRefreshing)}
+            title={refreshLabel}
             type="button"
           >
             <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />

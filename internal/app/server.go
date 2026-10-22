@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -43,7 +44,7 @@ type httpServer struct {
 	degraded  func() (bool, string)
 	logger    *slog.Logger
 	heartbeat time.Duration
-	request   atomic.Uint64
+	requests  atomic.Uint64
 	auth      *authState
 }
 
@@ -112,15 +113,15 @@ func (s *httpServer) ServeHTTP(writer http.ResponseWriter, request *http.Request
 	case s.config.Health.URI:
 		s.serveHealth(writer, request)
 	default:
-		if hasPrefixPath(request.URL.Path, "/api/icons/") {
+		if strings.HasPrefix(request.URL.Path, "/api/icons/") {
 			s.serveIcon(writer, request)
 			return
 		}
-		if request.URL.Path == "/api" || hasPrefixPath(request.URL.Path, "/api/") {
+		if isAPIPath(request.URL.Path) {
 			writeJSONError(writer, http.StatusNotFound, "接口不存在。")
 			return
 		}
-		if request.URL.Path == "/go" || hasPrefixPath(request.URL.Path, "/go/") {
+		if request.URL.Path == "/go" || strings.HasPrefix(request.URL.Path, "/go/") {
 			s.serveGo(writer, request)
 			return
 		}
@@ -236,9 +237,9 @@ func (s *httpServer) requestID() string {
 	if _, err := rand.Read(buffer[:]); err == nil {
 		return base64.RawURLEncoding.EncodeToString(buffer[:])
 	}
-	return fmt.Sprintf("req-%d", s.request.Add(1))
+	return fmt.Sprintf("req-%d", s.requests.Add(1))
 }
 
-func hasPrefixPath(path, prefix string) bool {
-	return len(path) >= len(prefix) && path[:len(prefix)] == prefix
+func isAPIPath(path string) bool {
+	return path == "/api" || strings.HasPrefix(path, "/api/")
 }

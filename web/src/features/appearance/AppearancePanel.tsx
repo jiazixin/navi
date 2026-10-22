@@ -1,5 +1,13 @@
 import { useEffect, useRef, type KeyboardEvent, type RefObject } from 'react';
-import { palettes, patterns, getPattern, type ThemePreference, type PatternID } from './options';
+import {
+  getPattern,
+  maxPatternStrength,
+  minPatternStrength,
+  palettes,
+  patterns,
+  type PatternID,
+  type ThemePreference,
+} from './options';
 import { PatternCanvas } from './PatternCanvas';
 import { useAppearance } from './useAppearance';
 import styles from './AppearancePanel.module.css';
@@ -15,7 +23,7 @@ const themeChoices: readonly { id: ThemePreference; name: string; en: string; ba
   ...palettes,
 ];
 
-const nextKeys: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+const arrowKeyOffsets: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
 /** Arrow keys move and select within a radio group, matching native radio buttons. */
 function handleRadioKeys<T extends string>(event: KeyboardEvent<HTMLDivElement>, values: readonly T[], current: T, select: (value: T) => void): void {
@@ -23,7 +31,7 @@ function handleRadioKeys<T extends string>(event: KeyboardEvent<HTMLDivElement>,
   let next: number;
   if (event.key === 'Home') next = 0;
   else if (event.key === 'End') next = values.length - 1;
-  else if (event.key in nextKeys) next = (index + (nextKeys[event.key] ?? 0) + values.length) % values.length;
+  else if (event.key in arrowKeyOffsets) next = (index + (arrowKeyOffsets[event.key] ?? 0) + values.length) % values.length;
   else return;
   event.preventDefault();
   const value = values[next];
@@ -134,8 +142,8 @@ export function AppearancePanel({ id, anchorRef, onClose }: AppearancePanelProps
       <label className={styles.control}>
         <span>纹样强度</span>
         <input
-          max={100}
-          min={20}
+          max={maxPatternStrength}
+          min={minPatternStrength}
           onChange={(event) => appearance.setStrength(Number(event.target.value))}
           type="range"
           value={appearance.strength}

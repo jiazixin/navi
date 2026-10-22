@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -63,7 +64,7 @@ func LoadFile(path string) (Catalog, error) {
 	}
 
 	var source sourceCatalog
-	decoder := yaml.NewDecoder(strings.NewReader(string(contents)))
+	decoder := yaml.NewDecoder(bytes.NewReader(contents))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&source); err != nil {
 		return Catalog{}, fmt.Errorf("decode catalog: %w", err)

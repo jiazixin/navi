@@ -3,6 +3,9 @@ import { readStored, writeStored } from '../../lib/storage/localStorage';
 import { AppearanceContext, type Appearance } from './AppearanceContext';
 import {
   applyPalette,
+  defaultPatternStrength,
+  maxPatternStrength,
+  minPatternStrength,
   parsePattern,
   parseThemePreference,
   resolvePalette,
@@ -28,9 +31,15 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+function clampStrength(value: number): number {
+  return Math.min(maxPatternStrength, Math.max(minPatternStrength, Math.round(value)));
+}
+
 function readStrength(): number {
   const value = Number(readStored(storageKeys.strength));
-  return Number.isFinite(value) && value >= 20 && value <= 100 ? Math.round(value) : 90;
+  return Number.isFinite(value) && value >= minPatternStrength && value <= maxPatternStrength
+    ? Math.round(value)
+    : defaultPatternStrength;
 }
 
 export function AppearanceProvider({ configuredTheme, configuredPattern, children }: AppearanceProviderProps): React.JSX.Element {
@@ -70,7 +79,7 @@ export function AppearanceProvider({ configuredTheme, configuredPattern, childre
         writeStored(storageKeys.pattern, next);
       },
       setStrength(next) {
-        const clamped = Math.min(100, Math.max(20, Math.round(next)));
+        const clamped = clampStrength(next);
         setStrengthState(clamped);
         writeStored(storageKeys.strength, String(clamped));
       },

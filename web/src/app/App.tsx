@@ -44,6 +44,7 @@ export function App({ configuredSearch }: AppProps): React.JSX.Element {
   const catalogRef = useRef<HTMLDivElement>(null);
   const appearancePanelID = `appearance-${useId().replace(/:/g, '')}`;
   const linkCount = page?.groups.reduce((total, group) => total + group.links.length, 0) ?? 0;
+  const activePattern = getPattern(appearance.pattern);
 
   useEffect(() => {
     document.title = page === undefined ? 'Navi' : `${page.title} · Navi`;
@@ -159,7 +160,7 @@ export function App({ configuredSearch }: AppProps): React.JSX.Element {
             </a>
             <span className={styles.patternBadge} data-animated={appearance.animated ? 'true' : 'false'}>
               <span aria-hidden="true" className={styles.live} />
-              纹样 — <b>{getPattern(appearance.pattern).name}</b> {getPattern(appearance.pattern).en}
+              纹样 — <b>{activePattern.name}</b> {activePattern.en}
             </span>
           </div>
         </section>
@@ -172,9 +173,7 @@ export function App({ configuredSearch }: AppProps): React.JSX.Element {
       <footer className={styles.footer}>
         <div className={styles.footerInner}>
           <span>Navi — 自托管导航 · Self-hosted start page</span>
-          <span>
-            {page?.subtitle ?? ''}
-          </span>
+          <span>{page?.subtitle ?? ''}</span>
           <a href="#">回到顶部 ↑</a>
         </div>
       </footer>

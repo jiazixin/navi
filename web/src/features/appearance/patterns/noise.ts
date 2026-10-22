@@ -1,4 +1,4 @@
-export type Noise3D = (x: number, y: number, z: number) => number;
+type Noise3D = (x: number, y: number, z: number) => number;
 
 /** Seeded uniform random numbers in [0, 1), so still frames are reproducible. */
 export function createRandom(seed: number): () => number {

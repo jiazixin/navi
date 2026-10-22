@@ -39,8 +39,7 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		origin := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: "/favicon.ico"}
-		return []string{origin.String()}, nil
+		return []string{rootFavicon(base)}, nil
 	}
 	request.Header.Set("Accept", "text/html,application/xhtml+xml")
 	response, err := client.Do(request)
@@ -59,9 +58,8 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 		return fallback(response.Request.URL)
 	}
 	base := response.Request.URL
-	candidates := parseCandidates(contents, base)
-	origin := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: "/favicon.ico"}
-	candidates = append(candidates, candidate{url: origin.String(), score: -1})
+	origin := rootFavicon(base)
+	candidates := append(parseCandidates(contents, base), candidate{url: origin, score: -1})
 	urls := make([]string, 0, len(candidates))
 	seen := make(map[string]struct{})
 	for _, candidate := range candidates {
@@ -74,10 +72,16 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 		seen[candidate.url] = struct{}{}
 		urls = append(urls, candidate.url)
 	}
-	if _, ok := seen[origin.String()]; !ok {
-		urls = append(urls, origin.String())
+	if _, ok := seen[origin]; !ok {
+		urls = append(urls, origin)
 	}
 	return urls, nil
+}
+
+// rootFavicon is the conventional /favicon.ico of the page's origin.
+func rootFavicon(base *url.URL) string {
+	origin := &url.URL{Scheme: base.Scheme, Host: base.Host, Path: "/favicon.ico"}
+	return origin.String()
 }
 
 func parseCandidates(contents []byte, base *url.URL) []candidate {
@@ -125,10 +129,11 @@ func isIconRelation(value string) bool {
 }
 
 func resolveCandidate(base *url.URL, raw string) (string, bool) {
-	if strings.TrimSpace(raw) == "" {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
 		return "", false
 	}
-	parsed, err := url.Parse(strings.TrimSpace(raw))
+	parsed, err := url.Parse(trimmed)
 	if err != nil {
 		return "", false
 	}
@@ -154,10 +159,8 @@ func scoreSizes(value string) int {
 		if widthErr != nil || heightErr != nil || width != height {
 			continue
 		}
-		score := 64 - abs(64-width)
-		if score > best {
-			best = score
-		}
+		// Prefer square icons closest to 64px.
+		best = max(best, 64-abs(64-width))
 	}
 	return best
 }

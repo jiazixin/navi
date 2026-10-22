@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
+	"io"
 	"io/fs"
 	"net/http"
 	"path"
@@ -41,6 +43,13 @@ type linkResponse struct {
 	PublicURL   string   `json:"publicUrl,omitempty"`
 	Tags        []string `json:"tags"`
 }
+
+// Service health values reported by /api/status and the health endpoint.
+const (
+	healthOK          = "ok"
+	healthDegraded    = "degraded"
+	healthUnavailable = "unavailable"
+)
 
 type statusResponse struct {
 	Health   string `json:"health"`
@@ -86,38 +95,34 @@ func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse
 }
 
 func (s *httpServer) serveStatus(writer http.ResponseWriter, request *http.Request) {
-	health, revision, message := s.status()
-	status := http.StatusOK
-	if health == "unavailable" {
-		status = http.StatusServiceUnavailable
+	status := s.status()
+	code := http.StatusOK
+	if status.Health == healthUnavailable {
+		code = http.StatusServiceUnavailable
 	}
 	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, status, statusResponse{Health: health, Revision: revision, Message: message})
+	writeJSON(writer, code, status)
 }
 
 func (s *httpServer) serveHealth(writer http.ResponseWriter, request *http.Request) {
-	health, _, _ := s.status()
-	if health == "unavailable" {
-		writer.Header().Set("Cache-Control", "no-store")
+	health := s.status().Health
+	writer.Header().Set("Cache-Control", "no-store")
+	if health == healthUnavailable {
 		writer.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
 	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	writer.Header().Set("Cache-Control", "no-store")
 	if request.Method == http.MethodHead {
 		writer.WriteHeader(http.StatusOK)
 		return
 	}
-	if _, err := writer.Write([]byte(health)); err != nil {
-		return
-	}
+	_, _ = io.WriteString(writer, health)
 }
 
 func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Request) {
 	var events <-chan catalog.Event
-	var subscription catalog.Subscription
 	if s.watcher != nil {
-		subscription = s.watcher.Subscribe()
+		subscription := s.watcher.Subscribe()
 		defer subscription.Close()
 		events = subscription.Events()
 	}
@@ -167,6 +172,16 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 		}
 		return err
 	}
+	writeFrame := func(frame string) error {
+		if err := beginWrite(); err != nil {
+			return err
+		}
+		if _, err := writer.Write([]byte(frame)); err != nil {
+			return err
+		}
+		return flushWrite()
+	}
+	// Send the response headers before waiting for the first event.
 	if err := beginWrite(); err != nil {
 		return
 	}
@@ -177,42 +192,27 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 	heartbeat := time.NewTicker(s.heartbeat)
 	defer heartbeat.Stop()
 	for {
+		var frame string
 		select {
 		case <-request.Context().Done():
 			return
 		case event, ok := <-events:
-			if !s.authenticated(request) {
-				return
-			}
-			if !ok {
+			if !ok || !s.authenticated(request) {
 				return
 			}
 			payload, err := json.Marshal(event)
 			if err != nil {
 				continue
 			}
-			if err := beginWrite(); err != nil {
-				return
-			}
-			if _, err := fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", event.Type, payload); err != nil {
-				return
-			}
-			if err := flushWrite(); err != nil {
-				return
-			}
+			frame = fmt.Sprintf("event: %s\ndata: %s\n\n", event.Type, payload)
 		case <-heartbeat.C:
 			if !s.authenticated(request) {
 				return
 			}
-			if err := beginWrite(); err != nil {
-				return
-			}
-			if _, err := fmt.Fprint(writer, ": heartbeat\n\n"); err != nil {
-				return
-			}
-			if err := flushWrite(); err != nil {
-				return
-			}
+			frame = ": heartbeat\n\n"
+		}
+		if err := writeFrame(frame); err != nil {
+			return
 		}
 	}
 }
@@ -238,9 +238,10 @@ func (s *httpServer) serveIcon(writer http.ResponseWriter, request *http.Request
 	}
 	defer file.Close()
 	writer.Header().Set("ETag", entry.ETag)
-	writer.Header().Set("Cache-Control", "public, no-cache")
 	if s.config.Auth.Enabled() {
 		writer.Header().Set("Cache-Control", "private, no-cache")
+	} else {
+		writer.Header().Set("Cache-Control", "public, no-cache")
 	}
 	writer.Header().Set("Content-Type", entry.ContentType)
 	if entry.ContentType == "image/svg+xml" {
@@ -307,30 +308,28 @@ func (s *httpServer) serveStatic(writer http.ResponseWriter, request *http.Reque
 	http.ServeContent(writer, request, "index.html", time.Time{}, bytes.NewReader(contents))
 }
 
-func (s *httpServer) status() (string, uint64, string) {
+func (s *httpServer) status() statusResponse {
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
-		return "unavailable", 0, "目录尚不可用。"
+		return statusResponse{Health: healthUnavailable, Message: "目录尚不可用。"}
 	}
 	if s.watcher != nil {
 		if degraded, message := s.watcher.Degraded(); degraded {
-			return "degraded", snapshot.Revision(), message
+			return statusResponse{Health: healthDegraded, Revision: snapshot.Revision(), Message: message}
 		}
 	}
 	if s.degraded != nil {
 		if degraded, message := s.degraded(); degraded {
-			return "degraded", snapshot.Revision(), message
+			return statusResponse{Health: healthDegraded, Revision: snapshot.Revision(), Message: message}
 		}
 	}
-	return "ok", snapshot.Revision(), ""
+	return statusResponse{Health: healthOK, Revision: snapshot.Revision()}
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(status)
-	if err := json.NewEncoder(writer).Encode(payload); err != nil {
-		return
-	}
+	_ = json.NewEncoder(writer).Encode(payload)
 }
 
 func writeJSONError(writer http.ResponseWriter, status int, message string) {
@@ -349,17 +348,14 @@ func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.
 	if !strings.HasPrefix(retryPath, "/go/") {
 		retryPath = "/"
 	}
-	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, htmlEscape(message), htmlEscape(retryPath))
-	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, htmlEscape(message), htmlEscape(retryPath), s.appearanceAttributes(), fallback)
-	var contents []byte
-	var err error
+	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, html.EscapeString(message), html.EscapeString(retryPath))
+	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, html.EscapeString(message), html.EscapeString(retryPath), s.appearanceAttributes(), fallback)
+	emptyRoot := []byte(`<div id="root"></div>`)
 	if s.static != nil {
-		contents, err = fs.ReadFile(s.static, "index.html")
-	}
-	if err == nil && bytes.Contains(contents, []byte(`<div id="root"></div>`)) {
-		contents = bytes.Replace(contents, []byte(`<div id="root"></div>`), []byte(root), 1)
-		_, _ = writer.Write(contents)
-		return
+		if shell, err := fs.ReadFile(s.static, "index.html"); err == nil && bytes.Contains(shell, emptyRoot) {
+			_, _ = writer.Write(bytes.Replace(shell, emptyRoot, []byte(root), 1))
+			return
+		}
 	}
 	_, _ = fmt.Fprintf(writer, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navi</title><body>%s</body></html>`, fallback)
 }
@@ -368,10 +364,5 @@ func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.
 // authentication, so the login page and first paint use them without an API call.
 func (s *httpServer) appearanceAttributes() string {
 	return fmt.Sprintf(` data-configured-theme="%s" data-configured-pattern="%s" data-configured-search="%s"`,
-		htmlEscape(s.config.Theme), htmlEscape(s.config.BackgroundPattern), htmlEscape(s.config.WebSearch))
-}
-
-func htmlEscape(value string) string {
-	replacer := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&#34;", "'", "&#39;")
-	return replacer.Replace(value)
+		html.EscapeString(s.config.Theme), html.EscapeString(s.config.BackgroundPattern), html.EscapeString(s.config.WebSearch))
 }

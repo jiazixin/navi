@@ -23,7 +23,13 @@ type Config struct {
 	Workers         int
 }
 
-const cacheCleanupGrace = 24 * time.Hour
+const (
+	cacheCleanupGrace = 24 * time.Hour
+	// maxQueuedFetches bounds pending work; links that do not fit wait for the next schedule.
+	maxQueuedFetches = 1_000
+	// maintenanceFailureKey records cache cleanup failures next to per-link storage failures.
+	maintenanceFailureKey = "maintenance"
+)
 
 // Manager fetches icons in bounded background workers.
 type Manager struct {
@@ -82,7 +88,7 @@ func NewManager(config Config, store *Store, publish func(catalog.Event)) (*Mana
 	client := &http.Client{Timeout: config.FetchTimeout, CheckRedirect: limitRedirects}
 	return &Manager{
 		config: config, store: store, client: client, publish: publish,
-		storageFailures: make(map[string]bool), inFlight: make(map[string]struct{}), jobs: make(chan catalog.Link, 1_000),
+		storageFailures: make(map[string]bool), inFlight: make(map[string]struct{}), jobs: make(chan catalog.Link, maxQueuedFetches),
 		discovering: make(map[string]*discoverCall), fetching: make(map[string]*iconCall),
 	}, nil
 }
@@ -135,7 +141,7 @@ func (m *Manager) Schedule(directory catalog.Catalog) error {
 	}
 	m.pruneStorageFailures(activeRuntimeIDs)
 	_, err := m.store.Cleanup(activeRuntimeIDs, cacheCleanupGrace)
-	m.recordStorageResult("maintenance", err)
+	m.recordStorageResult(maintenanceFailureKey, err)
 	if err != nil {
 		return fmt.Errorf("cleanup favicon cache: %w", err)
 	}
@@ -211,7 +217,7 @@ func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
 					continue
 				}
 			}
-			_, err = m.store.PutWithValidators(link.RuntimeID, candidate, result.contentType, result.sourceETag, result.lastModified, result.contents)
+			_, err = m.store.Put(link.RuntimeID, candidate, result.contentType, result.sourceETag, result.lastModified, result.contents)
 			m.recordStorageResult(link.RuntimeID, err)
 			if err != nil {
 				return
@@ -342,28 +348,31 @@ func (m *Manager) Degraded() (bool, string) {
 }
 
 func (m *Manager) recordStorageResult(key string, err error) {
-	m.mu.Lock()
-	wasDegraded := len(m.storageFailures) > 0
-	if err != nil {
-		m.storageFailures[key] = true
-	} else {
-		delete(m.storageFailures, key)
-	}
-	changed := wasDegraded != (len(m.storageFailures) > 0)
-	m.mu.Unlock()
-	if changed && m.publish != nil {
-		m.publish(catalog.Event{Type: catalog.EventStatusUpdated})
-	}
+	m.updateStorageFailures(func(failures map[string]bool) {
+		if err != nil {
+			failures[key] = true
+		} else {
+			delete(failures, key)
+		}
+	})
 }
 
 func (m *Manager) pruneStorageFailures(active map[string]struct{}) {
+	m.updateStorageFailures(func(failures map[string]bool) {
+		for key := range failures {
+			if _, ok := active[key]; !ok && key != maintenanceFailureKey {
+				delete(failures, key)
+			}
+		}
+	})
+}
+
+// updateStorageFailures applies update under the lock and announces a status
+// change when the manager enters or leaves the degraded state.
+func (m *Manager) updateStorageFailures(update func(failures map[string]bool)) {
 	m.mu.Lock()
 	wasDegraded := len(m.storageFailures) > 0
-	for key := range m.storageFailures {
-		if _, ok := active[key]; !ok && key != "maintenance" {
-			delete(m.storageFailures, key)
-		}
-	}
+	update(m.storageFailures)
 	changed := wasDegraded != (len(m.storageFailures) > 0)
 	m.mu.Unlock()
 	if changed && m.publish != nil {

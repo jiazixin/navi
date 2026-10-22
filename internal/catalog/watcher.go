@@ -26,6 +26,9 @@ const (
 	EventFaviconUpdated EventType = "favicon.updated"
 )
 
+// reloadFailureMessage is the generic, user-facing reload failure; the cause is only logged.
+const reloadFailureMessage = "目录更新失败，当前仍显示最近一次有效内容。"
+
 // Event is a compact catalog reload notification suitable for SSE delivery.
 type Event struct {
 	Type      EventType `json:"type"`
@@ -219,22 +222,22 @@ func (w *Watcher) reload() {
 func (w *Watcher) recordFailure(err error) {
 	w.mu.Lock()
 	w.degraded = true
-	w.message = "目录更新失败，当前仍显示最近一次有效内容。"
+	w.message = reloadFailureMessage
 	w.mu.Unlock()
 	revision := uint64(0)
 	if snapshot, ok := w.store.Snapshot(); ok {
 		revision = snapshot.Revision()
 	}
 	w.logger.Error("catalog reload failed", "path", w.path, "revision", revision, "error", err)
-	w.events.Publish(Event{Type: EventCatalogError, Revision: revision, Message: "目录更新失败，当前仍显示最近一次有效内容。"})
+	w.events.Publish(Event{Type: EventCatalogError, Revision: revision, Message: reloadFailureMessage})
 }
 
 func resetTimer(timer *time.Timer, duration time.Duration) (*time.Timer, <-chan time.Time) {
 	if timer == nil {
 		timer = time.NewTimer(duration)
-		return timer, timer.C
+	} else {
+		timer.Reset(duration)
 	}
-	timer.Reset(duration)
 	return timer, timer.C
 }
 

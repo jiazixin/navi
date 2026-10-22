@@ -1,9 +1,7 @@
 import type { WebSearchProviderID } from '../../app/api/webSearch';
 
-export type SearchProviderID = WebSearchProviderID;
-
 export type SearchProvider = {
-  id: SearchProviderID;
+  id: WebSearchProviderID;
   label: string;
   shortLabel: string;
   category: 'web' | 'ai';
@@ -104,8 +102,8 @@ export const searchProviders: readonly SearchProvider[] = [
     homeURL: 'https://gemini.google.com/app',
     buildURL: () => 'https://gemini.google.com/app',
   },
-] as const;
+];
 
-export function getSearchProvider(providerID: SearchProviderID): SearchProvider {
+export function getSearchProvider(providerID: WebSearchProviderID): SearchProvider {
   return searchProviders.find((provider) => provider.id === providerID) ?? defaultSearchProvider;
 }
