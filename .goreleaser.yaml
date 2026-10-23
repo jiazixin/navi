@@ -21,11 +21,10 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
-      - -buildvcs=false
-    # Same metadata as the README release build: the exact tag, the short
-    # commit and, for reproducible archives, the commit time.
+    # No -X main.version: Go embeds the exact tag, commit and commit time
+    # from the Git checkout, as for any other build of this module.
     ldflags:
-      - -s -w -X main.version={{ .Tag }} -X main.commit={{ .ShortCommit }} -X main.buildTime={{ .CommitDate }}
+      - -s -w
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos: [linux, darwin]
     goarch: [amd64, arm64]

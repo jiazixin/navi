@@ -120,10 +120,10 @@ A link with one address redirects without probing. With both addresses, the **Na
 ./navi -c ./configs/config.local.yaml
 ./navi --config ./configs/config.local.yaml
 ./navi -h          # or --help: show help
-./navi --version   # show version, commit, and build time
+./navi --version   # show version and commit, e.g. navi v1.2.0 (revision=0123456789ab)
 ```
 
-`-c` / `--config` also accept `=PATH`; when used together, they must specify the same path. `-f` has been removed. Help and version queries neither read configuration nor start the server.
+`-c` / `--config` also accept `=PATH`; when used together, they must specify the same path. `-f` has been removed. Help (in English) and version output go to stdout; neither reads configuration nor starts the server. Exit codes: 0 success, 2 usage error, 1 configuration, startup, or runtime failure. Errors before the logger is ready are written to stderr as plain text `navi: <error>`; usage errors add `Run 'navi --help' for usage.`.
 
 - **Choosing a config file**: `-c PATH` / `--config PATH` selects the main config and overrides `CONFIG_FILE`; without the flag, `CONFIG_FILE` may be used. Relative paths resolve against the process working directory. When neither is set, only `./configs/config.local.yaml` is checked and built-in defaults apply if it is missing. An explicitly empty value, or a missing, unreadable, or invalid file, fails startup. The catalog YAML must exist and be valid.
 - **Precedence**: environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>_<FIELD>`, for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER_PORT=8081`, `NAVI_CATALOG_WATCH=false`.
@@ -153,13 +153,9 @@ For remote access, run Navi behind an HTTPS reverse proxy and set `NAVI_AUTH_SEC
 The Dockerfile installs frontend dependencies from the lockfile, builds `web/dist`, then compiles a static Go binary. The runtime image is distroless with no Node, shell, or curl. Build with version metadata and run:
 
 ```sh
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
-COMMIT=$(git rev-parse --short HEAD)
-BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short=12 HEAD)
 docker build \
   --build-arg VERSION="$VERSION" \
-  --build-arg COMMIT="$COMMIT" \
-  --build-arg BUILD_TIME="$BUILD_TIME" \
   -t navi:local .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/configs:/app/configs:ro" \
@@ -170,6 +166,7 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   navi:local
 ```
 
+- The build context has no `.git`, so the version comes only from the `VERSION` build argument (set as `main.version`; `dev` when omitted); the image carries no commit or build time.
 - The container works in `/app` and runs as UID/GID 65532. The example binds the port to the host's loopback for a host-side reverse proxy; choose another bind address for direct remote access. For HTTPS deployments, also pass `-e NAVI_AUTH_SECURE_COOKIE=true`.
 - Environment variables override the listen address and cache path without changing local config; `catalog.path: ./urls.yaml` resolves to `/app/configs/urls.yaml`.
 - Mount the whole config directory read-only so atomic saves by editors are picked up (a single-file mount keeps pointing at the old file). UID 65532 must be able to traverse the directory and read both YAML files; host-owner-only `0600` permissions are not readable inside the container.
@@ -228,18 +225,13 @@ CI runs on GitHub Actions, configured in [.github/workflows/](.github/workflows/
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
-COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
-BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
-  -o bin/navi ./cmd/navi
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
 
-The resulting `bin/navi` contains the frontend plus version, commit, and build time. An explicit `VERSION` wins; otherwise an exact Git tag on the current commit is used, or the short commit ID when there is none. Without injected values, the binary falls back to the Go-embedded VCS revision (or the commit in a Go pseudo-version) as a short ID, and shows `dev` only when neither exists. The metadata is fixed at build time, so the binary never needs `.git`; uncommitted working-tree changes are not reflected in the commit field.
+The resulting `bin/navi` contains the frontend plus the version, commit, and commit time that Go embeds from git, so the binary never needs `.git` at runtime. The version is, in order: a non-empty `-ldflags "-X main.version=..."` other than `dev`, the Go-embedded module version (the tag on the current commit, or a pseudo-version), the 12-character commit, then `dev`. `--version` prints e.g. `navi v1.2.0 (revision=0123456789ab)`; a pseudo-version already contains the commit, so no revision is appended, and `modified` is added for builds with uncommitted changes. The startup log's `version`, `commit`, and `build_time` fields come from the same data (`build_time` is the commit time).
 
-Pushing a `vMAJOR.MINOR.PATCH` tag (optionally with a `-` prerelease suffix) triggers [release.yml](.github/workflows/release.yml): it checks that the binary reports the tag as its version, then GoReleaser injects the tag, short commit, and commit time the same way, builds linux/darwin amd64/arm64 archives plus `checksums.txt`, and publishes a GitHub Release. Preview locally with `goreleaser release --snapshot --clean`; output goes to the ignored `bin/release/`.
+Pushing a `vMAJOR.MINOR.PATCH` tag (optionally with a `-` prerelease suffix) triggers [release.yml](.github/workflows/release.yml): it checks that `--version` prints exactly `navi $TAG (revision=<12-char commit>)`, then GoReleaser builds the same way (injecting nothing; Go embeds the tag, commit, and commit time from git), builds linux/darwin amd64/arm64 archives plus `checksums.txt`, and publishes a GitHub Release. Preview locally with `goreleaser release --snapshot --clean`; output goes to the ignored `bin/release/`.
 
 ## Project layout
 

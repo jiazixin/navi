@@ -29,16 +29,11 @@ go mod verify
 go test ./internal/... ./cmd/... ./web
 go test -race ./internal/... ./cmd/... ./web
 go vet ./internal/... ./cmd/... ./web
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
-COMMIT=$(git rev-parse --short HEAD)
-BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
-  -o bin/navi ./cmd/navi
+CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
 
-发布时注入版本、提交与时间，命令见 README。显式列出 Go 包，避免 `./...` 扫入 `web/node_modules` 内第三方 Go 文件。Go 检查需要可写构建缓存；race 需要受支持的平台与本机 C 工具链。
+版本、提交与提交时间由 Go 从 git 嵌入，不再用 `-ldflags` 注入；无 `.git` 时可用 `-X main.version=...` 指定版本，详见 README。显式列出 Go 包，避免 `./...` 扫入 `web/node_modules` 内第三方 Go 文件。Go 检查需要可写构建缓存；race 需要受支持的平台与本机 C 工具链。
 
 前端测试执行所有被发现的单元与契约测试，V8 覆盖率统计 `src/**/*.{ts,tsx}` 生产源码，包括未触达的入口和组件；排除声明、测试 setup、测试文件与 Storybook 故事。不能为达到门槛而排除 App、main 或其他未测生产文件，覆盖率也不能替代真实浏览器验证。
 

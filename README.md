@@ -120,10 +120,10 @@ pages:
 ./navi -c ./configs/config.local.yaml
 ./navi --config ./configs/config.local.yaml
 ./navi -h          # 或 --help：显示帮助
-./navi --version   # 显示版本、提交与构建时间
+./navi --version   # 显示版本与提交，如 navi v1.2.0 (revision=0123456789ab)
 ```
 
-`-c` / `--config` 也支持 `=PATH` 写法；同时使用时必须指定相同路径。`-f` 已移除。帮助与版本查询不读取配置，也不启动服务。
+`-c` / `--config` 也支持 `=PATH` 写法；同时使用时必须指定相同路径。`-f` 已移除。帮助（英文）与版本信息输出到 stdout，不读取配置，也不启动服务。退出码：0 成功，2 参数错误，1 配置、启动或运行失败；日志器就绪前的错误以 `navi: <错误>` 纯文本写入 stderr，参数错误另附 `Run 'navi --help' for usage.`。
 
 - **选择配置文件**：`-c PATH` / `--config PATH` 显式选择主配置并覆盖 `CONFIG_FILE`；未传标志时可用 `CONFIG_FILE`。相对路径以进程工作目录为基准。两者都未设置时只查找 `./configs/config.local.yaml`，缺失则使用内置默认值；显式空值、文件不存在、不可读或 YAML 非法均启动失败。导航 YAML 必须存在且合法。
 - **优先级**：环境变量 > 所选文件 > 内置默认值。字段映射为 `NAVI_<字段>` 或 `NAVI_<节>_<字段>`，例如 `NAVI_STORAGE=/var/cache/navi`、`NAVI_SERVER_PORT=8081`、`NAVI_CATALOG_WATCH=false`。
@@ -153,13 +153,9 @@ pages:
 Dockerfile 从锁文件安装前端依赖并构建 `web/dist`，再编译静态 Go 二进制；运行镜像基于 distroless，不含 Node、shell 或 curl。带版本信息构建并运行：
 
 ```sh
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)
-COMMIT=$(git rev-parse --short HEAD)
-BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short=12 HEAD)
 docker build \
   --build-arg VERSION="$VERSION" \
-  --build-arg COMMIT="$COMMIT" \
-  --build-arg BUILD_TIME="$BUILD_TIME" \
   -t navi:local .
 docker run --rm -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/configs:/app/configs:ro" \
@@ -170,6 +166,7 @@ docker run --rm -p 127.0.0.1:8080:8080 \
   navi:local
 ```
 
+- 构建上下文不含 `.git`，版本只来自 `VERSION` 构建参数（注入 `main.version`，未传时为 `dev`），镜像内不带提交和构建时间。
 - 容器工作目录为 `/app`，以 UID/GID 65532 运行。示例把端口绑定到宿主机本地，供宿主机反向代理访问；需要远程直连时自行选择绑定地址。HTTPS 部署额外传入 `-e NAVI_AUTH_SECURE_COOKIE=true`。
 - 环境变量覆盖监听地址与缓存路径，无需修改本地配置；`catalog.path: ./urls.yaml` 解析为 `/app/configs/urls.yaml`。
 - 请只读挂载整个配置目录，避免编辑器原子替换文件后单文件挂载仍引用旧文件。配置目录须允许 UID 65532 遍历，两份 YAML 须可读；仅宿主机所有者可读的 `0600` 权限在容器内无法读取。
@@ -228,18 +225,13 @@ CI 使用 GitHub Actions，配置位于 [.github/workflows/](.github/workflows/)
 
 ```sh
 npm --prefix web run build
-VERSION=${VERSION:-$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD)}
-COMMIT=${COMMIT:-$(git rev-parse --short HEAD)}
-BUILD_TIME=${BUILD_TIME:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}
-CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
-  -o bin/navi ./cmd/navi
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
 
-生成的 `bin/navi` 包含前端资源以及版本、提交和构建时间。显式 `VERSION` 优先；否则当前提交有精确 Git tag 时使用该 tag，没有时使用短提交 ID。未显式注入时，程序会读取 Go 内嵌的 VCS revision（或伪版本中的提交号）回退为短 ID；两者都不存在时才显示 `dev`。这些信息在构建时固化，二进制运行不依赖 `.git`；工作区未提交的修改不会体现在 commit 字段中。
+生成的 `bin/navi` 包含前端资源，以及 Go 从 git 嵌入的版本、提交和提交时间，二进制运行不依赖 `.git`。版本依次取：非空且不为 `dev` 的 `-ldflags "-X main.version=..."`、Go 内嵌的模块版本（当前提交的 tag 或伪版本）、12 位提交号、`dev`。`--version` 输出形如 `navi v1.2.0 (revision=0123456789ab)`；伪版本已含提交号，不再附 revision；工作区有未提交修改时附加 `modified`。启动日志的 `version`、`commit`、`build_time` 字段取自同一信息（`build_time` 为提交时间）。
 
-推送 `vMAJOR.MINOR.PATCH`（或带 `-` 预发布后缀）tag 会触发 [release.yml](.github/workflows/release.yml)：先核对二进制报告的版本与 tag 一致，再由 GoReleaser 以相同方式注入 tag、短提交和提交时间，生成 linux / darwin 的 amd64 / arm64 压缩包与 `checksums.txt`，并发布 GitHub Release。本地可用 `goreleaser release --snapshot --clean` 预览，产物位于被忽略的 `bin/release/`。
+推送 `vMAJOR.MINOR.PATCH`（或带 `-` 预发布后缀）tag 会触发 [release.yml](.github/workflows/release.yml)：先核对 `--version` 输出恰为 `navi $TAG (revision=<12 位提交号>)`，再由 GoReleaser 以相同方式构建（不注入任何值，由 Go 从 git 嵌入 tag、提交和提交时间），生成 linux / darwin 的 amd64 / arm64 压缩包与 `checksums.txt`，并发布 GitHub Release。本地可用 `goreleaser release --snapshot --clean` 预览，产物位于被忽略的 `bin/release/`。
 
 ## 项目结构
 

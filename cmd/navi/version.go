@@ -1,112 +1,71 @@
 package main
 
 import (
-	"fmt"
+	"cmp"
 	"runtime/debug"
 	"strings"
 )
 
-const shortRevisionLength = 7
+// version may be set for builds without VCS metadata, such as Docker builds:
+//
+//	go build -ldflags "-X main.version=v1.0.0" ./cmd/navi
+//
+// Otherwise the module version Go stamps from VCS is used, then the revision.
+var version = "dev"
 
-var (
-	version   = "dev"
-	commit    = "unknown"
-	buildTime = "unknown"
-)
-
-type buildInformation struct {
-	version   string
-	commit    string
-	buildTime string
+// buildInfo describes the running binary.
+type buildInfo struct {
+	Version  string // release, module version, short revision or "dev"
+	Revision string // short VCS revision; empty when unknown
+	Time     string // VCS commit time in RFC 3339; empty when unknown
+	Modified bool   // built from a working tree with uncommitted changes
 }
 
-func currentBuildInformation() buildInformation {
-	information := defaultBuildInformation()
-	goBuild, ok := debug.ReadBuildInfo()
-	if !ok {
-		return information
-	}
-	return resolveBuildInformation(information, goBuild)
+func currentBuild() buildInfo {
+	info, _ := debug.ReadBuildInfo()
+	return readBuild(version, info)
 }
 
-func defaultBuildInformation() buildInformation {
-	return buildInformation{
-		version:   version,
-		commit:    commit,
-		buildTime: buildTime,
-	}
-}
-
-func resolveBuildInformation(information buildInformation, goBuild *debug.BuildInfo) buildInformation {
-	if goBuild == nil {
-		return information
-	}
-
-	revision := pseudoVersionRevision(goBuild.Main.Version)
-	if information.version == "dev" && goBuild.Main.Version != "" && goBuild.Main.Version != "(devel)" && revision == "" {
-		information.version = goBuild.Main.Version
-	}
-
-	for _, setting := range goBuild.Settings {
-		if setting.Key == "vcs.revision" && setting.Value != "" {
-			revision = shortRevision(setting.Value)
+func readBuild(release string, info *debug.BuildInfo) buildInfo {
+	var b buildInfo
+	var moduleVersion string
+	if info != nil {
+		moduleVersion = info.Main.Version
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				b.Revision = s.Value[:min(12, len(s.Value))]
+			case "vcs.time":
+				b.Time = s.Value
+			case "vcs.modified":
+				b.Modified = s.Value == "true"
+			}
 		}
 	}
-
-	if information.commit == "unknown" && revision != "" {
-		information.commit = revision
-	}
-	if information.version == "dev" && revision != "" {
-		information.version = revision
-	}
-
-	return information
+	b.Version = cmp.Or(usableVersion(release), usableVersion(moduleVersion), b.Revision, "dev")
+	return b
 }
 
-func shortRevision(revision string) string {
-	return revision[:min(len(revision), shortRevisionLength)]
-}
-
-// pseudoVersionRevision extracts the revision when module metadata is the only
-// source available (for example, builds from a module cache without a VCS checkout).
-func pseudoVersionRevision(version string) string {
-	version, _, _ = strings.Cut(version, "+")
-	prefix, revision, ok := strings.CutLast(version, "-")
-	if !ok || len(revision) < shortRevisionLength || !isHex(revision) {
+func usableVersion(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "dev" || v == "(devel)" {
 		return ""
 	}
-
-	_, timestamp, ok := strings.CutLast(prefix, "-")
-	if !ok {
-		return ""
-	}
-	if _, suffix, found := strings.CutLast(timestamp, "."); found {
-		timestamp = suffix
-	}
-	if len(timestamp) != 14 || !isDecimal(timestamp) {
-		return ""
-	}
-	return shortRevision(revision)
+	return v
 }
 
-func isHex(value string) bool {
-	for _, character := range value {
-		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
-			return false
-		}
+// String formats the version as "v1.0.0 (revision=0123456789ab, modified)".
+func (b buildInfo) String() string {
+	var details []string
+	// A VCS-derived module version already embeds the revision.
+	if b.Revision != "" && !strings.Contains(b.Version, b.Revision) {
+		details = append(details, "revision="+b.Revision)
 	}
-	return value != ""
-}
-
-func isDecimal(value string) bool {
-	for _, character := range value {
-		if character < '0' || character > '9' {
-			return false
-		}
+	if b.Modified {
+		details = append(details, "modified")
 	}
-	return value != ""
-}
-
-func formatVersion(version, commit, buildTime string) string {
-	return fmt.Sprintf("Navi %s (%s, %s)", version, commit, buildTime)
+	if len(details) == 0 {
+		return b.Version
+	}
+	return b.Version + " (" + strings.Join(details, ", ") + ")"
 }

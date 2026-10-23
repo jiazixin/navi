@@ -15,11 +15,10 @@ COPY cmd ./cmd
 COPY internal ./internal
 COPY web/embed.go ./web/embed.go
 COPY --from=web-build /src/web/dist ./web/dist
+# The build context has no .git, so the version comes from the build argument.
 ARG VERSION=dev
-ARG COMMIT=unknown
-ARG BUILD_TIME=unknown
 RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
-  -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.buildTime=${BUILD_TIME}" \
+  -ldflags "-s -w -X main.version=${VERSION}" \
   -o /out/navi ./cmd/navi
 RUN mkdir -p /out/cache && chmod 0750 /out/cache
 

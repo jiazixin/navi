@@ -1,83 +1,60 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
 )
 
-const cliHelp = `Usage:
+const usage = `navi - self-hosted, read-only personal start page
+
+Usage:
   navi [options]
 
 Options:
-  -c, --config PATH  configuration file (overrides CONFIG_FILE)
-  -h, --help         show this help
-      --version      show version information
+  -c, --config <file>  Configuration file (default: configs/config.local.yaml)
+  -h, --help           Print this help and exit
+      --version        Print version information and exit
 
-Without -c or --config, CONFIG_FILE selects the configuration file.
-The default is ./configs/config.local.yaml.
+Environment:
+  CONFIG_FILE          Configuration file, used when --config is not given
+
+Without a configuration file the built-in defaults apply.
 `
 
-type cliOptions struct {
-	configFile    string
-	configFileSet bool
-	showVersion   bool
+type options struct {
+	configFile string // empty: CONFIG_FILE or the default file
+	help       bool
+	version    bool
 }
 
-func parseCLI(args []string, output io.Writer) (cliOptions, error) {
-	var options cliOptions
+// parseArgs accepts -x and --x spellings, "--config file" and "--config=file".
+func parseArgs(args []string) (options, error) {
+	var o options
 	flags := flag.NewFlagSet("navi", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	flags.Usage = func() {
-		_, _ = fmt.Fprint(output, cliHelp)
+	setConfig := func(v string) error {
+		if strings.TrimSpace(v) == "" {
+			return errors.New("configuration path must not be empty")
+		}
+		if o.configFile != "" && o.configFile != v {
+			return errors.New("-c and --config name different files")
+		}
+		o.configFile = v
+		return nil
 	}
-	var shortConfig, longConfig string
-	flags.StringVar(&shortConfig, "c", "", "configuration file")
-	flags.StringVar(&longConfig, "config", "", "configuration file")
-	flags.BoolVar(&options.showVersion, "version", false, "show version information")
-
+	flags.Func("c", "", setConfig)
+	flags.Func("config", "", setConfig)
+	flags.BoolVar(&o.help, "h", false, "")
+	flags.BoolVar(&o.help, "help", false, "")
+	flags.BoolVar(&o.version, "version", false, "")
 	if err := flags.Parse(args); err != nil {
-		return cliOptions{}, err
+		return options{}, err
 	}
-	if flags.NArg() != 0 {
-		return cliOptions{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
+	if flags.NArg() > 0 {
+		return options{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
 	}
-
-	var configError error
-	flags.Visit(func(current *flag.Flag) {
-		if current.Name == "c" || current.Name == "config" {
-			options.configFileSet = true
-			if strings.TrimSpace(current.Value.String()) == "" {
-				configError = fmt.Errorf("configuration path must not be empty")
-			}
-		}
-	})
-	if configError != nil {
-		return cliOptions{}, configError
-	}
-	if shortConfig != "" && longConfig != "" && shortConfig != longConfig {
-		return cliOptions{}, fmt.Errorf("-c and --config must specify the same path")
-	}
-	options.configFile = shortConfig
-	if longConfig != "" {
-		options.configFile = longConfig
-	}
-
-	return options, nil
-}
-
-func (options cliOptions) lookupEnv(base func(string) (string, bool)) func(string) (string, bool) {
-	if !options.configFileSet {
-		return base
-	}
-	return func(name string) (string, bool) {
-		if name == "CONFIG_FILE" {
-			return options.configFile, true
-		}
-		if base == nil {
-			return "", false
-		}
-		return base(name)
-	}
+	return o, nil
 }
