@@ -79,7 +79,7 @@ func TestRunConfigSelection(t *testing.T) {
 				t.Fatalf("exit %d, want %d", code, exitFailure)
 			}
 			got := stderr.String()
-			if stdout.Len() != 0 || !strings.HasPrefix(got, "navi: config: open "+tc.want+": ") || strings.Count(got, "\n") != 1 || !strings.Contains(got, tc.want) || strings.Contains(got, tc.notWant) {
+			if stdout.Len() != 0 || !strings.HasPrefix(got, "navi: config: stat "+tc.want+": ") || strings.Count(got, "\n") != 1 || !strings.Contains(got, tc.want) || strings.Contains(got, tc.notWant) {
 				t.Fatalf("stdout %q, stderr %q", stdout.String(), got)
 			}
 		})

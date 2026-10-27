@@ -41,7 +41,6 @@ function handlePointerMove(event: PointerEvent<HTMLDivElement>): void {
 function useActiveSection(ids: readonly string[]): number {
   const [active, setActive] = useState(0)
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return undefined
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {

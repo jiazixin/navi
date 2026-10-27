@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getSession } from './auth'
+import { getSession, login } from './auth'
 
 describe('session verification', () => {
   afterEach(() => {
@@ -35,5 +35,13 @@ describe('session verification', () => {
     await expect(getSession()).rejects.toThrow()
     spy.mockResolvedValueOnce(new Response('{"authenticated":true}'))
     await expect(getSession()).rejects.toThrow()
+  })
+
+  it('validates the session response returned by login', async () => {
+    const request = vi.spyOn(globalThis, 'fetch')
+    request.mockResolvedValueOnce(new Response(null, { status: 204 }))
+    await expect(login('tester', 'password')).rejects.toMatchObject({ code: 'invalid_response' })
+    request.mockResolvedValueOnce(new Response('{"authenticated":true,"auth_required":true}'))
+    await expect(login('tester', 'password')).resolves.toBeUndefined()
   })
 })

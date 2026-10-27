@@ -22,6 +22,24 @@ class ResizeObserverStub implements ResizeObserver {
   }
 }
 
+// jsdom has no layout engine; visibility changes are covered by browser tests.
+class IntersectionObserverStub {
+  observe(): void {
+    return undefined
+  }
+  unobserve(): void {
+    return undefined
+  }
+  disconnect(): void {
+    return undefined
+  }
+}
+
+Object.defineProperty(window, 'IntersectionObserver', {
+  writable: true,
+  value: IntersectionObserverStub,
+})
+
 class StorageStub implements Storage {
   readonly #values = new Map<string, string>()
 

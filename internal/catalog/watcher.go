@@ -17,14 +17,14 @@ type EventType string
 
 const (
 	// EventCatalogUpdated announces a successfully published catalog snapshot.
-	EventCatalogUpdated EventType = "catalog.updated"
+	EventCatalogUpdated EventType = "catalog_updated"
 	// EventCatalogError announces a reload failure while the old snapshot remains active.
-	EventCatalogError EventType = "catalog.error"
+	EventCatalogError EventType = "catalog_error"
 	// EventStatusUpdated requests a fresh service health read.
-	EventStatusUpdated EventType = "status.updated"
+	EventStatusUpdated EventType = "status_updated"
 
 	// EventFaviconUpdated announces that a local favicon cache entry is available.
-	EventFaviconUpdated EventType = "favicon.updated"
+	EventFaviconUpdated EventType = "favicon_updated"
 )
 
 // Status codes of the catalog. The cause of a reload failure is only logged.

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 
 // loadFile loads an explicitly selected, absolute configuration path.
 func loadFile(path string) (Config, error) {
-	return Load(Source{Path: path, Explicit: true})
+	return Load(Source{Path: path, Explicit: true, WorkDir: filepath.Dir(path)})
 }
 
 func TestLoadUsesSelectedPathAndIgnoresConfigFile(t *testing.T) {
@@ -176,9 +177,8 @@ func TestAnnotatedExampleMatchesDefaults(t *testing.T) {
 	expected := defaultConfig()
 	expected.Auth = loaded.Auth
 	expected.Path = loaded.Path
-	// Repository configuration keeps runtime data outside configs/.
-	expected.StorageDir = "../.cache"
-	resolvePaths(&expected)
+	// Explicit example paths and work-directory defaults resolve to the same layout.
+	resolvePaths(&expected, filepath.Dir(directory))
 	if !reflect.DeepEqual(loaded, expected) {
 		t.Fatal("example settings differ from documented defaults")
 	}
@@ -251,12 +251,16 @@ func TestExplicitConfigurationMustExist(t *testing.T) {
 	}{
 		{"", "config path must not be empty"},
 		{"  ", "config path must not be empty"},
-		{"missing.yaml", "open " + filepath.Join(root, "missing.yaml") + ": no such file or directory"},
 	} {
 		_, err := Load(Source{Path: tc.path, Explicit: true, WorkDir: root})
 		if err == nil || err.Error() != tc.want {
 			t.Fatalf("got %v, want %q", err, tc.want)
 		}
+	}
+	_, err := Load(Source{Path: "missing.yaml", Explicit: true, WorkDir: root})
+	pathErr, ok := errors.AsType[*os.PathError](err)
+	if !errors.Is(err, os.ErrNotExist) || !ok || pathErr.Path != filepath.Join(root, "missing.yaml") {
+		t.Fatalf("got %v, want the explicitly selected missing file in the error chain", err)
 	}
 }
 
@@ -268,6 +272,54 @@ func TestMissingImplicitConfigStillNeedsCatalog(t *testing.T) {
 	want := "catalog.path: cannot access catalog file"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("got %v, want %q", err, want)
+	}
+}
+
+func TestDefaultPathsUseWorkDirWithAConfigFile(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeConfigFixture(t, root, configFixture{RelativeConfig: "configs/unused.yaml", CatalogName: "urls.yaml", StorageDir: "unused"})
+	selected := writeConfigFixture(t, root, configFixture{RelativeConfig: "nested/deploy/config.yaml", CatalogName: "urls.yaml", StorageDir: "unused"})
+	if err := os.WriteFile(selected, []byte("theme: celadon\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(Source{Path: selected, Explicit: true, WorkDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.StorageDir != filepath.Join(root, ".cache") || loaded.Catalog.Path != filepath.Join(root, "configs", "urls.yaml") {
+		t.Fatalf("defaults did not use the work directory: storage=%q catalog=%q", loaded.StorageDir, loaded.Catalog.Path)
+	}
+}
+
+func TestMissingImplicitConfigUsesWorkDirForEnvironmentPaths(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeConfigFixture(t, root, configFixture{RelativeConfig: "unused.yaml", CatalogName: "catalog.yaml", StorageDir: "unused"})
+	values := map[string]string{"NAVI_STORAGE": "./cache", "NAVI_CATALOG__PATH": "./catalog.yaml"}
+	loaded, err := Load(Source{
+		Path: "configs/config.local.yaml", WorkDir: root,
+		LookupEnv: func(name string) (string, bool) { value, ok := values[name]; return value, ok },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.StorageDir != filepath.Join(root, "cache") || loaded.Catalog.Path != filepath.Join(root, "catalog.yaml") {
+		t.Fatalf("environment paths did not use the work directory: storage=%q catalog=%q", loaded.StorageDir, loaded.Catalog.Path)
+	}
+}
+
+func TestMissingImplicitConfigDoesNotUseItsParentForDefaults(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeConfigFixture(t, root, configFixture{RelativeConfig: "configs/unused.yaml", CatalogName: "urls.yaml", StorageDir: "unused"})
+	writeConfigFixture(t, root, configFixture{RelativeConfig: "nested/unused.yaml", CatalogName: "urls.yaml", StorageDir: "unused"})
+	loaded, err := Load(Source{Path: "nested/missing.yaml", WorkDir: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Catalog.Path != filepath.Join(root, "configs", "urls.yaml") {
+		t.Fatalf("default catalog was resolved against a nonexistent file: %q", loaded.Catalog.Path)
 	}
 }
 
@@ -344,6 +396,24 @@ func TestConfigInputBound(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsNonRegularConfig(t *testing.T) {
+	t.Parallel()
+	if _, err := Load(Source{Path: os.DevNull, Explicit: true, WorkDir: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("got %v, want a non-regular configuration error", err)
+	}
+}
+
+func TestLoadPreservesCatalogFileError(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("catalog:\n  path: ./missing.yaml\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(Source{Path: path, Explicit: true, WorkDir: filepath.Dir(path)}); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("got %v, want the missing catalog file error in the error chain", err)
+	}
+}
+
 func TestAuthFormattingRedactsSecrets(t *testing.T) {
 	t.Parallel()
 	auth := AuthConfig{Username: "tester", PasswordHash: "secret-marker"}
@@ -356,7 +426,7 @@ func TestAuthFormattingRedactsSecrets(t *testing.T) {
 
 func TestRejectsLegacyPasswordConfiguration(t *testing.T) {
 	t.Parallel()
-	if _, err := decodeConfig(strings.NewReader("auth: {username: tester, password: plaintext}")); err == nil {
+	if _, err := decodeConfig(strings.NewReader("auth: {username: tester, password: plaintext}"), defaultConfig()); err == nil {
 		t.Fatal("accepted legacy password field")
 	}
 	_, err := Load(Source{Path: "unused", LookupEnv: func(name string) (string, bool) { return "redacted", name == "NAVI_AUTH__PASSWORD" }})

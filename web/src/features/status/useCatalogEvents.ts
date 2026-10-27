@@ -30,13 +30,14 @@ export function useCatalogEvents({
 
       source = openEventStream()
       source.addEventListener('open', () => {
-        attempt = 0
+        // Opening headers do not prove the stream will stay alive. Only an
+        // explicit retry starts a new budget, including after repeated short streams.
         setConnection({ kind: 'live' })
         // Reconcile changes missed before subscription or during disconnection.
         onCatalogUpdate()
       })
-      source.addEventListener('catalog.updated', onCatalogUpdate)
-      source.addEventListener('favicon.updated', (event) => {
+      source.addEventListener('catalog_updated', onCatalogUpdate)
+      source.addEventListener('favicon_updated', (event) => {
         const runtimeId = parseFaviconRuntimeId(event)
         if (runtimeId !== undefined && onFaviconUpdate !== undefined) {
           onFaviconUpdate(runtimeId)
@@ -44,8 +45,8 @@ export function useCatalogEvents({
         }
         onCatalogUpdate()
       })
-      source.addEventListener('catalog.error', onStatusChange)
-      source.addEventListener('status.updated', onStatusChange)
+      source.addEventListener('catalog_error', onStatusChange)
+      source.addEventListener('status_updated', onStatusChange)
       source.addEventListener('error', (event) => {
         source?.close()
         attempt += 1
@@ -66,6 +67,7 @@ export function useCatalogEvents({
     const retry = () => {
       if (attempt === 0 || isDisposed) return
       if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+      source?.close()
       attempt = 0
       connect()
     }

@@ -45,7 +45,7 @@ var (
 	loggingFormats = map[string]struct{}{"json": {}, "logfmt": {}}
 )
 
-// Config is the validated process configuration with paths resolved from its file.
+// Config is the validated process configuration with absolute filesystem paths.
 type Config struct {
 	Auth              AuthConfig       `yaml:"auth"`
 	Path              string           `yaml:"-"`
@@ -115,7 +115,7 @@ type FaviconConfig struct {
 type Source struct {
 	Path      string                      // selected file
 	Explicit  bool                        // chosen by --config or CONFIG_FILE
-	WorkDir   string                      // base for a relative Path; must be absolute
+	WorkDir   string                      // absolute base for Path and built-in defaults
 	LookupEnv func(string) (string, bool) // os.LookupEnv in production; nil disables overrides
 }
 
@@ -131,40 +131,52 @@ func Load(src Source) (Config, error) {
 	if strings.TrimSpace(src.Path) == "" {
 		return Config{}, errors.New("config path must not be empty")
 	}
+	if !filepath.IsAbs(src.WorkDir) {
+		return Config{}, fmt.Errorf("resolve config path %q: work directory %q is not absolute", src.Path, src.WorkDir)
+	}
 	absPath := src.Path
 	if !filepath.IsAbs(absPath) {
-		if !filepath.IsAbs(src.WorkDir) {
-			return Config{}, fmt.Errorf("resolve config path %q: work directory %q is not absolute", src.Path, src.WorkDir)
-		}
 		absPath = filepath.Join(src.WorkDir, absPath)
 	}
 	absPath = filepath.Clean(absPath)
-	loaded, err := decodeFile(absPath)
+	defaults := defaultConfig()
+	resolvePaths(&defaults, src.WorkDir)
+	baseDir := filepath.Dir(absPath)
+	loaded, err := decodeFile(absPath, defaults)
 	if errors.Is(err, fs.ErrNotExist) && !src.Explicit {
 		// Only an absent implicit configuration permits built-in defaults.
-		loaded, err = defaultConfig(), nil
+		loaded, err = defaults, nil
+		baseDir = src.WorkDir
 	}
 	if err != nil {
 		return Config{}, err
 	}
-	return finishConfig(loaded, absPath, src.LookupEnv)
+	src.Path = absPath
+	return finishConfig(loaded, src, baseDir)
 }
 
-func decodeFile(absPath string) (Config, error) {
+func decodeFile(absPath string, defaults Config) (Config, error) {
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return Config{}, err // *fs.PathError already identifies the operation and file.
+	}
+	if !info.Mode().IsRegular() {
+		return Config{}, fmt.Errorf("config %q must be a regular file", absPath)
+	}
 	file, err := os.Open(absPath)
 	if err != nil {
 		return Config{}, err // *fs.PathError names the operation and the file
 	}
 	defer file.Close() // Read-only descriptor; failures cannot invalidate the completed read.
 
-	loaded, err := decodeConfig(file)
+	loaded, err := decodeConfig(file, defaults)
 	if err != nil {
 		return Config{}, fmt.Errorf("config %q: %w", absPath, err)
 	}
 	return loaded, nil
 }
 
-func decodeConfig(reader io.Reader) (Config, error) {
+func decodeConfig(reader io.Reader, defaults Config) (Config, error) {
 	contents, err := io.ReadAll(io.LimitReader(reader, maxConfigBytes+1))
 	if err != nil {
 		return Config{}, fmt.Errorf("read config: %w", err)
@@ -172,7 +184,7 @@ func decodeConfig(reader io.Reader) (Config, error) {
 	if len(contents) > maxConfigBytes {
 		return Config{}, errors.New("config exceeds size limit of 1 MiB")
 	}
-	loaded := defaultConfig()
+	loaded := defaults
 	decoder := yaml.NewDecoder(bytes.NewReader(contents))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&loaded); err != nil {
@@ -189,26 +201,26 @@ func decodeConfig(reader io.Reader) (Config, error) {
 }
 
 // finishConfig normalizes a decoded configuration; Validate only checks it.
-func finishConfig(loaded Config, absPath string, lookupEnv func(string) (string, bool)) (Config, error) {
-	if lookupEnv != nil {
-		if err := applyEnvironment(reflect.ValueOf(&loaded).Elem(), environmentScope{Prefix: "NAVI", FieldPrefix: "", Lookup: lookupEnv}); err != nil {
-			return Config{}, fmt.Errorf("%s: %w", absPath, err)
+func finishConfig(loaded Config, src Source, baseDir string) (Config, error) {
+	if src.LookupEnv != nil {
+		if err := applyEnvironment(reflect.ValueOf(&loaded).Elem(), environmentScope{Prefix: "NAVI", FieldPrefix: "", Lookup: src.LookupEnv}); err != nil {
+			return Config{}, fmt.Errorf("%s: %w", src.Path, err)
 		}
 	}
 	if strings.TrimSpace(loaded.StorageDir) == "" {
-		return Config{}, fmt.Errorf("%s: %w", absPath, fieldError("storage", "must not be empty"))
+		return Config{}, fmt.Errorf("%s: %w", src.Path, fieldError("storage", "must not be empty"))
 	}
-	loaded.Path = absPath
-	resolvePaths(&loaded)
+	loaded.Path = src.Path
+	resolvePaths(&loaded, baseDir)
 	if err := loaded.Validate(); err != nil {
-		return Config{}, fmt.Errorf("%s: %w", absPath, err)
+		return Config{}, fmt.Errorf("%s: %w", src.Path, err)
 	}
 	return loaded, nil
 }
 
 func defaultConfig() Config {
 	return Config{
-		StorageDir:        "../.cache",
+		StorageDir:        ".cache",
 		Theme:             ThemeDefault,
 		BackgroundPattern: BackgroundPatternContour,
 		WebSearch:         WebSearchBaidu,
@@ -218,7 +230,7 @@ func defaultConfig() Config {
 			IdleTimeout: 90 * time.Second, ShutdownTimeout: 10 * time.Second,
 		},
 		Logging: LoggingConfig{Level: "info", Format: "json", AccessLog: true},
-		Catalog: CatalogConfig{Path: "./urls.yaml", Watch: true, ReloadDebounce: 250 * time.Millisecond},
+		Catalog: CatalogConfig{Path: "configs/urls.yaml", Watch: true, ReloadDebounce: 250 * time.Millisecond},
 		Navigation: NavigationConfig{
 			PrivateProbeTimeout: 800 * time.Millisecond, ProbeCacheTTL: 30 * time.Second, MaxConcurrentProbes: 32,
 		},
@@ -283,8 +295,7 @@ func applyEnvironment(value reflect.Value, options environmentScope) error {
 	return nil
 }
 
-func resolvePaths(loaded *Config) {
-	baseDir := filepath.Dir(loaded.Path)
+func resolvePaths(loaded *Config, baseDir string) {
 	loaded.StorageDir = resolvePath(baseDir, loaded.StorageDir)
 	loaded.Catalog.Path = resolvePath(baseDir, loaded.Catalog.Path)
 }
@@ -350,7 +361,7 @@ func (c Config) Validate() error {
 		return fieldError("logging.format", "must be json or logfmt")
 	}
 	if err := validateCatalogPath(c.Catalog.Path); err != nil {
-		return fieldError("catalog.path", err.Error())
+		return validationError{path: "catalog.path", cause: err}
 	}
 	if c.Navigation.MaxConcurrentProbes < 1 || c.Navigation.MaxConcurrentProbes > 256 {
 		return fieldError("navigation.max_concurrent_probes", "must be between 1 and 256")
@@ -382,16 +393,18 @@ func validateCatalogPath(path string) error {
 }
 
 type validationError struct {
-	path    string
-	message string
+	path  string
+	cause error
 }
 
 func (e validationError) Error() string {
-	return fmt.Sprintf("%s: %s", e.path, e.message)
+	return e.path + ": " + e.cause.Error()
 }
 
+func (e validationError) Unwrap() error { return e.cause }
+
 func fieldError(path, message string) error {
-	return validationError{path: path, message: message}
+	return validationError{path: path, cause: errors.New(message)}
 }
 
 // String redacts credential material from diagnostics.

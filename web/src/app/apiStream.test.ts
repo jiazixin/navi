@@ -7,11 +7,31 @@ afterEach(() => {
 })
 
 describe('bounded event subscriptions', () => {
+  it('preserves the request ID when reading an established stream fails', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new TypeError('connection interrupted'))
+      },
+    })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(body, {
+        headers: { 'Content-Type': 'text/event-stream', 'X-Request-ID': 'stream-request' },
+      }),
+    )
+    const stream = openEventStream()
+    const listener = vi.fn()
+    stream.addEventListener('error', listener)
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
+    const event: unknown = listener.mock.calls[0]?.[0]
+    if (!(event instanceof CustomEvent)) throw new Error('Expected a stream failure event')
+    expect(event.detail).toMatchObject({ code: 'network_unavailable', requestId: 'stream-request' })
+    stream.close()
+  })
   it('decodes split frames and refuses redirects with the shared request policy', async () => {
     const encoder = new TextEncoder()
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
-        controller.enqueue(encoder.encode('event: favicon.updated\r\ndata: {"runtime_'))
+        controller.enqueue(encoder.encode('event: favicon_updated\r\ndata: {"runtime_'))
         controller.enqueue(encoder.encode('id":"icon"}\r\n\r\n: heartbeat\n\n'))
         controller.close()
       },
@@ -21,7 +41,7 @@ describe('bounded event subscriptions', () => {
       .mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'text/event-stream' } }))
     const stream = openEventStream()
     const listener = vi.fn()
-    stream.addEventListener('favicon.updated', listener)
+    stream.addEventListener('favicon_updated', listener)
     await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce())
     const event: unknown = listener.mock.calls[0]?.[0]
     expect(event).toBeInstanceOf(MessageEvent)

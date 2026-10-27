@@ -68,7 +68,7 @@ func TestServerStreamsCatalogEvents(t *testing.T) {
 			if readErr != nil {
 				t.Fatalf("read SSE: %v", readErr)
 			}
-			if strings.TrimSpace(line) == "event: catalog.updated" {
+			if strings.TrimSpace(line) == "event: catalog_updated" {
 				return
 			}
 		}

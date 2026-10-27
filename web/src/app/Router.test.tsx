@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { AppRouter } from './Router'
+import { AppearanceProvider } from './appearance/AppearanceProvider'
 
 vi.mock('../features/auth/AuthGate', () => ({
   AuthGate: ({ children }: { children: ReactNode }) => children,
@@ -17,11 +18,26 @@ vi.mock('../features/navigation/NavigationFailure', () => ({
 }))
 
 describe('application routes', () => {
-  it('preserves the server SPA fallback for bookmarks such as /navigation', async () => {
-    window.history.replaceState(null, '', '/navigation')
+  it('serves the navigation home at the root route', async () => {
+    window.history.replaceState(null, '', '/')
     render(<AppRouter configuredSearch="baidu" navigationError={undefined} retryPath={undefined} />)
     expect(await screen.findByRole('main')).toHaveTextContent('Navigation home')
   })
+
+  it.each(['/navigation', '/client-route', '/index.html'])(
+    'rejects the old home alias %s',
+    async (path) => {
+      window.history.replaceState(null, '', path)
+      render(
+        <AppearanceProvider configuredPattern="none" configuredTheme="ink">
+          <AppRouter configuredSearch="baidu" navigationError={undefined} retryPath={undefined} />
+        </AppearanceProvider>,
+      )
+      expect(await screen.findByRole('heading', { name: '页面不存在' })).toBeVisible()
+      expect(screen.getByRole('link', { name: '返回首页' })).toHaveAttribute('href', '/')
+      expect(screen.queryByText('Navigation home')).not.toBeInTheDocument()
+    },
+  )
 
   it('shows server navigation errors and refuses an external retry URL', async () => {
     window.history.replaceState(null, '', '/go/missing')

@@ -93,8 +93,8 @@ func (s *httpServer) requirePage(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func (s *httpServer) serveSession(w http.ResponseWriter, _ *http.Request) {
-	s.writeSession(w)
+func (s *httpServer) serveSession(w http.ResponseWriter, r *http.Request) {
+	s.writeSession(w, r)
 }
 
 func (s *httpServer) logout(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +112,12 @@ type sessionCookieOptions struct {
 	Token  string
 	MaxAge int
 }
+
+// String redacts the reusable session token from diagnostics.
+func (o sessionCookieOptions) String() string { return "sessionCookieOptions{[REDACTED]}" }
+
+// GoString redacts Go-syntax formatting of the token.
+func (o sessionCookieOptions) GoString() string { return o.String() }
 
 func (s *httpServer) setSessionCookie(w http.ResponseWriter, r *http.Request, options sessionCookieOptions) {
 	token, maxAge := options.Token, options.MaxAge
@@ -162,7 +168,7 @@ func (s *httpServer) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.setSessionCookie(w, r, sessionCookieOptions{Token: token, MaxAge: int(sessionLifetime.Seconds())})
-	s.writeSession(w)
+	s.writeSession(w, r)
 }
 
 // decodeLogin reads one JSON login object, rejecting other media types,
@@ -199,8 +205,8 @@ type sessionResponse struct {
 	AuthRequired  bool `json:"auth_required"`
 }
 
-func (s *httpServer) writeSession(w http.ResponseWriter) {
-	writeJSON(w, http.StatusOK, sessionResponse{Authenticated: true, AuthRequired: s.config.Auth.Enabled()})
+func (s *httpServer) writeSession(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, jsonResponse{Status: http.StatusOK, Payload: sessionResponse{Authenticated: true, AuthRequired: s.config.Auth.Enabled()}})
 }
 
 // recordLoginAttempt checks the fixed window and counts this attempt atomically.
@@ -239,6 +245,12 @@ type sessionRequest struct {
 	PreviousToken string
 	Now           time.Time
 }
+
+// String redacts the reusable current and replacement session tokens.
+func (s sessionRequest) String() string { return "sessionRequest{[REDACTED]}" }
+
+// GoString redacts Go-syntax formatting of the session request.
+func (s sessionRequest) GoString() string { return s.String() }
 
 // createSession prunes expired sessions, replaces the caller's cookie, and resets
 // its login attempts under one lock. Capacity is checked before replacement.

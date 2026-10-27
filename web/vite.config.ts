@@ -39,7 +39,7 @@ function devAPI(): Plugin {
         if (requestURL.pathname === '/api/events') {
           response.statusCode = 200
           response.setHeader('Content-Type', 'text/event-stream')
-          response.setHeader('Cache-Control', 'no-cache')
+          response.setHeader('Cache-Control', 'no-store')
           response.setHeader('Connection', 'keep-alive')
           response.flushHeaders()
 

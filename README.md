@@ -19,7 +19,7 @@
 
 Navi 把一份 YAML 导航目录变成一个以地图为灵感的浏览器起始页。Go 后端负责读取目录、可选登录、热加载、内外网地址选择和 favicon 缓存；React 前端在构建时嵌入同一个 Go 二进制，生产运行不需要 Node、数据库或任何外部服务。
 
-项目类型：单个 Go 服务（`cmd/`、`internal/`）配套一个嵌入式 Web 应用（`web/`）。
+项目类型：单个 Go 服务（`cmd/`、`internal/`）配套一个嵌入式 Web 应用（`web/`）。当前尚未上线，接口与目录调整直接同步前后端，不维护旧入口、旧协议或旧缓存格式的适配。
 
 ## 功能
 
@@ -123,12 +123,12 @@ pages:
 ./navi --version   # 显示版本与提交，如 navi v1.2.0 (revision=0123456789ab)
 ```
 
-`-c` / `--config` 也支持 `=PATH` 写法；多次给出时必须是同一路径，否则为参数错误 `different files given for -c/--config: "a" and "b"`。`-f` 已移除。帮助（英文）与版本信息输出到 stdout，不读取环境变量与配置，也不启动服务。退出码：0 成功（含收到 SIGINT / SIGTERM 后正常关闭），2 参数错误，1 配置、启动或运行失败。参数错误写入 stderr：`navi: <错误>`，下一行 `Run 'navi --help' for usage.`；日志器就绪前的配置失败（选择、读取、解析、校验）以一行英文 `navi: config: <错误>` 写入 stderr，例如 `navi: config: CONFIG_FILE is set but empty`、`navi: config: /abs/config.yaml: server.port: must be between 1 and 65535`；日志器就绪后的失败只记录为 `service_failed` 日志事件，不再写 stderr。服务日志依次记录 `service_starting`、`service_listening`（含 `listen`）、`service_stopping`、`service_stopped`；第一次信号开始正常关闭，第二次信号立即终止进程。
+`-c` / `--config` 也支持 `=PATH` 写法；多次给出时必须是同一路径，否则为参数错误 `different files given for -c/--config: "a" and "b"`。帮助（英文）与版本信息输出到 stdout，不读取环境变量与配置，也不启动服务。退出码：0 成功（含收到 SIGINT / SIGTERM 后正常关闭），2 参数错误，1 配置、启动或运行失败。参数错误写入 stderr：`navi: <错误>`，下一行 `Run 'navi --help' for usage.`；日志器就绪前的配置失败（选择、读取、解析、校验）以一行英文 `navi: config: <错误>` 写入 stderr，例如 `navi: config: CONFIG_FILE is set but empty`、`navi: config: /abs/config.yaml: server.port: must be between 1 and 65535`；日志器就绪后的失败只记录为 `service_failed` 日志事件，不再写 stderr。服务日志依次记录 `service_starting`、`service_listening`（含 `listen`）、`service_stopping`、`service_stopped`；第一次信号开始正常关闭，第二次信号立即终止进程。
 
 - **选择配置文件**：`-c PATH` / `--config PATH` 显式选择主配置并覆盖 `CONFIG_FILE`；未传标志时可用 `CONFIG_FILE`。相对路径以进程工作目录为基准。两者都未设置时只查找 `./configs/config.local.yaml`，缺失则使用内置默认值；`CONFIG_FILE` 已设置但为空或全空白（`CONFIG_FILE is set but empty`）、显式选择的文件不存在、不可读或 YAML 非法均启动失败。配置错误为英文并带字段路径，如 `server.port: must be between 1 and 65535`。导航 YAML 必须存在且合法。
 - **优先级**：环境变量 > 所选文件 > 内置默认值。字段映射为 `NAVI_<字段>` 或 `NAVI_<节>__<字段>`（层级之间用 `__`，键名内部保留 `_`），例如 `NAVI_STORAGE=/var/cache/navi`、`NAVI_SERVER__PORT=8081`、`NAVI_CATALOG__WATCH=false`、`NAVI_FAVICON__FETCH_TIMEOUT=5s`。
 - **取值语义**：字符串保留原值，路径解析时去掉首尾空白，凭证精确匹配。空字符串会覆盖文件值：可用于清空可选认证，但不能清空必填路径。数字、布尔和时长必须是单个非空标量，非法值报错。时长写作 `250ms`、`3s`、`168h`，不支持 `7d`。
-- **相对路径**：`storage` 和 `catalog.path`（包括环境覆盖）相对所选配置所在目录解析；没有隐式主配置时仍以预期的 `configs/` 为基准，因此默认目录为 `configs/urls.yaml`，缓存为 `.cache/`。部署时优先使用绝对路径。
+- **相对路径**：内置默认值始终以进程工作目录为基准：导航目录为 `configs/urls.yaml`，缓存为 `.cache/`，即使加载了主配置但省略对应字段也如此。文件中显式填写的相对路径以该配置文件所在目录为基准。环境覆盖有实际配置文件时沿用配置目录；隐式主配置缺失时按工作目录解析，不查找旧位置。部署时优先使用绝对路径。
 - **生效方式**：主配置修改后重启生效；只有 `catalog.path` 指向的导航文件支持热加载。非法更新的具体错误见服务日志 `catalog_reload_failed`，修复后自动恢复。
 - **外观默认值**：`theme` 可选 `default`（跟随系统：深色墨夜 / 浅色宣纸）、`ink`、`paper`、`celadon`、`dusk`；`background_pattern` 可选 `none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`；`web_search` 为默认外部搜索引擎。页面右上角「外观」面板的选择保存在当前浏览器，优先于配置。
 
@@ -140,11 +140,11 @@ pages:
 - 登录按直接连接 IP 限制每分钟 5 次。服务不信任转发头，反向代理后的用户共享代理 IP 的限额。
 - 导航 API 会返回配置的内外网地址，不要在 URL 中放凭证；只允许可信用户编辑 YAML，因为服务器会请求其中的站点、图标和重定向目标。
 
-### 密码配置迁移
+### 设置登录密码
 
-旧 `auth.password` 与 `NAVI_AUTH__PASSWORD` 已移除，改为 `auth.password_hash` / `NAVI_AUTH__PASSWORD_HASH`；旧配置会明确报错，不静默关闭认证。登录 API 仍提交 `username/password`。安装 Apache `htpasswd` 后执行 `htpasswd -nB -C 12 navi`，交互输入密码，将输出冒号后的完整哈希写入配置（建议单引号包裹）。不要使用把密码放进进程参数的 `-b`。bcrypt 密码最多 72 UTF-8 字节。
+服务端仅接受 `auth.password_hash` / `NAVI_AUTH__PASSWORD_HASH`。明文配置会被拒绝，避免错误配置静默关闭认证；这不是旧配置支持。登录 API 提交 `username/password`。安装 Apache `htpasswd` 后执行 `htpasswd -nB -C 12 navi`，交互输入密码，将输出冒号后的完整哈希写入配置（建议单引号包裹）。不要使用把密码放进进程参数的 `-b`。bcrypt 密码最多 72 UTF-8 字节。
 
-主配置上限 1 MiB；浏览器 JSON 响应上限 8 MiB，拒绝重定向。配置实例迁移后继续保持仅管理员与服务进程可读。
+主配置上限 1 MiB；浏览器 JSON 响应上限 8 MiB，拒绝重定向。配置实例仅应允许管理员与服务进程读取。
 
 ### 反向代理
 
@@ -159,7 +159,9 @@ pages:
 Dockerfile 从锁文件安装前端依赖并构建 `web/dist`，再编译静态 Go 二进制；运行镜像基于 distroless，不含 Node、shell 或 curl。带版本信息构建并运行：
 
 ```sh
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short=12 HEAD)
+npm --prefix web run build
+CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
+VERSION=$(./bin/navi --version | cut -d ' ' -f 2)
 docker build \
   --build-arg VERSION="$VERSION" \
   -t navi:local .
@@ -184,6 +186,8 @@ docker run --rm -p 127.0.0.1:8080:8080 \
 - 需要备份的只有 `configs/config.local.yaml` 和 `configs/urls.yaml`。含凭证的配置只应允许管理员与运行用户读取。自定义配置实例也放在 `configs/`，仓库只提交 `*.example.yaml`；容器构建上下文排除整个 `configs/`，本地配置不会打入镜像。
 - 没有持久业务数据库或上传文件。`.cache/favicons/` 是可重建缓存，无需备份，清理应在停机后进行。
 - 日志输出到标准输出；会话在重启后失效。
+- 缓存时间戳只接受 UTC、三位毫秒（如 `2026-10-27T08:15:30.000Z`）；格式不符的派生缓存跳过并重新下载，不执行旧格式迁移。
+- 启动日志中的 `config_source`、`storage` 和重载失败日志中的 `path` 仅用于定位配置与存储问题；不记录配置内容或凭证。
 
 ## 开发
 
@@ -203,11 +207,15 @@ npm --prefix web run lint
 npm --prefix web run typecheck
 npm --prefix web run test
 npm --prefix web run build
-test -z "$(gofmt -l cmd internal web/embed.go)"
 go mod verify
-go test ./...
-go test -race ./...
+go mod tidy -diff
+test -z "$(gofmt -l $(git ls-files '*.go'))"
+test -z "$(go run golang.org/x/tools/cmd/goimports@v0.50.0 -local navi -l $(git ls-files '*.go'))"
 go vet ./...
+go vet -tags integration,scale ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+CGO_ENABLED=1 go test -race -count=1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
 `go.mod` 使用 `ignore ./web/node_modules`，Go 检查可直接使用 `./...` 覆盖全部应用包。
@@ -265,20 +273,11 @@ bin/                  生成的二进制
 coverage/             Go 覆盖率报告（按需生成）
 ```
 
-文档：[设计与协议](docs/DESIGN.md) · [接口错误与状态代码](docs/API.md) · [界面规范](docs/UI_SPEC.md) · [开发与验证](docs/IMPLEMENTATION.md) · [本轮验收](docs/ACCEPTANCE.md)。已完成的计划与过期验收保留在 Git 历史中，不作为当前依据。
+文档：[设计与协议](docs/DESIGN.md) · [接口错误与状态代码](docs/API.md) · [界面规范](docs/UI_SPEC.md) · [开发与验证](docs/IMPLEMENTATION.md) · [本轮验收](docs/ACCEPTANCE.md)。历史计划已明确标记，过期验收可从 Git 历史追溯，均不作为当前依据。
 
 ### 目录例外
 
-| 规则 / 标准路径 | 实际路径或行为 | 原因与依据 | 适用范围 | 重新评估条件 |
-| --- | --- | --- | --- | --- |
-| 第 7.1 节：无配置文件时路径默认以工作目录为基准 | 缺失隐式主配置时，以预期 `configs/config.local.yaml`（相对工作目录 `Source.WorkDir`）所在目录解析内置路径 | `internal/config/config.go` 的既有 Load/finishConfig 协议；保持有无隐式文件时路径一致 | 根 Go 服务的默认启动 | 明确调整配置协议时 |
-| 第 7.1 节：通过 `CONFIG_FILE` 显式选择配置 | 同时支持 `-c PATH` / `--config PATH`，且命令行优先 | 本项目是可执行服务；用户明确要求标准 CLI 配置标志，环境变量继续用于容器部署 | `cmd/navi` 配置选择 | 明确调整 CLI 或配置协议时 |
-
-### 代码例外
-
-| 规则 | 实际做法 | 原因与依据 | 适用范围 | 重新评估条件 |
-| --- | --- | --- | --- | --- |
-| 代码规范.md §3.1 用户文案由客户端按代码映射 | 导航失败页在未启用 JavaScript 时的回退内容由服务端生成中文 | 该内容只在 Web 客户端无法运行时显示，没有可做映射的客户端；接口与 `data-navigation-error` 已按 [接口约定](docs/API.md) 只返回代码 | `internal/app/handlers.go` 的 `writeFailurePage` | 回退页需要多语言时 |
+无。CLI 的 `-c` / `--config` 与 `CONFIG_FILE` 优先级直接遵循 Go 规范第 10.6 节。已消除的项目例外与规范自身的特殊要求见[逐项复核](docs/STANDARDS_AUDIT.md#例外逐项处理)。
 
 ## 参与贡献
 

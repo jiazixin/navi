@@ -10,11 +10,8 @@ export async function submitWebSearch(provider: SearchProvider, query: string): 
   window.open(provider.buildURL(trimmed), '_blank', 'noopener,noreferrer')
   if (provider.submission === 'direct') return ''
 
-  const clipboard = navigator.clipboard
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- Browsers omit clipboard outside secure contexts despite the DOM type.
-  if (clipboard === undefined) return `已打开 ${provider.label}，请手动粘贴问题。`
   try {
-    await clipboard.writeText(trimmed)
+    await navigator.clipboard.writeText(trimmed)
     return `问题已复制，请在 ${provider.label} 中粘贴发送。`
   } catch {
     return `已打开 ${provider.label}，剪贴板不可用，请手动粘贴问题。`

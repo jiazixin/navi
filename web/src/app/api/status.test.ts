@@ -7,9 +7,15 @@ describe('service status API', () => {
   })
 
   it('decodes all documented health states', () => {
-    for (const health of ['ok', 'degraded', 'unavailable'] as const) {
+    for (const health of ['ok', 'degraded'] as const) {
       expect(serviceStatusSchema.parse({ health, revision: 2 })).toEqual({ health, revision: 2 })
     }
+  })
+
+  it('distinguishes an unknown enum from a missing or wrongly typed health field', () => {
+    expect(serviceStatusSchema.parse({ health: 'unknown', revision: 1 }).health).toBe('degraded')
+    expect(serviceStatusSchema.safeParse({ revision: 1 }).success).toBe(false)
+    expect(serviceStatusSchema.safeParse({ health: 1, revision: 1 }).success).toBe(false)
   })
 
   it('loads status with an optional abort signal', async () => {

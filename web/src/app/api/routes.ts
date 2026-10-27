@@ -3,7 +3,7 @@ export function navigationHref(runtimeId: string): string {
   return `/go/${encodeURIComponent(runtimeId)}`
 }
 
-/** Cached favicon; the version busts the browser cache after a favicon.updated event. */
+/** Server-cached favicon; a new version makes mounted images reload after favicon_updated. */
 export function iconSource(runtimeId: string, version?: number): string {
   return `/api/icons/${encodeURIComponent(runtimeId)}${version === undefined ? '' : `?v=${version}`}`
 }

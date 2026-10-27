@@ -19,7 +19,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 完整字段、默认值和约束仅维护在 [config.example.yaml](../configs/config.example.yaml)；初始化、环境变量空值语义和部署示例见 [README.md](../README.md#配置)。
 
-`-c PATH` / `--config PATH` 选择主配置并覆盖 `CONFIG_FILE`；未传标志时可由 `CONFIG_FILE` 选择。两者都未设置时只查找 `./configs/config.local.yaml`，缺失使用内置默认值；显式空值、文件不存在或不可读时报错。优先级为命令行配置路径 > `CONFIG_FILE`，而配置值仍为 `NAVI_<字段>` / `NAVI_<节>_<字段>` 环境变量 > 文件 > 内置默认值。`storage` 与 `catalog.path`（包括环境覆盖）相对所选配置目录解析，缺失隐式文件时仍以预期的 `configs/` 为基准；项目例外已登记在 README。部署使用绝对路径。
+`-c PATH` / `--config PATH` 选择主配置并覆盖 `CONFIG_FILE`；未传标志时可由 `CONFIG_FILE` 选择。两者都未设置时只查找 `./configs/config.local.yaml`，缺失使用内置默认值；显式空值、文件不存在或不可读时报错。优先级为命令行配置路径 > `CONFIG_FILE`，而配置值仍为 `NAVI_<字段>` / `NAVI_<节>__<字段>` 环境变量 > 文件 > 内置默认值。内置路径默认值始终按工作目录解析（`.cache` 与 `configs/urls.yaml`），包括现存配置中省略的字段；文件中的显式相对路径按配置目录解析。环境覆盖在有配置文件时按配置目录、隐式文件缺失时按工作目录解析。部署使用绝对路径。
 
 主配置更改需要重启，只有导航 YAML 支持热加载。未知字段、重复 YAML 键、多个 YAML 文档及非法值启动失败。YAML 使用 snake_case，JSON API 使用 snake_case。
 
@@ -44,7 +44,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 ## 跳转与图标
 
-点击 `/go/{runtimeId}`：只配置一个地址时不探测，直接 302 到该地址；同时配置 private 和 public 时只探测 private，可达即 302 到 private，否则直接 302 到 public，public 不探测。链接不存在或目录不可用时返回失败页，复用前端主题与组件样式，提供重试和返回导航；禁用 JavaScript 时仍保留基本提示和可用链接。可达性是 **Navi 服务端** 的网络视角，不能保证浏览器能访问相同地址。
+点击 `/go/{runtimeId}`：只配置一个地址时不探测，直接 302 到该地址；同时配置 private 和 public 时只探测 private，可达即 302 到 private，否则直接 302 到 public，public 不探测。链接不存在或目录不可用时返回失败页，复用前端主题与组件样式，提供重试和返回导航；页面文案由 React 按错误码渲染，需要启用 JavaScript。Go 不生成回退文案或备用 HTML，构建入口缺失时返回 503 `frontend_not_built`。可达性是 **Navi 服务端** 的网络视角，不能保证浏览器能访问相同地址。
 
 探测使用 HEAD，405/501 回退 `Range: bytes=0-0` GET；100–499 视为可达，5xx/网络错误不可达；TLS 握手中证书无法由服务器验证（自签、内部 CA、主机名不符）说明主机可达，按可达处理，证书信任由浏览器决定。最多跟随 3 次重定向。排队和等待合并请求也计入调用超时。相同 URL 合并并发请求，取消/超时结果不写缓存，不转发浏览器 Cookie 或 Authorization。
 
@@ -52,7 +52,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 支持 ICO、PNG、JPEG、GIF、WebP 和隔离提供的 SVG，下载协商不声明未支持的 AVIF。保存前检查 PNG/JPEG/GIF 可解码的图像头、SVG 完整 XML、ICO 条目边界及 WebP RIFF/帧块结构；位图每边限 1–2048 像素，避免小体积巨幅图片进入浏览器。仅匹配 MIME 签名不足以通过，不进行完整像素解码。下载仍受 `max_file_bytes` 限制；远端文件名不作为本地路径。
 
-启动、目录更新及周期维护会调度缺失/过期图标。周期为 `refresh_interval`；缓存到期后可能再等一个维护周期。远端 ETag/Last-Modified 用于条件刷新，本地 ETag 来自内容。图标 API 允许缓存但要求重新验证，不对内容可变化的固定 URL 声明 immutable。下载失败保留旧图标，无缓存显示字标。元数据对应的图标文件丢失或变成目录时视为缓存缺失；条件刷新返回 304 而本地文件已丢失时重新请求完整内容。本地写入/维护失败报告 degraded 并通过 status.updated 通知页面，后续成功写入或失败链接移除后恢复；单个远端站点无图标不影响服务健康。启动时存储不可用需要修复后重启。移除链接的缓存经过至少 24 小时宽限期后由维护回收。
+启动、目录更新及周期维护会调度缺失/过期图标。周期为 `refresh_interval`；缓存到期后可能再等一个维护周期。远端 ETag/Last-Modified 用于条件刷新，本地 ETag 来自内容。图标 API 与其他 API 一致返回 no-store；浏览器不保存，服务端仍使用本地缓存及上游条件刷新。图标更新事件通过变更图片 URL 触发已挂载图片重新加载。下载失败保留旧图标，无缓存显示字标。元数据对应的图标文件丢失或变成目录时视为缓存缺失；条件刷新返回 304 而本地文件已丢失时重新请求完整内容。本地写入/维护失败报告 degraded 并通过 status_updated 通知页面，后续成功写入或失败链接移除后恢复；单个远端站点无图标不影响服务健康。启动时存储不可用需要修复后重启。移除链接的缓存经过至少 24 小时宽限期后由维护回收。
 
 启动时重新校验已有图标缓存的类型、结构和尺寸，单文件读取上限为 4 MiB；不合格文件保留在磁盘但不载入有效索引，随后重新下载，不沿用其远端条件请求标识。
 
@@ -61,17 +61,18 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | 路径 | 行为 |
 | --- | --- |
 | `/api/auth/login` | POST JSON username/password，成功设置会话 Cookie；错误凭证 401，格式错误 400，限流 429 |
-| `/api/auth/session` | GET/HEAD；未启用认证返回 authenticated=true、authRequired=false；启用时有效会话 200（两字段 true），否则 401；no-store |
+| `/api/auth/session` | GET/HEAD；未启用认证返回 authenticated=true、auth_required=false；启用时有效会话 200（两字段 true），否则 401；no-store |
 | `/api/auth/logout` | POST；撤销当前会话、清除 Cookie，204 |
 | `/login` | 公开登录页面；登录成功进入首页 |
 | `/api/catalog` | revision、pages；无服务端写操作；no-store |
 | `/api/status` | health、revision、降级时的 code 与英文 message（见 [API.md](API.md)）；no-store |
-| `/api/events` | SSE：catalog.updated、catalog.error、favicon.updated、status.updated；15 秒心跳；HEAD 立即返回 |
-| `/api/icons/{runtimeId}` | 图标、内容 ETag、no-cache；认证模式为 private，公开模式为 public；不存在返回 404 |
+| `/api/events` | SSE：catalog_updated、catalog_error、favicon_updated、status_updated；15 秒心跳；HEAD 立即返回 |
+| `/api/icons/{runtime_id}` | 服务端缓存的图标、内容 ETag；所有模式均 no-store，浏览器不保存；不存在返回 404 |
 | `/go/{runtimeId}` | 302（双地址时先探测 private）或失败 HTML，no-store |
-| 配置的健康路径 | `ok`/`degraded` 为 200，目录不可用为 503 |
+| `/healthz` | `ok`/`degraded` 为 200，目录不可用为 503 |
 | `/assets/` | 仅提供实际存在的静态文件；缺失或目录请求为 404 |
-| 其他页面路径 | 注入外观默认值的嵌入首页或 SPA fallback；no-store |
+| `/`、`/login` | 注入外观默认值的 SPA 页面；no-store |
+| 其他页面路径 | HTTP 404，SPA 渲染“页面不存在”；no-store，不作为首页别名 |
 
 除登录和退出使用 POST 外，目录及静态路由仅接受 GET、HEAD、OPTIONS。认证写请求由 Go 的 `http.CrossOriginProtection` 校验 `Sec-Fetch-Site` / `Origin`，拒绝跨站请求；没有这两个头的命令行请求放行；无跨域许可。生产入口无内联脚本，Zod 关闭 JIT；保持禁止 unsafe-inline/unsafe-eval 的 CSP。CSP 同样拒绝 `data:` 资源，因此 Vite 关闭资源内联（`assetsInlineLimit: 0`），字体与纹理均以独立文件随二进制嵌入。发布构建默认不生成 sourcemap，减少二进制体积；诊断时可显式生成，不将诊断产物当作默认发布包。关闭时先取消长连接处理（如 SSE），并立即关闭从未发出请求的预连接（浏览器常预开空闲连接，标准库会等待其 5 秒），再在 `server.shutdown_timeout` 内等待在途请求完成。SSE 是有界的失效通知流，不是持久事件日志；队列满时合并为全量刷新通知。每帧写入受 `server.write_timeout` 限制，空闲等待时清除写入期限，请求取消会中断阻塞写入。客户端首次连通及重连后补拉目录和状态，并重试图标。
 
@@ -83,7 +84,7 @@ Docker 运行时通过环境变量设置 `NAVI_SERVER__LISTEN=0.0.0.0`、`NAVI_S
 
 ## 源码与构建边界
 
-通用归属仅由根目录 [目录规范.md](../目录规范.md) 规定，项目布局与已接受例外见 README。`web/src` 和 `web/public`（有公开资源时）是可编辑来源，Vite 生成唯一 `web/dist`，Go 的 `web/embed.go` 直接嵌入该目录。任何会编译嵌入包的检查、构建或开发启动，都先执行前端构建。容器按锁文件重新安装和构建，不复制本地依赖或旧产物。
+通用归属仅由根目录 [目录规范.md](../目录规范.md) 规定，项目布局见 README，目前无项目自定义目录例外。`web/src` 和 `web/public`（有公开资源时）是可编辑来源，Vite 生成唯一 `web/dist`，Go 的 `web/embed.go` 直接嵌入该目录。任何会编译嵌入包的检查、构建或开发启动，都先执行前端构建。容器按锁文件重新安装和构建，不复制本地依赖或旧产物。
 
 ## 规范对齐后的实现边界
 
@@ -91,4 +92,4 @@ Docker 运行时通过环境变量设置 `NAVI_SERVER__LISTEN=0.0.0.0`、`NAVI_S
 
 浏览器的唯一 JSON 请求包装拒绝重定向，按流计数限制响应为 8 MiB。接口字段在客户端保持 snake_case；目录、状态和会话由所属领域的数据 hook/key 工厂管理；登录和退出使用 mutation。应用级外观 Provider、会话 Context、通知 Provider 属于 app；错误通知统一经 errorText 映射。
 
-后台组件先构造、再 Start，退出以 Shutdown(ctx) 等待；应用为关闭过程提供独立且有界的 context。缓存时间写入统一 UTC 毫秒字符串，读取保留对既有 RFC 3339 缓存时间的支持；缓存仍可丢弃重建。
+后台组件先构造、再 Start，退出以 Shutdown(ctx) 等待；应用为关闭过程提供独立且有界的 context。缓存时间读写仅接受 UTC、三位毫秒字符串，不支持旧时间格式；格式不符的派生缓存跳过并重新下载。

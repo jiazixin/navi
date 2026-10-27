@@ -2,8 +2,8 @@ import { z } from './schema'
 import { api } from '../api'
 
 export const serviceStatusSchema = z.object({
-  // An unknown health value from a newer server is treated as degraded.
-  health: z.enum(['ok', 'degraded', 'unavailable']).catch('degraded'),
+  // Unknown enum strings degrade safely; missing or wrongly typed fields are invalid.
+  health: z.string().pipe(z.enum(['ok', 'degraded']).catch('degraded')),
   revision: z.number().int().nonnegative(),
   code: z.string().max(64).optional(),
   message: z.string().max(240).optional(),

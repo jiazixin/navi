@@ -1,5 +1,7 @@
 # Standards alignment implementation plan
 
+Historical record of the earlier alignment, completed before `31ea97b`. It does not describe the current acceptance result. The later [unreleased-project recheck](2026-10-27-standards-recheck.md) removes the old SPA aliases and directly updates the protocol; current evidence is in [ACCEPTANCE.md](../ACCEPTANCE.md).
+
 **Scope:** Audit the complete Go backend and React frontend against all applicable repository standards, including tests, dependencies, configuration, directory boundaries and CI. Preserve pre-existing work and user configuration. The original eight findings are included; the task is not limited to those findings or two session functions.
 
 **Architecture:** Retain the single Go service with embedded React SPA. Keep domain boundaries, one request module, Context providers in app, TanStack Query data ownership and documented configuration behavior.

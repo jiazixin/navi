@@ -3,7 +3,8 @@
 # 配置选择：-c/--config 优先于 CONFIG_FILE；均未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
 # 主配置修改后需要重启；只有 catalog.path 指向的导航 YAML 支持热加载。
 # 未知字段、非法取值、重复 YAML 键和多个 YAML 文档会导致启动失败。
-# 下列值均为默认值；省略字段时使用默认值，不用空字符串代替省略。
+# 除两个按本示例目录填写的路径外，下列值均为内置默认值；不用空字符串代替省略。
+# 路径字段省略时始终按进程工作目录解析：storage=.cache，catalog.path=configs/urls.yaml。
 # 时间使用 Go duration 写法，例如 250ms、3s、10m、168h；不支持 7d。
 
 # 用户名和密码哈希都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
@@ -17,7 +18,8 @@ auth:
   password_hash: ""
   secure_cookie: false
 
-# 可重建缓存目录；相对路径以本配置文件所在目录为基准，不是进程工作目录。
+# 可重建缓存目录；显式填写的相对路径以本配置文件所在目录为基准。
+# 省略 storage 时使用进程工作目录下的 .cache；无主配置时，相对环境覆盖也按工作目录解析。
 # 目录内的 favicons 保存图标及元数据，不保存第二份导航目录；可在停机后删除重建。
 # 运行用户需要写入权限及足够磁盘空间。Docker 通常设置 /app/.cache 并挂载可写 volume。
 # 字段覆盖：NAVI_<字段> 或 NAVI_<节>__<字段>，如 NAVI_SERVER__PORT=8081。环境变量 > 文件 > 默认值。
@@ -69,7 +71,8 @@ logging:
   log_health_checks: false
 
 catalog:
-  # 导航 YAML 路径，相对本配置文件所在目录；启动时必须存在且内容合法。
+  # 导航 YAML 路径；此处显式值相对本配置文件所在目录，启动时必须存在且内容合法。
+  # 省略 path 时使用进程工作目录下的 configs/urls.yaml。
   # 使用 version: 1 + pages 格式，参见 urls.example.yaml；最大 2 MiB、20 页、1000 链接。
   path: ./urls.yaml
   # 开启后监听目录文件的保存/原子替换，校验通过才更新页面。

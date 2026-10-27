@@ -2,12 +2,13 @@ import { ApiError, api } from '../api'
 import { z } from './schema'
 
 const sessionSchema = z.object({ authenticated: z.literal(true), auth_required: z.boolean() })
+type AuthenticatedSession = z.infer<typeof sessionSchema>
 
 export async function getSession(
   signal?: AbortSignal,
 ): Promise<{ authenticated: boolean; auth_required: boolean }> {
   try {
-    return await api<{ authenticated: boolean; auth_required: boolean }>('/auth/session', {
+    return await api<AuthenticatedSession>('/auth/session', {
       signal,
       schema: sessionSchema,
     })
@@ -25,7 +26,12 @@ export async function login(
   password: FormDataEntryValue | null,
   signal?: AbortSignal,
 ): Promise<void> {
-  await api<undefined>('/auth/login', { method: 'POST', body: { username, password }, signal })
+  await api<AuthenticatedSession>('/auth/login', {
+    method: 'POST',
+    body: { username, password },
+    signal,
+    schema: sessionSchema,
+  })
 }
 
 /** Signs out; rejects when the server did not end the session. */

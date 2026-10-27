@@ -7,6 +7,7 @@ import { getCatalog } from './api/catalog'
 import { getServiceStatus } from './api/status'
 import { useCatalogEvents } from '../features/status/useCatalogEvents'
 import { useCatalogState } from './useCatalogState'
+import { ApiError } from './api'
 
 vi.mock('./api/catalog', () => ({ getCatalog: vi.fn() }))
 vi.mock('./api/status', () => ({ getServiceStatus: vi.fn() }))
@@ -28,6 +29,37 @@ beforeEach(() => {
 })
 
 describe('catalog synchronization', () => {
+  it('reconciles server events without resetting the stream retry budget', async () => {
+    const retry = vi.fn()
+    window.addEventListener('navi:retry-events', retry)
+    const { result, unmount } = renderCatalogState()
+    try {
+      await waitFor(() => expect(result.current.catalogQuery.isSuccess).toBe(true))
+      const eventHandlers = vi.mocked(useCatalogEvents).mock.calls.at(-1)?.[0]
+      if (eventHandlers === undefined) throw new Error('Missing catalog event subscription')
+      act(() => eventHandlers.onCatalogUpdate())
+      expect(retry).not.toHaveBeenCalled()
+      act(() => result.current.refreshCatalog())
+      expect(retry).toHaveBeenCalledOnce()
+    } finally {
+      unmount()
+      window.removeEventListener('navi:retry-events', retry)
+    }
+  })
+
+  it('reports a status request failure while retaining the catalog', async () => {
+    vi.mocked(getServiceStatus).mockRejectedValue(
+      new ApiError('status unavailable', {
+        status: 503,
+        code: 'unavailable',
+        requestId: 'status-request',
+      }),
+    )
+    const { result } = renderCatalogState()
+    await waitFor(() => expect(result.current.statusQuery.isError).toBe(true))
+    expect(result.current.catalogQuery.data).toEqual(catalogFixture)
+    expect(result.current.visibleBanner?.message).toBe('服务暂时不可用，请稍后重试。')
+  })
   it('updates one favicon for an event and refreshes all active icons on reconciliation', async () => {
     const { result } = renderCatalogState()
     await waitFor(() => expect(result.current.catalogQuery.isSuccess).toBe(true))

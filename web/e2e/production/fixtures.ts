@@ -108,7 +108,7 @@ export const test = base.extend<{ app: ProductionApp } & Options>({
         background_pattern: 'none',
         storage: './.cache',
         server: { listen: '127.0.0.1', port, shutdown_timeout: '2s' },
-        catalog: { watch: isCatalogWatch, reload_debounce: '30ms' },
+        catalog: { path: './urls.yaml', watch: isCatalogWatch, reload_debounce: '30ms' },
         favicon: { refresh_interval: '200ms', fetch_timeout: '500ms' },
         navigation: { private_probe_timeout: '500ms', probe_cache_ttl: '30s' },
         logging: { access_log: false },

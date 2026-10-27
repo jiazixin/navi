@@ -85,30 +85,32 @@ async function send(path: string, options: ApiOptions, timeout: AbortSignal): Pr
       signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
     })
   } catch (error: unknown) {
-    throw clientFailure(error, signal, timeout)
+    throw clientFailure(error, { signal, timeout })
   }
 }
 
 /** Maps a failed fetch: a caller's cancel stays a native AbortError. */
-function clientFailure(error: unknown, signal: AbortSignal | undefined, timeout: AbortSignal) {
+type FailureContext = { signal?: AbortSignal | undefined; timeout: AbortSignal; requestId?: string }
+
+function clientFailure(error: unknown, { signal, timeout, requestId = '' }: FailureContext) {
   if (signal?.aborted) return error
+  if (error instanceof ApiError) return error
   if (timeout.aborted)
     return new ApiError(
       'request timed out',
-      { status: 0, code: 'timeout', requestId: '' },
+      { status: 0, code: 'timeout', requestId },
       { cause: error },
     )
   if (error instanceof DOMException && error.name === 'AbortError') return error
   if (error instanceof TypeError)
     return new ApiError(
       'network request failed',
-      { status: 0, code: 'network_unavailable', requestId: '' },
+      { status: 0, code: 'network_unavailable', requestId },
       { cause: error },
     )
-  if (error instanceof ApiError) return error
   return new ApiError(
     'request failed',
-    { status: 0, code: 'network_unavailable', requestId: '' },
+    { status: 0, code: 'network_unavailable', requestId },
     { cause: error },
   )
 }
@@ -125,15 +127,7 @@ export async function api<T>(path: string, options: ApiOptions<T> = {}): Promise
   try {
     text = await readResponse(response, requestId)
   } catch (error: unknown) {
-    const failure = clientFailure(error, options.signal, timeout)
-    if (failure instanceof ApiError && failure.requestId === '') {
-      throw new ApiError(
-        failure.message,
-        { status: failure.status, code: failure.code, requestId },
-        { cause: failure },
-      )
-    }
-    throw failure
+    throw clientFailure(error, { signal: options.signal, timeout, requestId })
   }
   let body: unknown
   try {
@@ -229,7 +223,9 @@ export function openEventStream(): EventStream {
     .catch((error: unknown) => {
       if (!isClosed)
         events.dispatchEvent(
-          new CustomEvent('error', { detail: clientFailure(error, undefined, controller.signal) }),
+          new CustomEvent('error', {
+            detail: clientFailure(error, { timeout: controller.signal }),
+          }),
         )
     })
     .finally(() => window.clearTimeout(timer))
@@ -320,6 +316,8 @@ async function readEvents(
           requestId,
         })
     }
+  } catch (error: unknown) {
+    throw clientFailure(error, { timeout: signal, requestId })
   } finally {
     // A canceled or invalid stream is discarded; cleanup must preserve its original failure.
     await reader.cancel().catch(() => undefined)

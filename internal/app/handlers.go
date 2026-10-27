@@ -85,7 +85,7 @@ func (s *httpServer) serveCatalog(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	writeJSON(w, http.StatusOK, s.catalogResponse(snapshot))
+	writeJSON(w, r, jsonResponse{Status: http.StatusOK, Payload: s.catalogResponse(snapshot)})
 }
 
 func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse {
@@ -112,12 +112,12 @@ func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse
 
 func (s *httpServer) serveStatus(w http.ResponseWriter, r *http.Request) {
 	status := s.status()
-	code := http.StatusOK
 	if status.Health == healthUnavailable {
-		code = http.StatusServiceUnavailable
+		writeError(w, r, errCatalogMissing)
+		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, code, status)
+	writeJSON(w, r, jsonResponse{Status: http.StatusOK, Payload: status})
 }
 
 // serveHealth reports that the process serves requests; degraded details are
@@ -128,7 +128,7 @@ func (s *httpServer) serveHealth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, errCatalogMissing)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, r, jsonResponse{Status: http.StatusOK, Payload: map[string]string{"status": "ok"}})
 }
 
 // infoResponse lists the server version and the optional features clients may
@@ -138,8 +138,8 @@ type infoResponse struct {
 	Capabilities []string `json:"capabilities"`
 }
 
-func (s *httpServer) serveInfo(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, infoResponse{Version: s.version, Capabilities: []string{"catalog_events", "favicons"}})
+func (s *httpServer) serveInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, r, jsonResponse{Status: http.StatusOK, Payload: infoResponse{Version: s.version, Capabilities: []string{"catalog_events", "favicons"}}})
 }
 
 func (s *httpServer) serveEvents(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +150,7 @@ func (s *httpServer) serveEvents(w http.ResponseWriter, r *http.Request) {
 		events = subscription.Events()
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
 	if r.Method == http.MethodHead {
 		w.WriteHeader(http.StatusOK)
@@ -225,7 +225,8 @@ func (s *httpServer) serveEvents(w http.ResponseWriter, r *http.Request) {
 			}
 			payload, err := json.Marshal(event)
 			if err != nil {
-				continue
+				requestLogger(r).Error("event_encode_failed", "error", err)
+				return
 			}
 			frame = fmt.Sprintf("event: %s\ndata: %s\n\n", event.Type, payload)
 		case <-heartbeat.C:
@@ -252,16 +253,12 @@ func (s *httpServer) serveIcon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, r, errInternal)
+		writeError(w, r, err)
 		return
 	}
 	defer file.Close() // Read-only descriptor; failures cannot invalidate the completed read.
 	w.Header().Set("ETag", entry.ETag)
-	if s.config.Auth.Enabled() {
-		w.Header().Set("Cache-Control", "private, no-cache")
-	} else {
-		w.Header().Set("Cache-Control", "public, no-cache")
-	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", entry.ContentType)
 	if entry.ContentType == "image/svg+xml" {
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
@@ -341,6 +338,16 @@ func (s *httpServer) serveStatic(w http.ResponseWriter, r *http.Request) {
 	}
 	contents = bytes.Replace(contents, []byte(`id="root"`), fmt.Appendf(nil, `id="root"%s`, s.appearanceAttributes()), 1)
 	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.Path != "/" && r.URL.Path != "/login" {
+		// The SPA renders its not-found page; unknown paths are never home aliases.
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		if r.Method != http.MethodHead {
+			// A write failure after headers only means the client stopped reading.
+			_, _ = w.Write(contents)
+		}
+		return
+	}
 	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(contents))
 }
 
@@ -370,14 +377,6 @@ const (
 	navigationCatalogUnavailable = "catalog_unavailable"
 )
 
-// navigationFallbackTitles title the failure page for browsers without
-// JavaScript; the web client renders its own text from the code.
-var navigationFallbackTitles = map[string]string{
-	navigationLinkNotFound:       "链接不存在",
-	navigationLinkUnavailable:    "链接暂时不可用",
-	navigationCatalogUnavailable: "目录暂时不可用",
-}
-
 // failurePage groups the inputs for writeFailurePage.
 type failurePage struct {
 	Status int
@@ -385,12 +384,15 @@ type failurePage struct {
 }
 
 func (s *httpServer) writeFailurePage(w http.ResponseWriter, r *http.Request, options failurePage) {
-	status, code := options.Status, options.Code
-
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(status)
-	if r.Method == http.MethodHead {
+	if s.static == nil {
+		writeError(w, r, errFrontendMissing)
+		return
+	}
+	shell, err := fs.ReadFile(s.static, "index.html")
+	emptyRoot := []byte(`<div id="root"></div>`)
+	if err != nil || !bytes.Contains(shell, emptyRoot) {
+		writeError(w, r, errFrontendMissing)
 		return
 	}
 	retryPath := r.URL.EscapedPath()
@@ -398,16 +400,14 @@ func (s *httpServer) writeFailurePage(w http.ResponseWriter, r *http.Request, op
 	if !strings.HasPrefix(retryPath, "/go/") {
 		retryPath = "/"
 	}
-	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, html.EscapeString(navigationFallbackTitles[code]), html.EscapeString(retryPath))
-	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, html.EscapeString(code), html.EscapeString(retryPath), s.appearanceAttributes(), fallback)
-	emptyRoot := []byte(`<div id="root"></div>`)
-	if s.static != nil {
-		if shell, err := fs.ReadFile(s.static, "index.html"); err == nil && bytes.Contains(shell, emptyRoot) {
-			_, _ = w.Write(bytes.Replace(shell, emptyRoot, []byte(root), 1))
-			return
-		}
+	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s></div>`, html.EscapeString(options.Code), html.EscapeString(retryPath), s.appearanceAttributes())
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(options.Status)
+	if r.Method == http.MethodHead {
+		return
 	}
-	_, _ = fmt.Fprintf(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navi</title><body>%s</body></html>`, fallback)
+	// Headers are already sent; a disconnected client needs no second response.
+	_, _ = w.Write(bytes.Replace(shell, emptyRoot, []byte(root), 1))
 }
 
 // appearanceAttributes exposes the configured appearance defaults to the shell before

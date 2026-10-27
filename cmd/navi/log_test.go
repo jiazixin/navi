@@ -11,7 +11,15 @@ import (
 
 func TestNewLoggerHonorsLevelAndJSONFormat(t *testing.T) {
 	var output bytes.Buffer
-	logger := newLogger(config.LoggingConfig{Level: "warn", Format: "json"}, &output)
+	logger, closeLog, err := newLogger(config.LoggingConfig{Level: "warn", Format: "json"}, &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := closeLog(); err != nil {
+			t.Error(err)
+		}
+	}()
 	logger.Info("hidden")
 	if output.Len() != 0 {
 		t.Fatalf("info output = %q, want no output", output.String())
@@ -28,7 +36,15 @@ func TestNewLoggerHonorsLevelAndJSONFormat(t *testing.T) {
 
 func TestNewLoggerUsesLogfmtFormat(t *testing.T) {
 	var output bytes.Buffer
-	logger := newLogger(config.LoggingConfig{Level: "debug", Format: "logfmt"}, &output)
+	logger, closeLog, err := newLogger(config.LoggingConfig{Level: "debug", Format: "logfmt"}, &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := closeLog(); err != nil {
+			t.Error(err)
+		}
+	}()
 	logger.Debug("visible", "route", "/health")
 	if !strings.Contains(output.String(), "msg=visible") || !strings.Contains(output.String(), "route=/health") {
 		t.Fatalf("logfmt output = %q", output.String())

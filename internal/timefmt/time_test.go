@@ -23,3 +23,22 @@ func TestCanonicalTime(t *testing.T) {
 		t.Fatal("accepted malformed timestamp")
 	}
 }
+
+func TestRejectsNonCanonicalTime(t *testing.T) {
+	t.Parallel()
+	for _, input := range []string{
+		"2026-10-27T00:09:10Z",
+		"2026-10-27T00:09:10.12Z",
+		"2026-10-27T00:09:10.123456789Z",
+		"2026-10-27T00:09:10.123+00:00",
+		"2026-10-27T08:09:10.123+08:00",
+		"2026-10-27T00:09:10,123Z",
+	} {
+		t.Run(input, func(t *testing.T) {
+			var parsed Time
+			if err := parsed.UnmarshalText([]byte(input)); err == nil {
+				t.Fatalf("got accepted timestamp %q, want UTC with exactly three fractional digits", input)
+			}
+		})
+	}
+}

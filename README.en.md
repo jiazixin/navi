@@ -123,12 +123,12 @@ A link with one address redirects without probing. With both addresses, the **Na
 ./navi --version   # show version and commit, e.g. navi v1.2.0 (revision=0123456789ab)
 ```
 
-`-c` / `--config` also accept `=PATH`; when given more than once they must name the same path, otherwise it is a usage error `different files given for -c/--config: "a" and "b"`. `-f` has been removed. Help (in English) and version output go to stdout; neither reads environment variables or configuration, nor starts the server. Exit codes: 0 success (including a clean shutdown after SIGINT / SIGTERM), 2 usage error, 1 configuration, startup, or runtime failure. Usage errors go to stderr as `navi: <error>` followed by `Run 'navi --help' for usage.`; configuration failures before the logger is ready (selecting, reading, decoding, validating) are a single English line `navi: config: <error>` on stderr, e.g. `navi: config: CONFIG_FILE is set but empty` or `navi: config: /abs/config.yaml: server.port: must be between 1 and 65535`; failures after the logger is ready are only logged as a `service_failed` event, not written to stderr. The service logs `service_starting`, `service_listening` (with `listen`), `service_stopping`, and `service_stopped`; the first signal starts a graceful shutdown and a second one terminates the process immediately.
+`-c` / `--config` also accept `=PATH`; when given more than once they must name the same path, otherwise it is a usage error `different files given for -c/--config: "a" and "b"`. Help (in English) and version output go to stdout; neither reads environment variables or configuration, nor starts the server. Exit codes: 0 success (including a clean shutdown after SIGINT / SIGTERM), 2 usage error, 1 configuration, startup, or runtime failure. Usage errors go to stderr as `navi: <error>` followed by `Run 'navi --help' for usage.`; configuration failures before the logger is ready (selecting, reading, decoding, validating) are a single English line `navi: config: <error>` on stderr, e.g. `navi: config: CONFIG_FILE is set but empty` or `navi: config: /abs/config.yaml: server.port: must be between 1 and 65535`; failures after the logger is ready are only logged as a `service_failed` event, not written to stderr. The service logs `service_starting`, `service_listening` (with `listen`), `service_stopping`, and `service_stopped`; the first signal starts a graceful shutdown and a second one terminates the process immediately.
 
 - **Choosing a config file**: `-c PATH` / `--config PATH` selects the main config and overrides `CONFIG_FILE`; without the flag, `CONFIG_FILE` may be used. Relative paths resolve against the process working directory. When neither is set, only `./configs/config.local.yaml` is checked and built-in defaults apply if it is missing. A `CONFIG_FILE` that is set but empty or blank (`CONFIG_FILE is set but empty`), or an explicitly selected file that is missing, unreadable, or invalid, fails startup. Configuration errors are in English and name the field path, e.g. `server.port: must be between 1 and 65535`. The catalog YAML must exist and be valid.
 - **Precedence**: environment variables > selected file > built-in defaults. Fields map to `NAVI_<FIELD>` or `NAVI_<SECTION>__<FIELD>` (`__` between levels, `_` kept inside a key), for example `NAVI_STORAGE=/var/cache/navi`, `NAVI_SERVER__PORT=8081`, `NAVI_CATALOG__WATCH=false`, `NAVI_FAVICON__FETCH_TIMEOUT=5s`.
 - **Value semantics**: strings are kept as-is, paths are trimmed during resolution, and credentials must match exactly. An empty string overrides the file value: it can clear optional auth but not required paths. Numbers, booleans, and durations must be a single non-empty scalar; invalid values are errors. Durations use `250ms`, `3s`, `168h`; `7d` is not supported.
-- **Relative paths**: `storage` and `catalog.path` (including environment overrides) resolve relative to the selected config's directory. Without an implicit main config, the expected `configs/` directory is still the base, so the defaults are `configs/urls.yaml` and `.cache/`. Prefer absolute paths in deployments.
+- **Relative paths**: built-in defaults always use the process working directory: `configs/urls.yaml` for the catalog and `.cache/` for storage, including fields omitted from an existing config. Explicit relative paths in a file use that file's directory. Relative environment overrides use the config directory when the file exists, and the working directory when the implicit file is absent. No old locations are searched. Prefer absolute paths in deployments.
 - **Reloading**: main config changes take effect after a restart; only the catalog at `catalog.path` reloads live. Details of an invalid update appear in the server log as `catalog_reload_failed`; the page recovers once the file is fixed.
 - **Appearance defaults**: `theme` accepts `default` (follows the system: ink when dark, paper when light), `ink`, `paper`, `celadon`, `dusk`; `background_pattern` accepts `none`, `contour`, `flow`, `guilloche`, `stars`, `ridge`; `web_search` sets the default search engine. Choices made in the Appearance panel are stored in the current browser and take precedence over the config.
 
@@ -136,13 +136,13 @@ A link with one address redirects without probing. With both addresses, the **Na
 
 - Authentication is off when `auth.username` and `auth.password_hash` are both empty or `auth` is omitted, and on when both are set. Setting only one, or whitespace-only credentials, fails startup. Use a bcrypt password hash (cost 10–14; recommended 12), never a plaintext password.
 - Only SHA-256 session token digests live in memory, expire after 24 hours, and end on logout or restart. Cookies are HttpOnly and SameSite=Strict; no password or token is stored in localStorage.
-- With auth enabled, unauthenticated pages redirect to `/login`; the backend checks the session for the catalog, status, SSE, icons, and redirects. The login page, bundled static assets, and `/health` are public, and health reports only coarse status.
+- With auth enabled, unauthenticated pages redirect to `/login`; the backend checks the session for the catalog, status, SSE, icons, and redirects. The login page, bundled static assets, and `/healthz` are public, and health reports only coarse status.
 - Login is limited to 5 attempts per minute per directly connected IP. Forwarded headers are not trusted, so users behind a reverse proxy share the proxy's quota.
 - The catalog API returns the configured private and public URLs, so never put credentials in URLs. Only let trusted users edit the YAML, because the server requests the sites, icons, and redirect targets listed there.
 
-### Password configuration migration
+### Configure the login password
 
-Replace `auth.password` / `NAVI_AUTH__PASSWORD` with `auth.password_hash` / `NAVI_AUTH__PASSWORD_HASH`. Legacy fields fail explicitly. The login API still accepts `username/password`. With Apache `htpasswd` installed, run `htpasswd -nB -C 12 navi`, enter the password interactively, and copy the complete hash after the colon into the YAML value (single-quoted). Do not use `-b`, which exposes the password in process arguments. bcrypt passwords are limited to 72 UTF-8 bytes.
+The server accepts only `auth.password_hash` / `NAVI_AUTH__PASSWORD_HASH`. Plaintext configuration is rejected to prevent silently disabling authentication. The login API accepts `username/password`. This project is not deployed; old routes, protocols and cache formats have no compatibility adapters. With Apache `htpasswd` installed, run `htpasswd -nB -C 12 navi`, enter the password interactively, and copy the complete hash after the colon into the YAML value (single-quoted). Do not use `-b`, which exposes the password in process arguments. bcrypt passwords are limited to 72 UTF-8 bytes.
 
 The main configuration is limited to 1 MiB. Browser JSON responses are limited to 8 MiB and redirects are rejected.
 
@@ -159,7 +159,9 @@ For remote access, run Navi behind an HTTPS reverse proxy and set `NAVI_AUTH__SE
 The Dockerfile installs frontend dependencies from the lockfile, builds `web/dist`, then compiles a static Go binary. The runtime image is distroless with no Node, shell, or curl. Build with version metadata and run:
 
 ```sh
-VERSION=$(git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short=12 HEAD)
+npm --prefix web run build
+CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
+VERSION=$(./bin/navi --version | cut -d ' ' -f 2)
 docker build \
   --build-arg VERSION="$VERSION" \
   -t navi:local .
@@ -203,14 +205,18 @@ npm --prefix web run lint
 npm --prefix web run typecheck
 npm --prefix web run test
 npm --prefix web run build
-test -z "$(gofmt -l cmd internal web/embed.go)"
 go mod verify
-go test ./...
-go test -race ./...
+go mod tidy -diff
+test -z "$(gofmt -l $(git ls-files '*.go'))"
+test -z "$(go run golang.org/x/tools/cmd/goimports@v0.50.0 -local navi -l $(git ls-files '*.go'))"
 go vet ./...
+go vet -tags integration,scale ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+CGO_ENABLED=1 go test -race -count=1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 ```
 
-Go packages are listed explicitly so `./...` does not pick up third-party Go files inside `web/node_modules`.
+`go.mod` uses `ignore ./web/node_modules`, so `./...` checks all application packages without including third-party Go files from npm dependencies.
 
 Browser tests and component docs:
 
@@ -269,15 +275,7 @@ Docs (Chinese): [Design and protocol](docs/DESIGN.md) · [Error and status codes
 
 ### Layout exceptions
 
-| Rule / standard path | Actual path or behavior | Reason and basis | Scope | Revisit when |
-| --- | --- | --- | --- | --- |
-| §7.1: without a config file, paths default to the working directory | Without an implicit main config, built-in paths resolve from the directory of the expected `configs/config.local.yaml` (relative to the working directory `Source.WorkDir`) | Existing Load/finishConfig protocol in `internal/config/config.go`; keeps paths consistent with or without the implicit file | Default startup of the root Go service | The config protocol is deliberately changed |
-| §7.1: select config explicitly via `CONFIG_FILE` | Also supports `-c PATH` / `--config PATH`, with the flag taking precedence | Navi is an executable service; standard CLI config flags were explicitly requested, while the environment variable remains for container deployments | Config selection in `cmd/navi` | The CLI or config protocol is deliberately changed |
-
-### Code exceptions
-
-| Rule | Actual practice | Reason and basis | Scope | Revisit when |
-| --- | --- | --- | --- | --- |
+None. CLI config flags and their precedence follow Go standard §10.6 directly. See the [itemized review](docs/STANDARDS_AUDIT.md#例外逐项处理) for removed project exceptions and requirements explicitly defined by the standards.
 
 ## Contributing
 

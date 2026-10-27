@@ -33,6 +33,8 @@ func (f *apiFailure) Error() string { return f.message }
 var (
 	errInternal          = &apiFailure{status: http.StatusInternalServerError, code: "internal", message: "internal error"}
 	errMethodNotAllowed  = &apiFailure{status: http.StatusMethodNotAllowed, code: "method_not_allowed", message: "request method not supported"}
+	errPrecondition      = &apiFailure{status: http.StatusPreconditionFailed, code: "precondition_failed", message: "resource precondition failed"}
+	errInvalidRange      = &apiFailure{status: http.StatusRequestedRangeNotSatisfiable, code: "invalid_argument", message: "requested byte range cannot be served"}
 	errNoRoute           = &apiFailure{status: http.StatusNotFound, code: "not_found", message: "no such API endpoint"}
 	errCatalogMissing    = &apiFailure{status: http.StatusServiceUnavailable, code: "catalog_unavailable", message: "catalog not available yet"}
 	errIconsUnavailable  = &apiFailure{status: http.StatusNotFound, code: "icon_cache_unavailable", message: "icon cache unavailable"}
@@ -57,12 +59,24 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 		requestLogger(r).Error("request_failed", "method", r.Method, "path", r.URL.Path, "error", err)
 		failure = errInternal
 	}
-	writeJSON(w, failure.status, apiError{Error: apiErrorBody{Code: failure.code, Message: failure.message, Details: failure.details}})
+	writeJSON(w, r, jsonResponse{Status: failure.status, Payload: apiError{Error: apiErrorBody{Code: failure.code, Message: failure.message, Details: failure.details}}})
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
+type jsonResponse struct {
+	Status  int
+	Payload any
+}
+
+func writeJSON(w http.ResponseWriter, r *http.Request, response jsonResponse) {
+	encoded, err := json.Marshal(response.Payload)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	// The status is already sent; a write error means the client went away.
-	_ = json.MarshalWrite(w, payload)
+	w.WriteHeader(response.Status)
+	if _, err := w.Write(encoded); err != nil {
+		// The response has started, so report the transport failure without a second body.
+		requestLogger(r).Debug("response_write_failed", "error", err)
+	}
 }

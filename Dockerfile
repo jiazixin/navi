@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-COPY web/embed.go ./web/embed.go
+COPY web/*.go ./web/
 COPY --from=web-build /src/web/dist ./web/dist
 # The build context has no .git, so the version comes from the build argument.
 ARG VERSION=dev

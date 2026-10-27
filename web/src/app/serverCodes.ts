@@ -16,7 +16,7 @@ const statusTexts: Record<string, string> = {
 
 /** Returns the banner text for a degraded status code, or undefined for an unknown code. */
 export function statusText(code: string | undefined): string | undefined {
-  return code === undefined || statusTexts[code] === undefined
+  return code === undefined || !Object.hasOwn(statusTexts, code)
     ? undefined
     : errorText(new ApiError('service degraded', { status: 503, code, requestId: '' }), statusTexts)
 }
@@ -32,7 +32,7 @@ export function navigationFailureTitle(code: string): string {
   return errorText(
     new ApiError('navigation failed', {
       status: 503,
-      code: navigationTitles[code] === undefined ? 'link_unavailable' : code,
+      code: Object.hasOwn(navigationTitles, code) ? code : 'link_unavailable',
       requestId: '',
     }),
     navigationTitles,

@@ -2,7 +2,7 @@ package app
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"io/fs"
@@ -107,7 +107,7 @@ func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
 	}
 }
 
-func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
+func TestServerRedirectsAndRejectsUnknownPages(t *testing.T) {
 	t.Parallel()
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("single destination was probed: %s %s", r.Method, r.URL)
@@ -123,10 +123,12 @@ func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 		t.Fatalf("redirect = %d %q", redirect.Code, redirect.Header().Get("Location"))
 	}
 
-	page := httptest.NewRecorder()
-	server.ServeHTTP(page, authenticatedRequest(http.MethodGet, "/client-route", nil))
-	if page.Code != http.StatusOK || page.Body.String() != "<main>Navi</main>" {
-		t.Fatalf("static fallback = %d %q", page.Code, page.Body.String())
+	for _, path := range []string{"/client-route", "/navigation", "/index.html"} {
+		page := httptest.NewRecorder()
+		server.ServeHTTP(page, authenticatedRequest(http.MethodGet, path, nil))
+		if page.Code != http.StatusNotFound || !strings.Contains(page.Body.String(), `<div id="root"`) {
+			t.Fatalf("page %s = %d %q, want a not-found application shell", path, page.Code, page.Body.String())
+		}
 	}
 }
 
@@ -169,7 +171,7 @@ func newTestServer(t *testing.T, resolver *navigation.Resolver) *httpServer {
 			}},
 		}},
 	})
-	static := fs.FS(fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<main>Navi</main>")}})
+	static := fs.FS(fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(`<html><title>Navi</title><div id="root"></div></html>`)}})
 	server, err := newHTTPServer(httpOptions{
 		Config:  config.Config{Auth: config.AuthConfig{Username: "tester", PasswordHash: "$2a$10$MH76nh/43WkSzvdsv9cze.Jmxo2eu6fQkcVtBgMvT2IAXwdLje7Gu"}, Theme: "default", BackgroundPattern: "contour", WebSearch: "baidu"},
 		Catalog: store, Resolver: resolver, Static: static,
@@ -188,7 +190,7 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	response := httptest.NewRecorder()
 	server.writeFailurePage(response, request, failurePage{Status: http.StatusBadGateway, Code: `<script>alert("x")</script>`})
 	body := response.Body.String()
-	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
+	if response.Code != http.StatusBadGateway || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `data-retry-path="/go/one"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
 		t.Fatalf("failure response = %d %s", response.Code, body)
 	}
 	if strings.Contains(body, "secret") || strings.Contains(body, `<script>alert`) {
@@ -198,6 +200,44 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	server.ServeHTTP(head, authenticatedRequest(http.MethodHead, "/go/one", nil))
 	if head.Body.Len() != 0 {
 		t.Fatal("HEAD failure returned body")
+	}
+}
+
+func TestNavigationFailureTextBelongsToTheClient(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t, nil)
+	server.static = fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(`<html><div id="root"></div><script src="/assets/app.js"></script></html>`)}}
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/go/missing", nil))
+	body := response.Body.String()
+	if !strings.Contains(body, `data-navigation-error="link_unavailable"`) || !strings.Contains(body, `data-retry-path="/go/missing"`) {
+		t.Fatalf("client navigation metadata missing: %q", body)
+	}
+	if strings.Contains(body, "<main>") || strings.Contains(body, "<h1>") || strings.Contains(body, "重试访问") {
+		t.Fatalf("server rendered navigation text: %q", body)
+	}
+}
+
+func TestNavigationFailureRequiresTheBuiltClient(t *testing.T) {
+	t.Parallel()
+	for name, static := range map[string]fs.FS{
+		"missing filesystem": nil,
+		"missing index":      fstest.MapFS{},
+		"missing root":       fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<html></html>")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := newTestServer(t, nil)
+			server.static = static
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, authenticatedRequest(http.MethodGet, "/go/missing", nil))
+			var failure apiError
+			if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil {
+				t.Fatalf("decode missing-client error: %v; body=%q", err, response.Body)
+			}
+			if response.Code != http.StatusServiceUnavailable || failure.Error.Code != "frontend_not_built" {
+				t.Fatalf("response = %d %s", response.Code, response.Body)
+			}
+		})
 	}
 }
 
@@ -218,7 +258,7 @@ func TestStaticRoutesRejectMissingAssetsAndInjectAppearance(t *testing.T) {
 			t.Errorf("%s returned %d, want 404", route, response.Code)
 		}
 	}
-	for _, route := range []string{"/", "/index.html", "/login"} {
+	for _, route := range []string{"/", "/login"} {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, authenticatedRequest(http.MethodGet, route, nil))
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `data-configured-theme="celadon" data-configured-pattern="ridge" data-configured-search="bing"`) {

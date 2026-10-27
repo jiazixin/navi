@@ -7,6 +7,7 @@ import (
 )
 
 // unusedConnections tracks accepted connections that have not started a request.
+// mu guards conns for both ConnState callbacks and shutdown.
 // Browsers pre-open spare connections; net/http's Shutdown waits up to five seconds
 // before treating them as idle, which can outlast the configured shutdown timeout.
 type unusedConnections struct {

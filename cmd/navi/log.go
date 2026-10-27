@@ -9,12 +9,13 @@ import (
 
 // newLogger creates the process logger from the validated logging settings.
 // Navi logs only to the given writer (stdout), so there is nothing to close.
-func newLogger(settings config.LoggingConfig, w io.Writer) *slog.Logger {
+func newLogger(settings config.LoggingConfig, w io.Writer) (*slog.Logger, func() error, error) {
 	options := &slog.HandlerOptions{Level: loggingLevel(settings.Level)}
+	closeLog := func() error { return nil }
 	if settings.Format == "logfmt" {
-		return slog.New(slog.NewTextHandler(w, options))
+		return slog.New(slog.NewTextHandler(w, options)), closeLog, nil
 	}
-	return slog.New(slog.NewJSONHandler(w, options))
+	return slog.New(slog.NewJSONHandler(w, options)), closeLog, nil
 }
 
 func loggingLevel(value string) slog.Level {

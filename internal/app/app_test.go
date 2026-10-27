@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -155,7 +155,7 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	if event := awaitAppSSEEvent(t, reader, catalog.EventCatalogError); event.Revision != 1 {
-		t.Fatalf("catalog.error revision = %d, want 1", event.Revision)
+		t.Fatalf("catalog_error revision = %d, want 1", event.Revision)
 	}
 	status := waitAppStatus(t, baseURL+"/api/status", "degraded")
 	if status.Message == "" {
@@ -166,7 +166,7 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	if event := awaitAppSSEEvent(t, reader, catalog.EventCatalogUpdated); event.Revision != 2 {
-		t.Fatalf("catalog.updated revision = %d, want 2", event.Revision)
+		t.Fatalf("catalog_updated revision = %d, want 2", event.Revision)
 	}
 	status = waitAppStatus(t, baseURL+"/api/status", "ok")
 	if status.Revision != 2 {

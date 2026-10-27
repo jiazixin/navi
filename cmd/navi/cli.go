@@ -38,31 +38,31 @@ type options struct {
 
 // parseArgs accepts -x and --x spellings, "--config file" and "--config=file".
 func parseArgs(args []string) (options, error) {
-	var o options
+	var opts options
 	flags := flag.NewFlagSet("navi", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	setConfig := func(v string) error {
 		if strings.TrimSpace(v) == "" {
 			return errors.New("configuration path must not be empty")
 		}
-		if o.configFile != "" && o.configFile != v {
-			return fmt.Errorf("different files given for -c/--config: %q and %q", o.configFile, v)
+		if opts.configFile != "" && opts.configFile != v {
+			return fmt.Errorf("different files given for -c/--config: %q and %q", opts.configFile, v)
 		}
-		o.configFile = v
+		opts.configFile = v
 		return nil
 	}
 	flags.Func("c", "", setConfig)
 	flags.Func("config", "", setConfig)
-	flags.BoolVar(&o.help, "h", false, "")
-	flags.BoolVar(&o.help, "help", false, "")
-	flags.BoolVar(&o.version, "version", false, "")
+	flags.BoolVar(&opts.help, "h", false, "")
+	flags.BoolVar(&opts.help, "help", false, "")
+	flags.BoolVar(&opts.version, "version", false, "")
 	if err := flags.Parse(args); err != nil {
 		return options{}, err
 	}
 	if flags.NArg() > 0 {
 		return options{}, fmt.Errorf("unexpected argument %q", flags.Arg(0))
 	}
-	return o, nil
+	return opts, nil
 }
 
 // configPath returns --config, then CONFIG_FILE, then the default file.

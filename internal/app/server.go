@@ -153,8 +153,8 @@ func recoverPanic(w *responseRecorder, r *http.Request, logger *slog.Logger) {
 	if recovered == nil {
 		return
 	}
-	if recovered == http.ErrAbortHandler {
-		panic(recovered)
+	if err, ok := recovered.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+		panic(http.ErrAbortHandler)
 	}
 	logger.Error("http_handler_panic", "method", r.Method, "path", r.URL.Path, "error", fmt.Sprint(recovered))
 	if !w.wroteHeader {
@@ -192,7 +192,7 @@ func (s *httpServer) logAccess(logger *slog.Logger, options accessRecord) {
 // page fallback "GET /" would otherwise answer every GET with 404 instead of 405.
 func (s *httpServer) allowedMethods(r *http.Request) string {
 	var allowed []string
-	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		probe := r.Clone(r.Context())
 		probe.Method = method
 		if _, pattern := s.mux.Handler(probe); pattern != "" && pattern != "GET /" {
@@ -205,8 +205,8 @@ func (s *httpServer) allowedMethods(r *http.Request) string {
 // healthPath is the unauthenticated health check (代码规范.md §5.1).
 const healthPath = "/healthz"
 
-// routerErrorWriter replaces the router's plain-text 404 and 405 responses
-// with the JSON error body. Handlers write JSON errors themselves.
+// routerErrorWriter converts router and binary API errors to the JSON envelope.
+// Other handlers write their structured errors directly.
 type routerErrorWriter struct {
 	*responseRecorder
 	request  *http.Request
@@ -214,15 +214,27 @@ type routerErrorWriter struct {
 }
 
 func (w *routerErrorWriter) WriteHeader(status int) {
+	isAPI := isAPIPath(w.request.URL.Path)
+	if isAPI {
+		// ServeContent removes cache headers on errors; every API response stays no-store.
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	plainText := strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain")
-	if !w.wroteHeader && plainText && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed) {
+	var failure *apiFailure
+	switch {
+	case plainText && status == http.StatusNotFound:
+		failure = errNoRoute
+	case plainText && status == http.StatusMethodNotAllowed:
+		failure = errMethodNotAllowed
+	case isAPI && status == http.StatusPreconditionFailed:
+		failure = errPrecondition
+	case isAPI && status == http.StatusRequestedRangeNotSatisfiable:
+		failure = errInvalidRange
+	}
+	if !w.wroteHeader && failure != nil {
 		w.replaced = true
 		w.Header().Del("Content-Length")
-		if status == http.StatusNotFound {
-			writeError(w.responseRecorder, w.request, errNoRoute)
-		} else {
-			writeError(w.responseRecorder, w.request, errMethodNotAllowed)
-		}
+		writeError(w.responseRecorder, w.request, failure)
 		return
 	}
 	w.responseRecorder.WriteHeader(status)
@@ -276,6 +288,7 @@ func (r *responseRecorder) ReadFrom(reader io.Reader) (int64, error) {
 }
 
 func (r *responseRecorder) Flush() {
+	// http.Flusher cannot report errors; ResponseController uses FlushError instead.
 	_ = r.FlushError()
 }
 

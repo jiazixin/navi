@@ -1,7 +1,7 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +35,10 @@ func TestServerReportsUnavailableWhenCatalogHasNoSnapshot(t *testing.T) {
 			}
 			if recorder.Header().Get("Cache-Control") != "no-store" {
 				t.Fatalf("GET %s Cache-Control = %q, want no-store", route, recorder.Header().Get("Cache-Control"))
+			}
+			var failure apiError
+			if err := json.Unmarshal(recorder.Body.Bytes(), &failure); err != nil || failure.Error.Code != "catalog_unavailable" {
+				t.Fatalf("GET %s body = %q, error = %v, want the catalog_unavailable error envelope", route, recorder.Body.String(), err)
 			}
 		})
 	}

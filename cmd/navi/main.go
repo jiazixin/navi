@@ -27,21 +27,21 @@ func main() {
 // run reports usage and startup errors as plain text on stderr; once the
 // logger is ready, failures are logged.
 func run(args []string, stdout, stderr io.Writer) int {
-	o, err := parseArgs(args)
+	opts, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "navi: %v\nRun 'navi --help' for usage.\n", err)
 		return exitUsage
 	}
 	build := currentBuild()
 	switch {
-	case o.help:
+	case opts.help:
 		fmt.Fprint(stdout, usage)
 		return exitOK
-	case o.version:
+	case opts.version:
 		fmt.Fprintln(stdout, "navi", build)
 		return exitOK
 	}
-	path, explicit, err := o.configPath(os.LookupEnv)
+	path, explicit, err := opts.configPath(os.LookupEnv)
 	if err != nil {
 		fmt.Fprintf(stderr, "navi: config: %v\n", err)
 		return exitFailure
@@ -56,7 +56,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "navi: config: %v\n", err)
 		return exitFailure
 	}
-	logger := newLogger(cfg.Logging, stdout)
+	logger, closeLog, err := newLogger(cfg.Logging, stdout)
+	if err != nil {
+		fmt.Fprintf(stderr, "navi: log: %v\n", err)
+		return exitFailure
+	}
+	defer func() {
+		if err := closeLog(); err != nil {
+			fmt.Fprintf(stderr, "navi: log: %v\n", err)
+		}
+	}()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	context.AfterFunc(ctx, stop) // a second signal terminates the process

@@ -7,6 +7,7 @@ import (
 )
 
 // Store publishes complete catalog snapshots without blocking readers.
+// mu serializes revision allocation; current atomically publishes immutable snapshots.
 type Store struct {
 	mu           sync.Mutex
 	nextRevision uint64

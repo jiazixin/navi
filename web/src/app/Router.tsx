@@ -10,6 +10,11 @@ const FailurePage = lazy(() =>
     default: module.NavigationFailure,
   })),
 )
+const NotFoundPage = lazy(() =>
+  import('../features/navigation/NotFoundPage').then((module) => ({
+    default: module.NotFoundPage,
+  })),
+)
 
 type AppRouterProps = {
   configuredSearch: WebSearchProviderID
@@ -24,7 +29,8 @@ export function AppRouter({ configuredSearch, navigationError, retryPath }: AppR
       <Suspense fallback={<div role="status">正在加载…</div>}>
         <AuthGate>
           <Routes>
-            <Route path="*" element={<HomePage configuredSearch={configuredSearch} />} />
+            <Route path="/" element={<HomePage configuredSearch={configuredSearch} />} />
+            <Route path="*" element={<NotFoundPage />} />
             <Route path="/login" element={null} />
             <Route
               path="/go/*"

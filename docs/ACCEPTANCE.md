@@ -1,61 +1,105 @@
-# 前后端全仓规范整改验收（2026-10-27）
+# 未上线项目全仓规范复核验收（2026-10-27）
 
-本轮按目录、通用、Go、Web、React 五份规范复核前后端及测试、构建配置，不限于 `setSessionCookie` 和 `createSession`。逐条证据、适用范围和规范本身的特殊约束见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md)。验证对象为基于 `01a09dc` 的当前工作区，保留此前已有修改和本地配置；没有重置、提交、推送或重启用户服务。
+验证对象为 `31ea97b` 加本轮工作区改动。开始时 Git 工作区干净；按根目录的目录、通用、Go、Web、React 五份规范检查前后端、测试、工具配置、CI 与文档。当前源码清单为 274 个文件，含 28 个 Go 生产文件、32 个 Go 测试文件和 66 个前端生产模块。逐条适用范围与证据见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md)。
 
-本轮发现的遗漏已修复，下列本地验证均通过。Go 规范要求逐字保留的版本测试模板、固定的 `config.Load(Source)` 签名，以及 README 已登记的项目例外，均在复核表中单独说明；不把这些情况隐藏后宣称“零例外”。
+此前代码并非全部符合规范；检查发现的问题已直接整改。用户追加要求后，又消除了配置路径、Go 导航文案和剪贴板 lint 抑制三项可统一的做法。用户更新 Go 规范至 1.0.1 后，再授权修复剩余问题并提交；当前已完成 1.0.2 修订，测试模板的操作超时、上下文签名和路径说明均已统一，见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md#go-102-补充修正)。未降低检查门槛或更新视觉基线，也不以检查通过证明不存在任何缺陷。
 
-## 主要整改
+## 最终修复与提交前验证（Go 规范 1.0.2）
 
-- 参数检查覆盖生产代码、测试助手和 Canvas 渲染器。会话、Cookie、校验、缓存读写等超过三个参数的函数改为参数对象；布尔命名、组件 Props、导出注释、错误构造及资源释放说明一并整理。
-- 缓存增加文件/元数据/目录扫描/索引数量边界，使用 `os.Root` 防止缓存目录和子文件通过符号链接逃逸。新增测试先复现越界读取及超大写入，再验证拒绝。运行期文件 I/O 传递调用方 context，探测与刷新逻辑注入时钟，测试 goroutine 也有 WaitGroup 所有者。
-- 目录 URL 禁止 userinfo，图标发现/下载与探测再次校验；探测并发、缓存和事件订阅数量有界。登录长度校验返回 400 字段详情，前后端共享 JSON 契约样例。
-- 全局状态归 `app/`，跨域通过公开入口，时间/数字格式化归 `lib/format/`。接入集中懒加载路由表并保留旧 SPA 书签回退；目录页、搜索文本和提供方写入 URL。
-- JSON 与 SSE 共用应用请求模块。SSE 拒绝重定向、统一处理 401、限制未完成事件大小并设置空闲超时，最多自动重试两次，支持手动/网络恢复重连。错误与表单字段提示统一处理。
-- 颜色、间距、圆角、字号、阴影、时长集中到样式变量；去除固定内联样式和不必要的 memo。只保留一个应用图标库，三个 CC0 品牌路径以固定版本、可重建方式随源码保存。
-- 补齐 ESLint、格式化、CI 检查顺序、断点登记、技术决定与审计记录。没有调低测试门槛或更新视觉基线来掩盖回归。
+在用户 1.0.1 更新的基础上，1.0.2 明确测试辅助函数可从 t.Context() 取得上下文，但需要超时的操作仍须派生操作 deadline；补全 WorkDir 在相对配置路径、内置默认路径和文件省略字段中的作用。附录 C 与项目版本测试均增加 2 分钟命令超时、10 秒二进制超时及 5 秒 WaitDelay，超时错误保留上下文原因。CLI 的三个纯函数测试及表驱动子测试也已补齐并行和 got/want 格式。
 
-此前的 bcrypt `password_hash`、SHA-256 会话摘要、HttpOnly Cookie、请求大小限制等整改继续保留。其他部署使用旧 `auth.password` 时仍须按 README 迁移；本轮没有再次改写用户本地凭证。
+实际验证：
 
-## 实际验证结果
+- 全部 Go 示例通过 gofmt，附录 B/C 与项目三份版本源文件逐字一致。
+- 隔离提取的新版模板执行 `go test -race -tags integration -count=1 -timeout=3m ./...`，通过。
+- 先完成 Web build，再执行全仓 `go test -race -tags integration -count=1 -timeout=5m ./...`：7 个有测试包通过，web 嵌入包编译通过；CLI 测试格式与并行补齐后，再验证受影响的 cmd/navi 包。
+- Go mod verify、tidy -diff、含未提交新文件的 gofmt/goimports@v0.50.0、默认及 integration/scale vet、integration staticcheck@v0.8.2、四平台 integration vet、实际二进制构建通过。
+- 故障注入先用 1.0.1 模板复现卡住命令只能触发测试总超时，再用 1.0.2 验证副本将单次操作时限缩短为 100 毫秒，分别运行阻塞的 Git 替身和阻塞的版本二进制：两者均在操作时限结束后报告 context deadline exceeded，没有触发测试总超时。正式模板的 2 分钟/10 秒时限未缩短。
 
-主机：macOS ARM64、Go 1.27.3、Node 26.12.1、npm 11.20.0。Linux 视觉验证：ARM64、Node 24.22.1、Playwright 1.62.1，使用 CI 固定镜像摘要 `sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e`；Node 官方压缩包核验 SHASUMS256。
+本轮仅追加 Go 测试与规范修订，Web 单测、浏览器、视觉、容器和发布打包的最近实际验证见下方分轮记录，未冒充本轮重跑。最终日志位于被忽略的 `.cache/standards-final-20261027/`。本地配置与运行数据保留，交付包含本次累计整改的本地 Git 提交，不含远端推送或部署。
 
-| 检查 | 实际命令 / 范围 | 结果 |
+另在同一代码工作目录检出六个仓库持有 Go 规范 1.0.1 副本，版本与文件摘要已列入本机 `.cache/standards-final-20261027/other-standard-copies.json`；本次提交只覆盖 Navi，其他仓库的规范和实现同步需在相应仓库进行。
+
+## Go 规范 1.0.1 复核与项目同步（修复剩余问题前）
+
+本次只修改 CLI 局部变量命名、两份版本测试及复核记录：parseArgs/run 使用 opts；版本单测和构建集成测试逐字同步用户更新后的附录 C。配置加载保留唯一的 Load(Source)，新版规范已明确其启动期本地读取的适用边界。规范文件的 SHA-256 在本次操作前后相同。
+
+实际通过的检查：
+
+- 将附录 B/C 的三份完整源文件提取至隔离模块，执行 `go test -race -tags integration -count=1 -timeout=2m ./...`。
+- 按构建顺序重新执行 `npm --prefix web run build`，随后执行项目 `go test -race -tags integration -count=1 -timeout=2m ./cmd/navi`。
+- 四份受影响 Go 文件的 gofmt、goimports@v0.50.0；cmd/navi 的 integration 标签 vet（linux/darwin × amd64/arm64）、staticcheck@v0.8.2；实际 Go 二进制构建。
+- 三份项目版本源文件与新版附录逐字一致；用户更新的规范原文未被本次同步覆盖。
+
+该轮输出保存在被忽略的 `.cache/standards-update-20261027/`。当时没有重跑其余业务包测试、Web 单测、浏览器、视觉、容器或发布打包；下节各轮结果均有各自范围。当时发现模板虽能运行，仍缺少操作 deadline 及辅助函数签名边界；这些问题现已由 1.0.2 修复。
+
+## 首轮全仓整改
+
+- **目录与构建**：包级文档统一归 `doc.go`，Docker 同步包含嵌入包文档；品牌生成脚本按脚本位置定位仓库，可从其他工作目录运行。当前依赖图未发现基础模块反向依赖业务、跨域私有导入、循环依赖或生产代码导入测试代码。
+- **直接统一协议**：SSE 事件名和 JSON type 改为 snake_case；缓存时间仅接受 UTC 三位毫秒；登录成功响应、目录 tags 和状态字段严格校验。旧页面路径不再作为首页别名，统一 HTTP 404 与懒加载的不存在页面。没有双事件名、旧路由或旧缓存格式适配器。
+- **重试与界面状态**：SSE 收到响应头不再清零重试次数；服务端通知只刷新数据，显式刷新或网络恢复才重启订阅预算。自动重试最多两次，状态请求失败显示提示并保留已有目录。
+- **错误契约**：状态不可用返回 503 错误信封；JSON 编码失败在发送状态前转换为 500；图标保留底层错误用于日志，412/416 条件与范围错误也使用 JSON 信封。所有 API（包括 SSE、图标及其错误）保持 no-store。读取响应和事件流失败保留 request ID。
+- **字段与未知代码**：登录字段提示按 reason 映射，未知原因安全降级；错误/状态/导航代码表不读取对象原型属性。未知枚举的正常容错继续保留，不把它当成旧版本支持。
+- **配置与日志**：主配置拒绝非普通文件；配置校验保留底层错误链；会话与 Cookie 参数格式化脱敏；日志构造及关闭符合 CLI 模板；README 与开发检查命令使用固定工具版本。旧验收结论和历史计划已标明适用范围。
+
+明文密码配置仍被明确拒绝，以防错误配置静默关闭认证。这是输入校验，不是旧配置支持。首轮未读取或改写用户凭证、迁移真实配置、清理既有运行数据，当时未提交、推送或部署。
+
+## 追加例外清理验证（1.0.1 同步前）
+
+- **路径来源**：内置 `.cache`、`configs/urls.yaml` 始终按工作目录解析，包括实际配置文件省略的字段；文件显式路径按配置目录，无文件的相对环境覆盖按工作目录。不搜索旧位置。
+- **导航错误页面**：删除 Go 中文提示和备用 HTML；只向真实构建入口注入错误码、重试路径和外观配置，React 负责文案。入口缺失或不含有效根节点时返回 503 `frontend_not_built`。
+- **剪贴板**：删除唯一的单行 lint 抑制；访问和写入均在现有 try/catch 内，API 缺失或权限拒绝显示失败提示，不保留旧浏览器 API 适配。
+- **说明同步**：中英文 README、示例配置、设计和接口文档同步实际行为。CLI 配置选择、声明文件和共享样例遵循规范，移出项目例外表；版本测试逐字核对原模板。详细原因见 [例外逐项处理](STANDARDS_AUDIT.md#例外逐项处理)。
+
+先以回归测试复现三个路径来源错误、Go 生成文案和入口缺失仍返回备用 HTML，再完成修复。主机环境与首轮一致，当前改动的验证如下：
+
+| 检查 | 实际范围与结果 |
+| --- | --- |
+| Web 静态与构建 | format:check、零 warning lint、typecheck、Vite build 全部通过 |
+| Web 单元与契约 | 28 个文件、141 项通过；语句 96%、分支 85.99%、函数 95.34%、行 97.36% |
+| 真实服务 E2E | Chromium、Firefox、WebKit 共 24 项通过，使用独立合成配置与目录 |
+| Go 模块、格式与静态 | mod verify、tidy -diff、gofmt、goimports@v0.50.0、vet、integration/scale 标签 vet、staticcheck@v0.8.2 全部通过 |
+| Go 竞态 | go test -race -count=1 ./...；7 个有测试包通过，web 嵌入包编译通过 |
+| Go 版本与模板 | integration 版本构建测试通过；两份版本测试文件与当时的 Go 规范 1.0.0 附录 C 一致 |
+| Go 平台 | linux/darwin × amd64/arm64 的 vet 全部通过 |
+| 配置 Fuzz | FuzzDecodeConfig，5 秒、parallel=2，通过 |
+| Go 依赖安全 | govulncheck@v1.9.0：0 个可达/导入包漏洞；另有 1 个未导入模块包公告 |
+| 干净副本 | 复制当前 274 个非忽略文件，排除 Git、真实配置、既有依赖和产物；重新 npm ci、Web build、Go test/build，通过 |
+| 干净启动 | 缺省主配置、只含部分字段的嵌套主配置、仅环境覆盖三种场景均读取正确路径；health、目录、嵌入导航失败页及 SIGTERM exit 0 均通过 |
+| 差异与文档 | git diff --check；旧例外与兼容描述复核；规范基线未改动 |
+
+该轮输出保存在被忽略的 `.cache/exception-cleanup-20261027/`。平台 vet 的一次并发执行碰上 Web 构建清空 dist，随后按先 Web 构建、后 Go 检查的要求重跑四个平台，均通过。没有修改真实配置或运行数据，当时未提交、推送或部署。
+
+下节保留追加清理前的全仓验证记录。追加修改未重复执行前端 fixture E2E、Linux 视觉、Storybook、容器和四平台发布打包，不能把这些首轮结果当成追加修改后的重新验证。
+
+## 首轮全仓验证（追加清理前）
+
+主机：macOS ARM64、Go 1.27.3、Node 26.12.1、npm 11.20.0。Linux 视觉环境为 ARM64、Node 24.22.1、Playwright 1.62.1，使用 CI 固定镜像摘要 `sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e`；Node 压缩包核验官方 SHASUMS256。
+
+| 检查 | 实际范围 | 结果 |
 | --- | --- | --- |
-| Web 格式 | `npm --prefix web run format:check` | 通过 |
-| Web 静态/类型 | `npm --prefix web run lint`、`npm --prefix web run typecheck` | 通过，无 lint warning |
-| Web 单元/契约 | `npm --prefix web run test` | 28 个文件、125 项通过；语句 95.40%、分支 85.38%、函数 94.73%、行 96.90% |
-| Web 构建 | `npm --prefix web run build` | 通过；ES2022，无发布 sourcemap |
-| Storybook | `npm --prefix web run storybook:test` | 测试模式构建通过；不冒充浏览器交互测试 |
-| 前端 E2E | `npm --prefix web run test:e2e` | Chromium / Firefox / WebKit 共 45 项通过，含千链接、键盘、布局、axe、URL 分享 |
-| 生产 E2E | `npm --prefix web run test:production` | 三浏览器共 24 项通过；真实 Go 服务、临时目录与合成配置 |
-| Linux 视觉 | `npm --prefix web run test:visual -- --workers=2` | 16 项通过、18 张既有 Linux 基线全部匹配；本轮没有接受新基线 |
-| Go 模块 | `go mod verify`、`go mod tidy -diff` | 通过，无 tidy 差异 |
-| Go 格式 | gofmt；`goimports@v0.50.0 -local navi` | 通过，覆盖当前 cmd/internal/embed 源码及测试 |
-| Go vet / build | linux/darwin × amd64/arm64；`CGO_ENABLED=0 ... go build -trimpath` | 四个平台分别通过 |
-| 扩展 vet | `go vet -tags integration,scale ./...` | 通过 |
-| Go 静态 | `staticcheck@v0.8.2 ./...` | 通过 |
-| Go 竞态 | `go test -race -count=1 ./...` | 7 个有测试包通过，web 嵌入包编译通过 |
-| 版本集成 | `go test -tags integration -count=1 ./cmd/navi` | 通过 |
-| Fuzz | DecodeCatalog、DecodeConfig、DecodeLogin、ValidateIcon、DiscoverCandidates，各 `-fuzztime=5s -parallel=2` | 5 个目标通过 |
-| Go 漏洞 | `govulncheck@v1.9.0 ./...` | 0 个可达漏洞，0 个导入包漏洞；另有 1 个未导入模块包的公告，未抑制 |
-| npm 漏洞 | 完整 `npm audit --audit-level=high` 及 `--omit=dev` | 均为 0 个漏洞 |
-| 干净构建 | 当前 266 个源码/配置/文档文件复制到隔离目录，排除真实配置、依赖与产物；重新 `npm ci`、Web build、Go build | 通过；合成配置下 health、静态 UI、认证、目录、状态、退出登录和 SIGTERM exit 0 |
-| GoReleaser | 官方 2.18.3 二进制校验 SHA-256；`check`；`release --snapshot --clean --parallelism 2` | 通过；四平台压缩包、配置示例和 SHA-256 校验通过；仅临时修改输出目录到 `.cache/verification/release-output`，未发布 |
-| 容器 | 从隔离当前源码 Docker build；UID/GID 65532、配置目录只读、缓存 volume 可写 | 通过；health、静态资源、认证、退出登录和 SIGTERM exit 0 |
-| 差异检查 | `git diff --check`；参数/布尔/跨域导入扫描 | 通过；扫描命中的强制版本模板、原协议字段和明确公开入口已逐项核实 |
+| Web 格式、静态、类型 | format:check、lint（零 warning）、typecheck | 通过 |
+| Web 单元与契约 | Vitest 全套 | 28 个文件、141 项通过；语句 96.01%、分支 86.02%、函数 95.34%、行 97.36% |
+| Web 构建 | Vite build | 通过；ES2022，无发布 sourcemap |
+| Storybook | storybook:test | 测试模式构建通过；并非浏览器交互测试 |
+| 三浏览器 E2E | Chromium、Firefox、WebKit | 前端 45 项、真实 Go 服务 24 项通过 |
+| Linux 视觉 | test:visual -- --workers=2 | 16 项通过，18 张原有基线匹配，未更新基线 |
+| Go 模块 | go mod verify、go mod tidy -diff | 通过，无 tidy 差异 |
+| Go 格式与静态 | gofmt、goimports@v0.50.0、vet、带 integration/scale 标签的 vet、staticcheck@v0.8.2 | 通过；检查含新增未提交文件 |
+| 平台检查 | linux/darwin × amd64/arm64 的 vet；GoReleaser 四平台 build | 通过 |
+| Go 竞态 | go test -race -count=1 ./... | 7 个有测试包通过，web 嵌入包编译通过 |
+| 版本协议 | go test -tags integration ./cmd/navi -count=1 | 通过 |
+| Fuzz | DecodeCatalog、DecodeConfig、DecodeLogin、ValidateIcon、DiscoverCandidates，各 5 秒、parallel=2 | 五个目标通过 |
+| 依赖安全 | govulncheck@v1.9.0；完整 npm audit | Go 0 个可达/导入包漏洞，另有 1 个未导入模块包公告；npm 0 个漏洞 |
+| 干净副本 | 仅复制当前非忽略文件，排除 Git、真实配置、依赖和构建产物；重新 npm ci、格式/lint/类型/单测、Web build、Go test/build | 通过；合成配置下 health、资源、登录、目录、状态、404、退出登录和 SIGTERM exit 0 |
+| GoReleaser | 2.18.3 check；snapshot 四平台构建、压缩包内容与 SHA-256 | 通过；本地生成，未发布；最终快照复用已单独验证的 Web 构建，跳过 before 钩子 |
+| 容器 | 从干净副本 Docker build；运行 UID 65532、配置只读、缓存 volume 可写 | 通过；合成配置的接口和退出流程正常，SIGTERM exit 0 |
+| 结构与差异 | TypeScript 导入图、Go AST 参数/包注释、生成资源、git diff --check | 通过；仅两个强制版本模板闭包有 4/5 参数，已按具体模板条款登记 |
 
-完整 npm 审计覆盖开发依赖。Go 模块公告为 x/crypto/openpgp 的 GO-2026-5932，本项目不导入该包；不能把“可达漏洞为 0”改写为整个依赖模块不存在任何公告。
+首轮先用回归测试复现时间格式、非普通配置文件、错误链、SSE 重试、503 信封、图标缓存头/412/416、字段原因映射等问题，再修复。测试环境缺少 IntersectionObserver 的情况由 jsdom 测试替身处理，生产代码不保留旧浏览器分支。
 
-最终命令输出保存在本机被忽略的 `.cache/verification/results/`，仅作为本轮证据，不提交测试报告。隔离目录和发布快照也位于 `.cache/verification/`，不包含用户配置。
+首轮输出保存在本机被忽略的 `.cache/standards-recheck-20261027/`。Go 漏洞结果不等于整个依赖模块没有任何公告；Storybook 的非发布测试构建有 vendor chunk 大小提示，不是 lint warning，未调高阈值掩盖它。
 
-## 验证中发现并消除的回归
+## 验证边界
 
-- 初次高并发 E2E 的千链接渲染等待失败，在限定两个 worker 后通过，未延长断言时限。
-- 新路由表曾遗漏 `/navigation` 等书签的 SPA 回退，生产集成发现后恢复原行为，并增加路由回归测试。
-- 样式整理曾把秒数进度应用到错误元素，Linux 像素比较发现后修正几何变量的类型写法；保留原 18 张基线重跑通过。
-- 更新语义定位断言时误改了一处搜索 option 的 ARIA 属性，已恢复正确的 `aria-selected` 检查；45 项 E2E 重新全部通过。
-
-## 尚未执行的外部检查
-
-远端 GitHub Actions、真实手机触控、人工 200%/400% 缩放和线上反向代理环境没有执行。本机三浏览器和容器测试不能替代这些检查。现有视觉基线本轮未更新；任何后续基线变更仍须按项目规则在人类评审后提交。本任务未提交、推送或部署。
+未运行远端 GitHub Actions、真实手机触控、人工 200%/400% 缩放及实际反向代理环境。当前本地三浏览器、Linux 视觉和容器验证不能替代这些检查。项目尚未上线，不保留旧协议适配；用户最终授权将本轮累计整改作本地提交，未授权远端推送或部署。

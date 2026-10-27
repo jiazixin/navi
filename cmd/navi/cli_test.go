@@ -6,6 +6,7 @@ import (
 )
 
 func TestParseArgs(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		args []string
 		want options
@@ -21,15 +22,17 @@ func TestParseArgs(t *testing.T) {
 		{[]string{"--version"}, options{version: true}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			t.Parallel()
 			got, err := parseArgs(tc.args)
 			if err != nil || got != tc.want {
-				t.Fatalf("got %+v, %v; want %+v", got, err, tc.want)
+				t.Fatalf("got (%+v, %v), want (%+v, nil)", got, err, tc.want)
 			}
 		})
 	}
 }
 
 func TestParseArgsErrors(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		args []string
 		want string
@@ -45,6 +48,7 @@ func TestParseArgsErrors(t *testing.T) {
 		{[]string{"--", "config.yaml"}, `unexpected argument "config.yaml"`},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			t.Parallel()
 			_, err := parseArgs(tc.args)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("got %v, want %q", err, tc.want)
@@ -54,6 +58,7 @@ func TestParseArgsErrors(t *testing.T) {
 }
 
 func TestConfigPath(t *testing.T) {
+	t.Parallel()
 	env := func(values map[string]string) func(string) (string, bool) {
 		return func(name string) (string, bool) {
 			value, ok := values[name]
@@ -73,9 +78,10 @@ func TestConfigPath(t *testing.T) {
 		{"flag ignores blank environment", "flag.yaml", map[string]string{"CONFIG_FILE": " "}, "flag.yaml", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			path, explicit, err := options{configFile: tc.flag}.configPath(env(tc.env))
 			if err != nil || path != tc.wantPath || explicit != tc.wantExplicit {
-				t.Fatalf("got %q, %v, %v; want %q, %v", path, explicit, err, tc.wantPath, tc.wantExplicit)
+				t.Fatalf("got (%q, %v, %v), want (%q, %v, nil)", path, explicit, err, tc.wantPath, tc.wantExplicit)
 			}
 		})
 	}

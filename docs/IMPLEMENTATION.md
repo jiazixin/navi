@@ -25,11 +25,15 @@ npm --prefix web run lint
 npm --prefix web run typecheck
 npm --prefix web run test
 npm --prefix web run build
-test -z "$(gofmt -l cmd internal web/embed.go)"
 go mod verify
-go test ./...
-go test -race ./...
+go mod tidy -diff
+test -z "$(gofmt -l $(git ls-files '*.go'))"
+test -z "$(go run golang.org/x/tools/cmd/goimports@v0.50.0 -local navi -l $(git ls-files '*.go'))"
 go vet ./...
+go vet -tags integration,scale ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+CGO_ENABLED=1 go test -race -count=1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
@@ -58,12 +62,12 @@ Linux 可在 `web/` 执行 `npx playwright install --with-deps` 安装浏览器�
 
 ## 静态检查与依赖安全
 
-预先安装对应 Go 工具后执行：
+使用 CI 固定的 Go 工具版本执行：
 
 ```sh
-staticcheck ./...
-govulncheck ./...
-govulncheck -mode=binary bin/navi
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 -mode=binary bin/navi
 npm --prefix web audit
 ```
 
@@ -102,7 +106,7 @@ go test ./internal/favicon -run '^$' -fuzz '^FuzzValidateIcon$' -fuzztime=5s -pa
 
 ## 本轮补充边界
 
-逐条复核见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md)。浏览器构建目标为 ES2022，不下发 sourcemap；支持具备 AbortSignal.any/timeout、ReadableStream、原生 dialog 与现代 CSS 的当前 Chromium、Firefox、Safari/WebKit，具体实测版本由 Playwright 1.62.1 锁定。旧浏览器不在本项目支持范围。
+逐条复核见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md)。浏览器构建目标为 ES2022，不下发 sourcemap；支持具备 AbortSignal.any/timeout、ReadableStream、原生 dialog 与现代 CSS 的当前 Chromium、Firefox、Safari/WebKit，具体实测版本由 Playwright 1.62.1 锁定。旧浏览器不在本项目支持范围，生产代码直接使用 IntersectionObserver；jsdom 缺失的布局 API 仅在 `src/test/` 替换。
 
 图标缓存同时限制单文件 4 MiB、单份元数据 32 KiB、4096 条索引和 16384 个启动扫描文件；导航探测并发为 1–256、探测缓存/进行中目标最多 4096；事件订阅最多 4096。缓存目录和文件通过 os.Root 限制在 storage 内，外部符号链接拒绝读取。元数据只属可重建缓存，非法项跳过并由后台重新获取。
 

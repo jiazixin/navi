@@ -65,10 +65,10 @@ describe('useCatalogEvents', () => {
     act(() => source?.emit('open'))
     expect(result.current).toEqual({ kind: 'live' })
 
-    act(() => source?.emit('catalog.updated'))
-    act(() => source?.emit('favicon.updated'))
-    act(() => source?.emit('catalog.error'))
-    act(() => source?.emit('status.updated'))
+    act(() => source?.emit('catalog_updated'))
+    act(() => source?.emit('favicon_updated'))
+    act(() => source?.emit('catalog_error'))
+    act(() => source?.emit('status_updated'))
     expect(onCatalogUpdate).toHaveBeenCalledTimes(3)
     expect(onStatusChange).toHaveBeenCalledTimes(2)
 
@@ -108,8 +108,8 @@ describe('useCatalogEvents', () => {
 
     act(() => {
       source?.emit(
-        'favicon.updated',
-        new MessageEvent('favicon.updated', { data: JSON.stringify({ runtime_id: 'github' }) }),
+        'favicon_updated',
+        new MessageEvent('favicon_updated', { data: JSON.stringify({ runtime_id: 'github' }) }),
       )
     })
 
@@ -139,4 +139,30 @@ it('stops after two retries and restarts on explicit user refresh', async () => 
   unmount()
   vi.restoreAllMocks()
   vi.useRealTimers()
+})
+
+it('does not reset the retry budget when a stream opens and immediately disconnects', async () => {
+  vi.useFakeTimers()
+  EventSourceMock.instances = []
+  vi.spyOn(Math, 'random').mockReturnValue(0)
+  const options = { onCatalogUpdate: vi.fn(), onStatusChange: vi.fn() }
+  const { unmount } = renderHook(() => useCatalogEvents(options))
+  try {
+    for (const [index, delay] of [500, 1000, 10_000].entries()) {
+      act(() => {
+        EventSourceMock.instances[index]?.emit('open')
+        EventSourceMock.instances[index]?.emit('error')
+      })
+      await act(() => vi.advanceTimersByTimeAsync(delay))
+    }
+    expect(EventSourceMock.instances).toHaveLength(3)
+    act(() => {
+      window.dispatchEvent(new Event('navi:retry-events'))
+    })
+    expect(EventSourceMock.instances).toHaveLength(4)
+  } finally {
+    unmount()
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  }
 })

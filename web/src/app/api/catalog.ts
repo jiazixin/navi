@@ -28,7 +28,7 @@ const catalogLinkSchema = z
     description: textSchema(0, 120).optional(),
     private_url: httpURLSchema.optional(),
     public_url: httpURLSchema.optional(),
-    tags: z.array(textSchema(1, 24)).max(10).default([]),
+    tags: z.array(textSchema(1, 24)).max(10),
   })
   .refine((link) => link.private_url !== undefined || link.public_url !== undefined, {
     message: 'A catalog link must include private_url or public_url.',

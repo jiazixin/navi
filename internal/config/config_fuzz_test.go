@@ -10,6 +10,6 @@ func FuzzDecodeConfig(f *testing.F) {
 		if len(data) > 65536 {
 			return
 		}
-		_, _ = decodeConfig(bytes.NewReader(data)) // Invalid input is an expected parse failure.
+		_, _ = decodeConfig(bytes.NewReader(data), defaultConfig()) // Invalid input is an expected parse failure.
 	})
 }

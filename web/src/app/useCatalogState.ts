@@ -22,8 +22,7 @@ export function useCatalogState() {
   const catalogQuery = useCatalogData()
   const statusQuery = useStatusData()
 
-  const refreshCatalog = useCallback((): void => {
-    window.dispatchEvent(new Event('navi:retry-events'))
+  const reconcileCatalog = useCallback((): void => {
     const cachedCatalog = queryClient.getQueryData<Catalog>(catalogKeys.snapshot())
     if (cachedCatalog !== undefined) {
       setFaviconVersions((currentVersions) => {
@@ -46,6 +45,11 @@ export function useCatalogState() {
     })
   }, [queryClient])
 
+  const refreshCatalog = useCallback((): void => {
+    window.dispatchEvent(new Event('navi:retry-events'))
+    reconcileCatalog()
+  }, [reconcileCatalog])
+
   const refreshStatus = useCallback((): void => {
     void queryClient.invalidateQueries({ queryKey: statusKeys.health() }).catch(() => {
       /* Query error state remains available for retry. */
@@ -63,7 +67,7 @@ export function useCatalogState() {
   }, [])
 
   const connection = useCatalogEvents({
-    onCatalogUpdate: refreshCatalog,
+    onCatalogUpdate: reconcileCatalog,
     onStatusChange: refreshStatus,
     onFaviconUpdate: handleFaviconUpdate,
   })
@@ -81,6 +85,9 @@ export function useCatalogState() {
           { catalog_refresh_failed: '目录刷新失败，当前仍显示最近一次有效内容。' },
         ),
       }
+    }
+    if (statusQuery.isError) {
+      return { kind: 'degraded', message: errorText(statusQuery.error) }
     }
     if (statusQuery.data?.health === 'degraded') {
       return {

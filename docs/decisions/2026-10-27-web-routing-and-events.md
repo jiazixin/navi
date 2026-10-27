@@ -2,7 +2,7 @@
 
 本次全仓规范整改以现有 React SPA、Go 服务和 npm 锁文件为基础。
 
-- 登录、首页、跳转失败是多个页面，按 React 规范接入 React Router 8.5.0（MIT；npm 元数据确认维护版本及 Node 要求）。路由表位于 `web/src/app/Router.tsx`，页面懒加载，采用服务端已支持的 History 回退；保留 `/navigation` 等原有书签的首页回退行为。Go 继续负责鉴权和真实目标跳转。
+- 登录、首页、跳转失败是多个页面，按 React 规范接入 React Router 8.5.0（MIT；npm 元数据确认维护版本及 Node 要求）。路由表位于 `web/src/app/Router.tsx`，页面懒加载，采用 History 路由；页面入口为 `/`、`/login` 和 `/go/{runtime_id}` 的失败页，其他路径由服务端返回 404 并加载对应错误页，不保留旧书签别名。Go 继续负责鉴权和真实目标跳转。
 - 目录页 ID、搜索文本、搜索提供方写入 URL；本地页偏好只作为无 URL 参数时的默认值。参数长度有界，提供方按枚举校验。
 - SSE 改为唯一请求模块 `web/src/app/api.ts` 中的流式 fetch：沿用拒绝重定向和统一 401 策略，45 秒无输入取消，单条未完成事件最多 16,384 个字符。断连仅对可重试错误自动重试两次，遵循 Retry-After 和退避；用户刷新或网络恢复可以重建订阅。正常心跳不触发超时。
 - 应用只保留 Lucide React 作为图标库。三个品牌路径从 Simple Icons 16.27.1（CC0-1.0）生成到搜索域的 `brandIcons.ts`，移除应用依赖；`node scripts/update-brand-icons.mjs` 可从固定包重建，输出标明来源与生成命令。其余既有品牌路径未改图形；颜色统一来自样式变量。

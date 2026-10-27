@@ -50,7 +50,11 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     vi.stubGlobal(
       'fetch',
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response('{"authenticated":true,"auth_required":true}', { status: 200 }),
+        ),
     )
     vi.mocked(getSession).mockResolvedValue({ authenticated: true, auth_required: true })
     const location = mockBrowserLocation('/login')
@@ -115,7 +119,11 @@ describe('LoginPage', () => {
     const user = userEvent.setup()
     vi.stubGlobal(
       'fetch',
-      vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 })),
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response('{"authenticated":true,"auth_required":true}', { status: 200 }),
+        ),
     )
     vi.mocked(getSession).mockResolvedValue({ authenticated: false, auth_required: true })
     renderLogin(<LoginPage />)

@@ -1,5 +1,3 @@
-// Package favicon discovers and serves validated, disposable site icon cache entries.
-// Construct a Manager, call Start once, and call Shutdown with a deadline before exit.
 package favicon
 
 import (
@@ -23,8 +21,8 @@ import (
 // ErrNotFound indicates that no cached icon exists for a runtime ID.
 var ErrNotFound = errors.New("favicon not found")
 
-// Main configuration permits at most 4 MiB per icon. Recheck persisted blobs
-// within that same bound when upgrading from an older cache validator.
+// Main configuration permits at most 4 MiB per icon. Persisted blobs remain
+// untrusted input and must obey the same limit as fresh downloads.
 const maxCachedIconBytes = 4 * 1024 * 1024
 const maxMetadataBytes = 32 * 1024
 const maxCacheEntries = 4096

@@ -11,7 +11,7 @@ func TestFaviconEventCarriesRuntimeIDInSSEPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(encoded); got != `{"type":"favicon.updated","runtime_id":"github"}` {
+	if got := string(encoded); got != `{"type":"favicon_updated","runtime_id":"github"}` {
 		t.Fatalf("event payload = %s", got)
 	}
 }

@@ -27,14 +27,24 @@ const statusTexts: Record<number, string> = {
 export function errorText(error: unknown, messages: Record<string, string> = {}): string {
   if (error instanceof DOMException && error.name === 'AbortError') return ''
   if (!(error instanceof ApiError)) return '操作失败，请重试。'
-  const text = messages[error.code] ?? commonTexts[error.code] ?? statusTexts[error.status]
+  const text =
+    ownText(messages, error.code) ?? ownText(commonTexts, error.code) ?? statusTexts[error.status]
   if (text !== undefined) return text
   return error.status >= 500 ? '服务暂时无法完成请求，请稍后重试。' : '操作失败，请重试。'
 }
 
-/** Reads field paths without trusting arbitrary server details or displaying developer text. */
+function ownText(messages: Record<string, string>, code: string): string | undefined {
+  return Object.hasOwn(messages, code) ? messages[code] : undefined
+}
+
+const fieldReasonTexts: Record<string, string> = {
+  invalid_length: '此项长度不符合要求。',
+}
+
+/** Maps validated field reasons to user text without displaying developer details. */
 export function fieldErrorText(error: unknown, path: string): string {
-  if (!(error instanceof ApiError) || error.status !== 400) return ''
+  if (!(error instanceof ApiError) || error.status !== 400 || error.code !== 'invalid_argument')
+    return ''
   const details: unknown = error.details
   if (
     typeof details !== 'object' ||
@@ -43,10 +53,16 @@ export function fieldErrorText(error: unknown, path: string): string {
     !Array.isArray(details.fields)
   )
     return ''
-  return details.fields.some(
-    (field: unknown) =>
-      typeof field === 'object' && field !== null && 'path' in field && field.path === path,
-  )
-    ? errorText(error, { invalid_argument: '请检查此项的格式与长度。' })
-    : ''
+  for (const field of details.fields as unknown[]) {
+    if (
+      typeof field === 'object' &&
+      field !== null &&
+      'path' in field &&
+      field.path === path &&
+      'reason' in field &&
+      typeof field.reason === 'string'
+    )
+      return ownText(fieldReasonTexts, field.reason) ?? '请检查此项的格式与长度。'
+  }
+  return ''
 }
