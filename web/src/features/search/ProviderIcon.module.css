@@ -1,0 +1,18 @@
+.icon[data-provider-icon='baidu'] {
+  color: var(--provider-baidu);
+}
+.icon[data-provider-icon='yandex'] {
+  color: var(--provider-yandex);
+}
+.icon[data-provider-icon='bing'] {
+  color: var(--provider-bing);
+}
+.icon[data-provider-icon='github'] {
+  color: var(--provider-github);
+}
+.icon[data-provider-icon='chatgpt'] {
+  color: var(--provider-chatgpt);
+}
+.icon[data-provider-icon='claude'] {
+  color: var(--provider-claude);
+}

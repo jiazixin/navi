@@ -20,8 +20,8 @@ func TestDiscoveryBoundsUniqueDeclarationsAndRetainsRootFallback(t *testing.T) {
 	for index := range maxDeclaredCandidates + 10 {
 		fmt.Fprintf(&contents, `<link rel="icon" href="/icon-%d.png">`, index)
 	}
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		_, _ = writer.Write([]byte(contents.String()))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(contents.String()))
 	}))
 	defer server.Close()
 	urls, err := Discover(t.Context(), server.Client(), server.URL+"/page")
@@ -36,9 +36,9 @@ func TestDiscoveryBoundsUniqueDeclarationsAndRetainsRootFallback(t *testing.T) {
 func TestDiscoverPrioritizesDeclaredRelativeIconAndFallsBackToOrigin(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.Header().Set("Content-Type", "text/html")
-		_, _ = writer.Write([]byte(`<html><head><link rel="apple-touch-icon" sizes="64x64" href="/icons/apple.png"><link rel="icon" sizes="16x16" href="tiny.png"></head></html>`))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><head><link rel="apple-touch-icon" sizes="64x64" href="/icons/apple.png"><link rel="icon" sizes="16x16" href="tiny.png"></head></html>`))
 	}))
 	defer server.Close()
 
@@ -78,7 +78,7 @@ func TestDiscoveryFailuresStillProvideRootIcon(t *testing.T) {
 func TestDiscoveryCancellationDoesNotContinueToFallback(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := Discover(ctx, http.DefaultClient, "http://127.0.0.1:1/"); err == nil {
+	if _, err := Discover(ctx, (&http.Client{Timeout: 5 * time.Second}), "http://127.0.0.1:1/"); err == nil {
 		t.Fatal("cancellation ignored")
 	}
 }

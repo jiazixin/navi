@@ -27,7 +27,7 @@
   min-height: min(88vh, 860px);
   flex-direction: column;
   justify-content: center;
-  padding: calc(var(--topbar-height) + 48px) 0 120px;
+  padding: calc(var(--topbar-height) + var(--space-48px)) 0 var(--space-120px);
 }
 
 .banner {
@@ -49,7 +49,11 @@
   position: absolute;
   z-index: -1;
   inset: -100px calc(var(--gutter) * -1);
-  background: radial-gradient(closest-side, color-mix(in srgb, var(--bg) 78%, transparent), transparent);
+  background: radial-gradient(
+    closest-side,
+    color-mix(in srgb, var(--bg) 78%, transparent),
+    transparent
+  );
   content: '';
   pointer-events: none;
 }
@@ -62,10 +66,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-16px);
   color: var(--text-3);
-  font: 500 11px/1.4 var(--font-mono);
-  letter-spacing: 0.16em;
+  font: var(--design-font-31);
+  letter-spacing: var(--type-0point-16em);
   text-transform: uppercase;
 }
 
@@ -73,7 +77,7 @@
   display: flex;
   min-height: var(--touch-target);
   align-items: center;
-  gap: 10px;
+  gap: var(--space-10px);
   text-decoration: none;
   transition: color var(--duration) var(--ease);
 }
@@ -86,26 +90,26 @@
   width: 1px;
   height: 28px;
   background: linear-gradient(var(--accent), transparent);
-  animation: var(--anim-breathe) 2.4s ease-in-out infinite;
+  animation: var(--anim-breathe) var(--motion-2point-4s) ease-in-out infinite;
 }
 
 .patternBadge b {
   color: var(--text-2);
-  font-weight: 500;
+  font-weight: var(--design-font-weight-37);
 }
 
 .live {
   display: inline-block;
   width: 6px;
   height: 6px;
-  margin-right: 8px;
-  border-radius: 50%;
+  margin-right: var(--space-8px);
+  border-radius: var(--radius-50percent);
   background: var(--accent);
   vertical-align: 1px;
 }
 
 .patternBadge[data-animated='true'] .live {
-  animation: var(--anim-breathe) 1.6s ease-in-out infinite;
+  animation: var(--anim-breathe) var(--motion-1point-6s) ease-in-out infinite;
 }
 
 .patternBadge[data-animated='false'] .live {
@@ -113,7 +117,7 @@
 }
 
 .catalog {
-  padding-bottom: 120px;
+  padding-bottom: var(--space-120px);
   scroll-margin-top: var(--topbar-height);
 }
 
@@ -128,12 +132,12 @@
   max-width: var(--content-max);
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-16px);
   margin: 0 auto;
-  padding: 20px var(--gutter) 32px;
+  padding: var(--space-20px) var(--gutter) var(--space-32px);
   color: var(--text-3);
-  font: 500 10px/1.6 var(--font-mono);
-  letter-spacing: 0.2em;
+  font: var(--design-font-12);
+  letter-spacing: var(--type-0point-2em);
   text-transform: uppercase;
 }
 
@@ -157,9 +161,8 @@
 @media (max-width: 720px) {
   .hero {
     min-height: auto;
-    padding: calc(var(--topbar-height) + 48px) 0 96px;
+    padding: calc(var(--topbar-height) + var(--space-48px)) 0 var(--space-96px);
   }
-
 
   .patternBadge {
     display: none;
@@ -168,6 +171,6 @@
   .footerInner {
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: var(--space-4px);
   }
 }

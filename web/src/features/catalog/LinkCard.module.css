@@ -6,8 +6,8 @@
   min-width: 0;
   grid-template-columns: 46px minmax(0, 1fr) 18px;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
+  gap: var(--space-14px);
+  padding: var(--space-16px);
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -20,8 +20,8 @@
     background-color var(--duration) var(--ease),
     border-color var(--duration) var(--ease),
     box-shadow var(--duration-slow) var(--ease);
-  animation: var(--anim-rise) 0.9s var(--ease) both;
-  animation-delay: calc(var(--section-delay, 0ms) + var(--order) * 28ms);
+  animation: var(--anim-rise) var(--motion-0point-9s) var(--ease) both;
+  animation-delay: calc(var(--section-delay, 0ms) + var(--order) * var(--motion-28ms));
 }
 
 /* Spotlight fill under the pointer. */
@@ -29,26 +29,34 @@
   position: absolute;
   z-index: -1;
   inset: 0;
-  background: radial-gradient(260px circle at var(--spot-x) var(--spot-y), rgba(var(--accent-rgb), 0.11), transparent 65%);
+  background: radial-gradient(
+    260px circle at var(--spot-x) var(--spot-y),
+    var(--palette-rgba-var-accent-rgb-0_11),
+    transparent 65%
+  );
   content: '';
   opacity: 0;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-0point-4s);
 }
 
 /* Border glow shared by neighbouring cards in the hovered grid. */
 .card::after {
   position: absolute;
   inset: 0;
-  padding: 1px;
+  padding: var(--space-1px);
   border-radius: inherit;
-  background: radial-gradient(200px circle at var(--spot-x) var(--spot-y), rgba(var(--accent-rgb), 0.75), transparent 70%);
+  background: radial-gradient(
+    200px circle at var(--spot-x) var(--spot-y),
+    var(--palette-rgba-var-accent-rgb-0_75),
+    transparent 70%
+  );
   content: '';
   mask:
-    linear-gradient(#000 0 0) content-box exclude,
-    linear-gradient(#000 0 0);
+    linear-gradient(var(--palette-000000) 0 0) content-box exclude,
+    linear-gradient(var(--palette-000000) 0 0);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.4s;
+  transition: opacity var(--motion-0point-4s);
 }
 
 :global([data-spotlight='on']) > .card::after,
@@ -58,7 +66,7 @@
 
 .card:hover {
   background: var(--surface-hi);
-  box-shadow: 0 30px 50px -30px var(--shadow);
+  box-shadow: var(--shadow-linkcard-66);
   transform: translateY(-4px);
 }
 
@@ -67,7 +75,7 @@
 }
 
 .card > :first-child {
-  transition: transform 0.7s var(--ease);
+  transition: transform var(--motion-0point-7s) var(--ease);
 }
 
 .card:hover > :first-child {
@@ -78,17 +86,17 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-2px);
 }
 
 .name {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  gap: var(--space-8px);
+  font-size: var(--type-15px);
+  font-weight: var(--design-font-weight-5);
+  letter-spacing: var(--type-0point-01em);
 }
 
 .nameText,
@@ -102,23 +110,23 @@
 
 .tag {
   flex: none;
-  padding: 3px 5px;
+  padding: var(--space-3px) var(--space-5px);
   border: 1px solid var(--line-2);
-  border-radius: 5px;
+  border-radius: var(--radius-5px);
   color: var(--text-3);
-  font: 500 10px/1 var(--font-mono);
-  letter-spacing: 0.08em;
+  font: var(--design-font-24);
+  letter-spacing: var(--type-0point-08em);
 }
 
 .description {
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--type-13px);
 }
 
 .host {
-  margin-top: 2px;
+  margin-top: var(--space-2px);
   color: var(--text-3);
-  font: 11px/1.5 var(--font-mono);
+  font: var(--design-font-25);
 }
 
 .arrow {
@@ -146,7 +154,7 @@
 
 @media (max-width: 720px) {
   .card {
-    padding: 14px;
+    padding: var(--space-14px);
   }
 
   .host {
@@ -166,4 +174,72 @@
   .card {
     border-color: CanvasText;
   }
+}
+
+.card[data-order='0'] {
+  --order: var(--card-order-0);
+}
+
+.card[data-order='1'] {
+  --order: var(--card-order-1);
+}
+
+.card[data-order='2'] {
+  --order: var(--card-order-2);
+}
+
+.card[data-order='3'] {
+  --order: var(--card-order-3);
+}
+
+.card[data-order='4'] {
+  --order: var(--card-order-4);
+}
+
+.card[data-order='5'] {
+  --order: var(--card-order-5);
+}
+
+.card[data-order='6'] {
+  --order: var(--card-order-6);
+}
+
+.card[data-order='7'] {
+  --order: var(--card-order-7);
+}
+
+.card[data-order='8'] {
+  --order: var(--card-order-8);
+}
+
+.card[data-order='9'] {
+  --order: var(--card-order-9);
+}
+
+.card[data-order='10'] {
+  --order: var(--card-order-10);
+}
+
+.card[data-order='11'] {
+  --order: var(--card-order-11);
+}
+
+.card[data-order='12'] {
+  --order: var(--card-order-12);
+}
+
+.card[data-order='13'] {
+  --order: var(--card-order-13);
+}
+
+.card[data-order='14'] {
+  --order: var(--card-order-14);
+}
+
+.card[data-order='15'] {
+  --order: var(--card-order-15);
+}
+
+.card[data-order='16'] {
+  --order: var(--card-order-16);
 }

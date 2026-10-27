@@ -1,65 +1,67 @@
-import { useEffect, useMemo, useState, type PointerEvent } from 'react';
-import type { CatalogPage } from '../../app/api/catalog';
-import { hostOf } from '../../lib/url/host';
-import { LinkCard } from './LinkCard';
-import { SectionIndex } from './SectionIndex';
-import styles from './CatalogView.module.css';
+import { formatCount } from '../../lib/format/number'
+import { formatIndex } from '../../lib/format/number'
+import { useEffect, useMemo, useState, type PointerEvent } from 'react'
+import type { CatalogPage } from '../../app/api/catalog'
+import { hostOf } from '../../lib/url/host'
+import { LinkCard } from './LinkCard'
+import { SectionIndex } from './SectionIndex'
+import styles from './CatalogView.module.css'
 
 type CatalogViewProps = {
-  page: CatalogPage;
-  faviconVersions: Readonly<Record<string, number>>;
-};
+  page: CatalogPage
+  faviconVersions: Readonly<Record<string, number>>
+}
 
-const sectionID = (pageID: string, index: number): string => `section-${pageID}-${index}`;
+const sectionID = (pageID: string, index: number): string => `section-${pageID}-${index}`
 
-const pendingSpotlights = new WeakMap<HTMLElement, { x: number; y: number }>();
+const pendingSpotlights = new WeakMap<HTMLElement, { x: number; y: number }>()
 
 /**
  * Moves every card's spotlight in the hovered grid so neighbouring borders light up too.
  * Layout is read at most once per frame per grid.
  */
-function trackSpotlight(event: PointerEvent<HTMLDivElement>): void {
-  const grid = event.currentTarget;
-  const scheduled = pendingSpotlights.has(grid);
-  pendingSpotlights.set(grid, { x: event.clientX, y: event.clientY });
-  if (scheduled) return;
+function handlePointerMove(event: PointerEvent<HTMLDivElement>): void {
+  const grid = event.currentTarget
+  const isScheduled = pendingSpotlights.has(grid)
+  pendingSpotlights.set(grid, { x: event.clientX, y: event.clientY })
+  if (isScheduled) return
   requestAnimationFrame(() => {
-    const point = pendingSpotlights.get(grid);
-    pendingSpotlights.delete(grid);
-    if (point === undefined) return;
+    const point = pendingSpotlights.get(grid)
+    pendingSpotlights.delete(grid)
+    if (point === undefined) return
     for (const card of grid.children) {
-      if (!(card instanceof HTMLElement)) continue;
-      const rect = card.getBoundingClientRect();
-      card.style.setProperty('--spot-x', `${point.x - rect.left}px`);
-      card.style.setProperty('--spot-y', `${point.y - rect.top}px`);
+      if (!(card instanceof HTMLElement)) continue
+      const rect = card.getBoundingClientRect()
+      card.style.setProperty('--spot-x', `${point.x - rect.left}px`)
+      card.style.setProperty('--spot-y', `${point.y - rect.top}px`)
     }
-  });
+  })
 }
 
 function useActiveSection(ids: readonly string[]): number {
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(0)
   useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return undefined;
+    if (typeof IntersectionObserver === 'undefined') return undefined
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) setActive(ids.indexOf(entry.target.id));
+          if (entry.isIntersecting) setActive(ids.indexOf(entry.target.id))
         }
       },
       { rootMargin: '-35% 0px -60% 0px' },
-    );
+    )
     for (const id of ids) {
-      const element = document.getElementById(id);
-      if (element !== null) observer.observe(element);
+      const element = document.getElementById(id)
+      if (element !== null) observer.observe(element)
     }
-    return () => observer.disconnect();
-  }, [ids]);
-  return active;
+    return () => observer.disconnect()
+  }, [ids])
+  return active
 }
 
 export function CatalogView({ page, faviconVersions }: CatalogViewProps): React.JSX.Element {
-  const ids = useMemo(() => page.groups.map((_, index) => sectionID(page.id, index)), [page]);
-  const active = useActiveSection(ids);
+  const ids = useMemo(() => page.groups.map((_, index) => sectionID(page.id, index)), [page])
+  const active = useActiveSection(ids)
 
   return (
     <div className={styles.layout}>
@@ -71,27 +73,27 @@ export function CatalogView({ page, faviconVersions }: CatalogViewProps): React.
             className={styles.section}
             id={ids[groupIndex]}
             key={group.name}
-            style={{ '--section-delay': `${Math.min(groupIndex, 6) * 70}ms` } as React.CSSProperties}
+            data-order={Math.min(groupIndex, 6)}
           >
             <header className={styles.heading}>
               <span aria-hidden="true" className={styles.number}>
-                {String(groupIndex + 1).padStart(2, '0')}
+                {formatIndex(groupIndex)}
               </span>
               <h2 id={`${ids[groupIndex] ?? ''}-title`}>{group.name}</h2>
-              <span className={styles.count}>{group.links.length} LINKS</span>
+              <span className={styles.count}>{formatCount(group.links.length)} LINKS</span>
               <span aria-hidden="true" className={styles.rule} />
             </header>
             <div
               className={styles.grid}
               onPointerEnter={(event) => event.currentTarget.setAttribute('data-spotlight', 'on')}
               onPointerLeave={(event) => event.currentTarget.removeAttribute('data-spotlight')}
-              onPointerMove={trackSpotlight}
+              onPointerMove={handlePointerMove}
             >
               {group.links.map((link, linkIndex) => (
                 <LinkCard
                   host={hostOf(link)}
-                  iconVersion={faviconVersions[link.runtimeId]}
-                  key={link.runtimeId}
+                  iconVersion={faviconVersions[link.runtime_id]}
+                  key={link.runtime_id}
                   link={link}
                   order={linkIndex}
                 />
@@ -101,5 +103,5 @@ export function CatalogView({ page, faviconVersions }: CatalogViewProps): React.
         ))}
       </div>
     </div>
-  );
+  )
 }

@@ -1,24 +1,26 @@
-const menuNavigationKeys = ['ArrowDown', 'ArrowUp', 'Home', 'End'] as const;
-type MenuNavigationKey = (typeof menuNavigationKeys)[number];
+const menuNavigationKeys = ['ArrowDown', 'ArrowUp', 'Home', 'End'] as const
+type MenuNavigationKey = (typeof menuNavigationKeys)[number]
 
+/** Narrows supported menu keys before applying navigation. */
 export function isMenuNavigationKey(key: string): key is MenuNavigationKey {
-  return menuNavigationKeys.some((navigationKey) => navigationKey === key);
+  return menuNavigationKeys.some((navigationKey) => navigationKey === key)
 }
 
+/** Moves a menu selection with wraparound at its boundaries. */
 export function getNextMenuIndex(
   key: MenuNavigationKey,
   currentIndex: number,
   optionCount: number,
 ): number {
-  const lastIndex = optionCount - 1;
+  const lastIndex = optionCount - 1
   switch (key) {
     case 'Home':
-      return 0;
+      return 0
     case 'End':
-      return lastIndex;
+      return lastIndex
     case 'ArrowDown':
-      return currentIndex >= lastIndex ? 0 : currentIndex + 1;
+      return currentIndex >= lastIndex ? 0 : currentIndex + 1
     case 'ArrowUp':
-      return currentIndex <= 0 ? lastIndex : currentIndex - 1;
+      return currentIndex <= 0 ? lastIndex : currentIndex - 1
   }
 }

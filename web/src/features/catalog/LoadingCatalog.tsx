@@ -1,6 +1,6 @@
-import styles from './LoadingCatalog.module.css';
+import styles from './LoadingCatalog.module.css'
 
-const groups = [6, 4, 5];
+const groups = [6, 4, 5]
 
 export function LoadingCatalog(): React.JSX.Element {
   return (
@@ -26,5 +26,5 @@ export function LoadingCatalog(): React.JSX.Element {
         </div>
       ))}
     </div>
-  );
+  )
 }

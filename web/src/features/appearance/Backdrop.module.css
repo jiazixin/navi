@@ -20,8 +20,12 @@
   width: 100%;
   height: 100%;
   opacity: calc(var(--pattern-strength, 0.9) * var(--scroll-fade, 1));
-  transition: opacity 0.5s linear;
-  mask-image: linear-gradient(#000 0%, #000 50%, rgba(0, 0, 0, 0.4) 100%);
+  transition: opacity var(--motion-0point-5s) linear;
+  mask-image: linear-gradient(
+    var(--palette-000000) 0%,
+    var(--palette-000000) 50%,
+    var(--palette-rgba-0-0-0-0_4) 100%
+  );
 }
 
 .grain {

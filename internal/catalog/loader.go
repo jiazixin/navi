@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -14,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const maxCatalogBytes = 2 * 1024 * 1024
@@ -48,21 +49,38 @@ type sourceLink struct {
 }
 
 // LoadFile reads, validates, and groups a urls.yaml file.
-func LoadFile(path string) (Catalog, error) {
+func LoadFile(ctx context.Context, path string) (Catalog, error) {
+	if err := ctx.Err(); err != nil {
+		return Catalog{}, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return Catalog{}, fmt.Errorf("stat catalog: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return Catalog{}, errors.New("catalog must be a regular file")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return Catalog{}, fmt.Errorf("open catalog: %w", err)
 	}
-	defer file.Close()
+	defer file.Close() // Read-only file; no buffered writes.
 
 	contents, err := io.ReadAll(io.LimitReader(file, maxCatalogBytes+1))
 	if err != nil {
 		return Catalog{}, fmt.Errorf("read catalog: %w", err)
 	}
 	if len(contents) > maxCatalogBytes {
-		return Catalog{}, fmt.Errorf("read catalog: file exceeds 2 MiB")
+		return Catalog{}, errors.New("read catalog: file exceeds 2 MiB")
 	}
 
+	return decodeCatalog(contents)
+}
+
+func decodeCatalog(contents []byte) (Catalog, error) {
+	if len(contents) > maxCatalogBytes {
+		return Catalog{}, errors.New("catalog exceeds size limit")
+	}
 	var source sourceCatalog
 	decoder := yaml.NewDecoder(bytes.NewReader(contents))
 	decoder.KnownFields(true)
@@ -74,7 +92,7 @@ func LoadFile(path string) (Catalog, error) {
 		if err != nil {
 			return Catalog{}, fmt.Errorf("decode catalog: %w", err)
 		}
-		return Catalog{}, fmt.Errorf("decode catalog: multiple YAML documents are not supported")
+		return Catalog{}, errors.New("decode catalog: multiple YAML documents are not supported")
 	}
 
 	return validateAndBuild(source)
@@ -120,7 +138,7 @@ func validatePage(raw sourcePage, pageIndex int) (Page, error) {
 		return Page{}, fieldError(prefix+".id", "must start with a lowercase letter and contain only lowercase letters, digits, or hyphens")
 	}
 	title := strings.TrimSpace(raw.Title)
-	if err := validateLength(prefix+".title", title, 1, 40); err != nil {
+	if err := validateLength(prefix+".title", title, lengthRange{Minimum: 1, Maximum: 40}); err != nil {
 		return Page{}, err
 	}
 	if raw.URLs == nil {
@@ -130,7 +148,7 @@ func validatePage(raw sourcePage, pageIndex int) (Page, error) {
 	page := Page{ID: id, Title: title}
 	if raw.Subtitle != nil {
 		subtitle := strings.TrimSpace(*raw.Subtitle)
-		if err := validateLength(prefix+".subtitle", subtitle, 0, 100); err != nil {
+		if err := validateLength(prefix+".subtitle", subtitle, lengthRange{Minimum: 0, Maximum: 100}); err != nil {
 			return Page{}, err
 		}
 		page.Subtitle = subtitle
@@ -139,7 +157,7 @@ func validatePage(raw sourcePage, pageIndex int) (Page, error) {
 	groupIndexes := make(map[string]int)
 	seen := make(map[string]struct{})
 	for linkIndex, rawLink := range *raw.URLs {
-		link, groupName, err := validateLink(rawLink, pageIndex, linkIndex, id)
+		link, groupName, err := validateLink(rawLink, linkLocation{PageIndex: pageIndex, LinkIndex: linkIndex, PageID: id})
 		if err != nil {
 			return Page{}, err
 		}
@@ -160,14 +178,23 @@ func validatePage(raw sourcePage, pageIndex int) (Page, error) {
 	return page, nil
 }
 
-func validateLink(raw sourceLink, pageIndex, linkIndex int, pageID string) (Link, string, error) {
+// linkLocation groups the inputs for validateLink.
+type linkLocation struct {
+	PageIndex int
+	LinkIndex int
+	PageID    string
+}
+
+func validateLink(raw sourceLink, options linkLocation) (Link, string, error) {
+	pageIndex, linkIndex, pageID := options.PageIndex, options.LinkIndex, options.PageID
+
 	prefix := fmt.Sprintf("pages[%d].urls[%d]", pageIndex, linkIndex)
 	name := strings.TrimSpace(raw.Name)
-	if err := validateLength(prefix+".name", name, 1, 60); err != nil {
+	if err := validateLength(prefix+".name", name, lengthRange{Minimum: 1, Maximum: 60}); err != nil {
 		return Link{}, "", err
 	}
 	groupName := strings.TrimSpace(raw.Group)
-	if err := validateLength(prefix+".group", groupName, 1, 40); err != nil {
+	if err := validateLength(prefix+".group", groupName, lengthRange{Minimum: 1, Maximum: 40}); err != nil {
 		return Link{}, "", err
 	}
 
@@ -186,7 +213,7 @@ func validateLink(raw sourceLink, pageIndex, linkIndex int, pageID string) (Link
 	link := Link{Name: name, PrivateURL: privateURL, PublicURL: publicURL}
 	if raw.Description != nil {
 		description := strings.TrimSpace(*raw.Description)
-		if err := validateLength(prefix+".description", description, 0, 120); err != nil {
+		if err := validateLength(prefix+".description", description, lengthRange{Minimum: 0, Maximum: 120}); err != nil {
 			return Link{}, "", err
 		}
 		link.Description = description
@@ -197,7 +224,7 @@ func validateLink(raw sourceLink, pageIndex, linkIndex int, pageID string) (Link
 	link.Tags = make([]string, len(raw.Tags))
 	for tagIndex, tag := range raw.Tags {
 		trimmed := strings.TrimSpace(tag)
-		if err := validateLength(fmt.Sprintf("%s.tags[%d]", prefix, tagIndex), trimmed, 1, 24); err != nil {
+		if err := validateLength(fmt.Sprintf("%s.tags[%d]", prefix, tagIndex), trimmed, lengthRange{Minimum: 1, Maximum: 24}); err != nil {
 			return Link{}, "", err
 		}
 		link.Tags[tagIndex] = trimmed
@@ -214,7 +241,15 @@ func countPageLinks(page Page) int {
 	return total
 }
 
-func validateLength(path, value string, minimum, maximum int) error {
+// lengthRange groups the inputs for validateLength.
+type lengthRange struct {
+	Minimum int
+	Maximum int
+}
+
+func validateLength(path string, value string, options lengthRange) error {
+	minimum, maximum := options.Minimum, options.Maximum
+
 	length := utf8.RuneCountInString(value)
 	if length < minimum || length > maximum {
 		return fieldError(path, fmt.Sprintf("must contain %d to %d characters", minimum, maximum))
@@ -231,17 +266,23 @@ func normalizeURL(raw string) (string, error) {
 	// ParseRequestURI treats a fragment as path data and breaks anchor links.
 	parsed, err := url.Parse(trimmed)
 	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
-		return "", fmt.Errorf("must be a valid URL")
+		return "", errors.New("must be a valid URL")
+	}
+	if parsed.User != nil {
+		return "", errors.New("must not contain credentials")
+	}
+	if len(trimmed) > 4096 {
+		return "", errors.New("must not exceed 4096 bytes")
 	}
 	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Host = strings.ToLower(parsed.Host)
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("must use http or https")
+		return "", errors.New("must use http or https")
 	}
 	if rawPort := parsed.Port(); rawPort != "" {
 		port, err := strconv.Atoi(rawPort)
 		if err != nil || port < 1 || port > 65_535 {
-			return "", fmt.Errorf("must use a port between 1 and 65535")
+			return "", errors.New("must use a port between 1 and 65535")
 		}
 	}
 	if parsed.Path == "" {

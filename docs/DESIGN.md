@@ -21,7 +21,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 
 `-c PATH` / `--config PATH` 选择主配置并覆盖 `CONFIG_FILE`；未传标志时可由 `CONFIG_FILE` 选择。两者都未设置时只查找 `./configs/config.local.yaml`，缺失使用内置默认值；显式空值、文件不存在或不可读时报错。优先级为命令行配置路径 > `CONFIG_FILE`，而配置值仍为 `NAVI_<字段>` / `NAVI_<节>_<字段>` 环境变量 > 文件 > 内置默认值。`storage` 与 `catalog.path`（包括环境覆盖）相对所选配置目录解析，缺失隐式文件时仍以预期的 `configs/` 为基准；项目例外已登记在 README。部署使用绝对路径。
 
-主配置更改需要重启，只有导航 YAML 支持热加载。未知字段、重复 YAML 键、多个 YAML 文档及非法值启动失败。YAML 使用 snake_case，JSON API 使用 camelCase。
+主配置更改需要重启，只有导航 YAML 支持热加载。未知字段、重复 YAML 键、多个 YAML 文档及非法值启动失败。YAML 使用 snake_case，JSON API 使用 snake_case。
 
 外观配置为 `theme`（`default`、`ink`、`paper`、`celadon`、`dusk`；default 按系统深浅色解析为 ink 或 paper）、`background_pattern`（`none`、`contour`、`flow`、`guilloche`、`stars`、`ridge`）与 `web_search`。三者不属于目录数据：服务端把它们以 `data-configured-theme`、`data-configured-pattern`、`data-configured-search` 注入首页、登录页和跳转失败页的根元素，前端在首帧前应用色调，登录前也无需 API。色调、纹样、纹样强度和动态效果可由浏览器本地选择覆盖，存储不可用时仍允许当前会话切换；外部搜索入口选择仅在当前会话有效。
 
@@ -65,7 +65,7 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | `/api/auth/logout` | POST；撤销当前会话、清除 Cookie，204 |
 | `/login` | 公开登录页面；登录成功进入首页 |
 | `/api/catalog` | revision、pages；无服务端写操作；no-store |
-| `/api/status` | health、revision、可选通用 message；no-store |
+| `/api/status` | health、revision、降级时的 code 与英文 message（见 [API.md](API.md)）；no-store |
 | `/api/events` | SSE：catalog.updated、catalog.error、favicon.updated、status.updated；15 秒心跳；HEAD 立即返回 |
 | `/api/icons/{runtimeId}` | 图标、内容 ETag、no-cache；认证模式为 private，公开模式为 public；不存在返回 404 |
 | `/go/{runtimeId}` | 302（双地址时先探测 private）或失败 HTML，no-store |
@@ -73,14 +73,22 @@ Navi 是自托管、只读的个人导航页。`urls.yaml` 是导航内容、分
 | `/assets/` | 仅提供实际存在的静态文件；缺失或目录请求为 404 |
 | 其他页面路径 | 注入外观默认值的嵌入首页或 SPA fallback；no-store |
 
-除登录和退出使用 POST 外，目录及静态路由仅接受 GET、HEAD、OPTIONS。认证写请求要求 `X-Navi-Request: 1`，存在 Origin 时校验同主机，拒绝 cross-site 请求；无跨域许可。生产入口无内联脚本，Zod 关闭 JIT；保持禁止 unsafe-inline/unsafe-eval 的 CSP。CSP 同样拒绝 `data:` 资源，因此 Vite 关闭资源内联（`assetsInlineLimit: 0`），字体与纹理均以独立文件随二进制嵌入。发布构建默认不生成 sourcemap，减少二进制体积；诊断时可显式生成，不将诊断产物当作默认发布包。关闭时先取消长连接处理（如 SSE），并立即关闭从未发出请求的预连接（浏览器常预开空闲连接，标准库会等待其 5 秒），再在 `server.shutdown_timeout` 内等待在途请求完成。SSE 是有界的失效通知流，不是持久事件日志；队列满时合并为全量刷新通知。每帧写入受 `server.write_timeout` 限制，空闲等待时清除写入期限，请求取消会中断阻塞写入。客户端首次连通及重连后补拉目录和状态，并重试图标。
+除登录和退出使用 POST 外，目录及静态路由仅接受 GET、HEAD、OPTIONS。认证写请求由 Go 的 `http.CrossOriginProtection` 校验 `Sec-Fetch-Site` / `Origin`，拒绝跨站请求；没有这两个头的命令行请求放行；无跨域许可。生产入口无内联脚本，Zod 关闭 JIT；保持禁止 unsafe-inline/unsafe-eval 的 CSP。CSP 同样拒绝 `data:` 资源，因此 Vite 关闭资源内联（`assetsInlineLimit: 0`），字体与纹理均以独立文件随二进制嵌入。发布构建默认不生成 sourcemap，减少二进制体积；诊断时可显式生成，不将诊断产物当作默认发布包。关闭时先取消长连接处理（如 SSE），并立即关闭从未发出请求的预连接（浏览器常预开空闲连接，标准库会等待其 5 秒），再在 `server.shutdown_timeout` 内等待在途请求完成。SSE 是有界的失效通知流，不是持久事件日志；队列满时合并为全量刷新通知。每帧写入受 `server.write_timeout` 限制，空闲等待时清除写入期限，请求取消会中断阻塞写入。客户端首次连通及重连后补拉目录和状态，并重试图标。
 
 ## 部署边界
 
-账号密码均为空或省略 auth 时不启用认证，首页、API、SSE、图标和跳转直接可用，不创建会话，隐藏退出入口；访问登录页自动回首页。仅填写一项时报错。两者均配置时启用单一账号认证：未认证页面访问 302 到 `/login`；目录、状态、SSE、图标 API 返回 401，`/go/` 跳转前认证。会话由 32 字节随机令牌索引内存记录，固定 24 小时过期，最多 4096 个；退出或重启后失效。Cookie 为 HttpOnly、SameSite=Strict；TLS 或 secure_cookie=true 时加 Secure。SSE 每次发送事件和心跳前复查会话。前端每 30 秒及聚焦时重新检查会话。登录页、`/assets/` 和健康检查公开。登录按直接连接 IP 限制一分钟五次，成功清零；不信任 X-Forwarded-*，代理用户共享限额，限流表最多 4096 项。API 会返回配置的内外网 URL，不应在 URL 内放凭证。服务端会访问受信任 YAML 中的地址及其图标/重定向目标；不能让不可信用户写该文件。远程访问使用 HTTPS 反向代理，设置 auth.secure_cookie=true；保护包含明文凭证的 configs/config.local.yaml 文件权限。
+用户名和密码哈希均为空或省略 auth 时不启用认证，首页、API、SSE、图标和跳转直接可用，不创建会话，隐藏退出入口；访问登录页自动回首页。仅填写一项时报错。两者均配置时启用单一账号认证：未认证页面访问 302 到 `/login`；目录、状态、SSE、图标 API 返回 401，`/go/` 跳转前认证。会话只保存随机令牌的 SHA-256 摘要，固定 24 小时过期，最多 4096 个；退出或重启后失效。Cookie 为 HttpOnly、SameSite=Strict；TLS 或 secure_cookie=true 时加 Secure。SSE 每次发送事件和心跳前复查会话。前端每 30 秒及聚焦时重新检查会话。登录页、`/assets/` 和健康检查公开。登录按直接连接 IP 限制一分钟五次，成功清零；不信任 X-Forwarded-*，代理用户共享限额，限流表最多 4096 项。API 会返回配置的内外网 URL，不应在 URL 内放凭证。服务端会访问受信任 YAML 中的地址及其图标/重定向目标；不能让不可信用户写该文件。远程访问使用 HTTPS 反向代理，设置 auth.secure_cookie=true；保护包含密码哈希的 configs/config.local.yaml 文件权限。
 
-Docker 运行时通过环境变量设置 `NAVI_SERVER_LISTEN=0.0.0.0`、`NAVI_STORAGE=/app/.cache`，以 `/app` 为工作目录。热加载推荐只读挂载配置目录：单文件 bind mount 在宿主机编辑器原子替换后可能继续指向旧文件。配置目录和文件需允许 UID 65532 遍历、读取，缓存目录需允许其写入。反向代理应保留原始 Host，关闭 SSE 缓冲并允许长连接。
+Docker 运行时通过环境变量设置 `NAVI_SERVER__LISTEN=0.0.0.0`、`NAVI_STORAGE=/app/.cache`，以 `/app` 为工作目录。热加载推荐只读挂载配置目录：单文件 bind mount 在宿主机编辑器原子替换后可能继续指向旧文件。配置目录和文件需允许 UID 65532 遍历、读取，缓存目录需允许其写入。反向代理应保留原始 Host，关闭 SSE 缓冲并允许长连接。
 
 ## 源码与构建边界
 
 通用归属仅由根目录 [目录规范.md](../目录规范.md) 规定，项目布局与已接受例外见 README。`web/src` 和 `web/public`（有公开资源时）是可编辑来源，Vite 生成唯一 `web/dist`，Go 的 `web/embed.go` 直接嵌入该目录。任何会编译嵌入包的检查、构建或开发启动，都先执行前端构建。容器按锁文件重新安装和构建，不复制本地依赖或旧产物。
+
+## 规范对齐后的实现边界
+
+认证配置只持有 bcrypt 哈希（cost 10–14），比较使用 bcrypt；随机会话令牌只以 SHA-256 摘要索引内存。认证与缓存时钟可注入，认证数据的常规及 Go-syntax 格式化均脱敏。主配置读取上限 1 MiB。
+
+浏览器的唯一 JSON 请求包装拒绝重定向，按流计数限制响应为 8 MiB。接口字段在客户端保持 snake_case；目录、状态和会话由所属领域的数据 hook/key 工厂管理；登录和退出使用 mutation。应用级外观 Provider、会话 Context、通知 Provider 属于 app；错误通知统一经 errorText 映射。
+
+后台组件先构造、再 Start，退出以 Shutdown(ctx) 等待；应用为关闭过程提供独立且有界的 context。缓存时间写入统一 UTC 毫秒字符串，读取保留对既有 RFC 3339 缓存时间的支持；缓存仍可丢弃重建。

@@ -4,9 +4,9 @@
   inset: 0;
   display: grid;
   place-items: start center;
-  padding: 14vh 16px 0;
+  padding: var(--space-14vh) var(--space-16px) 0;
   background: color-mix(in srgb, var(--bg) 45%, transparent);
-  animation: var(--anim-fade) 0.25s var(--ease);
+  animation: var(--anim-fade) var(--motion-0point-25s) var(--ease);
   backdrop-filter: blur(8px);
 }
 
@@ -16,16 +16,16 @@
   border: 1px solid var(--line-2);
   border-radius: var(--radius-panel);
   background: var(--panel);
-  box-shadow: 0 60px 120px -30px var(--shadow);
-  animation: var(--anim-pop) 0.35s var(--ease);
+  box-shadow: var(--shadow-commandpalette-97);
+  animation: var(--anim-pop) var(--motion-0point-35s) var(--ease);
 }
 
 .inputRow {
   display: flex;
   height: 62px;
   align-items: center;
-  gap: 12px;
-  padding: 0 18px;
+  gap: var(--space-12px);
+  padding: 0 var(--space-18px);
   border-bottom: 1px solid var(--line);
   color: var(--text-3);
 }
@@ -42,7 +42,7 @@
   outline: 0;
   background: none;
   color: var(--text);
-  font: 17px var(--font-ui);
+  font: var(--type-17px) var(--font-ui);
 }
 
 .inputRow input::placeholder {
@@ -63,13 +63,13 @@
 .footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 18px;
+  gap: var(--space-6px) var(--space-18px);
   margin: 0;
-  padding: 10px 18px;
+  padding: var(--space-10px) var(--space-18px);
   border-top: 1px solid var(--line);
   color: var(--text-3);
-  font: 10px/1.6 var(--font-mono);
-  letter-spacing: 0.14em;
+  font: var(--design-font-11);
+  letter-spacing: var(--type-0point-14em);
 }
 
 .status {

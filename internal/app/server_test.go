@@ -52,7 +52,7 @@ func TestServerCatalogETagStatusAndReadOnlyMethods(t *testing.T) {
 
 func TestServerSecurityHeadersAcrossPublicAndProtectedRoutes(t *testing.T) {
 	server := newTestServer(t, nil)
-	for _, route := range []string{"/login", "/health", "/api/catalog", "/api/icons/missing", "/go/missing"} {
+	for _, route := range []string{"/login", "/healthz", "/api/catalog", "/api/icons/missing", "/go/missing"} {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, authenticatedRequest(http.MethodGet, route, nil))
 		if response.Header().Get("X-Content-Type-Options") != "nosniff" || response.Header().Get("X-Frame-Options") != "DENY" {
@@ -82,7 +82,7 @@ func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
 	if record["request_id"] != response.Header().Get("X-Request-ID") {
 		t.Fatalf("request_id = %#v, header = %q", record["request_id"], response.Header().Get("X-Request-ID"))
 	}
-	if record["method"] != http.MethodGet || record["route"] != "/api/catalog" || record["status"] != float64(http.StatusOK) {
+	if record["method"] != http.MethodGet || record["path"] != "/api/catalog" || record["status"] != float64(http.StatusOK) {
 		t.Fatalf("access record = %#v", record)
 	}
 	if record["bytes"] != float64(response.Body.Len()) {
@@ -94,14 +94,14 @@ func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
 
 	output.Reset()
 	health := httptest.NewRecorder()
-	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/health", nil))
+	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/healthz", nil))
 	if output.Len() != 0 {
 		t.Fatalf("health access log = %q, want suppressed", output.String())
 	}
 
 	server.config.Logging.LogHealthChecks = true
 	health = httptest.NewRecorder()
-	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/health", nil))
+	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/healthz", nil))
 	if output.Len() == 0 {
 		t.Fatal("health access log missing when enabled")
 	}
@@ -109,8 +109,8 @@ func TestServerAccessLogCapturesRequestAndSuppressesHealthChecks(t *testing.T) {
 
 func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 	t.Parallel()
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		t.Errorf("single destination was probed: %s %s", request.Method, request.URL)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("single destination was probed: %s %s", r.Method, r.URL)
 	}))
 	defer target.Close()
 	server := newTestServer(t, nil)
@@ -132,16 +132,16 @@ func TestServerRedirectsAndProvidesSPAStaticFallback(t *testing.T) {
 
 func TestNavigationProbesDocumentAndPreservesAnchorInRedirect(t *testing.T) {
 	var probed atomic.Bool
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/docs" || request.URL.Fragment != "" {
-			t.Errorf("probe requested anchor as path data: %s", request.URL)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/docs" || r.URL.Fragment != "" {
+			t.Errorf("probe requested anchor as path data: %s", r.URL)
 		}
 		probed.Store(true)
-		writer.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer target.Close()
 	destination := target.URL + "/docs#section"
-	directory, err := catalog.LoadFile(writeEventCatalog(t, fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Docs, group: One, private_url: %q, public_url: https://public.example}\n", destination)))
+	directory, err := catalog.LoadFile(t.Context(), writeEventCatalog(t, fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Docs, group: One, private_url: %q, public_url: https://public.example}\n", destination)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,13 +171,13 @@ func newTestServer(t *testing.T, resolver *navigation.Resolver) *httpServer {
 	})
 	static := fs.FS(fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<main>Navi</main>")}})
 	server, err := newHTTPServer(httpOptions{
-		Config:  config.Config{Auth: config.AuthConfig{Username: "tester", Password: "test-password"}, Theme: "default", BackgroundPattern: "contour", WebSearch: "baidu", Health: config.HealthConfig{URI: "/health"}},
+		Config:  config.Config{Auth: config.AuthConfig{Username: "tester", PasswordHash: "$2a$10$MH76nh/43WkSzvdsv9cze.Jmxo2eu6fQkcVtBgMvT2IAXwdLje7Gu"}, Theme: "default", BackgroundPattern: "contour", WebSearch: "baidu"},
 		Catalog: store, Resolver: resolver, Static: static,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.auth.sessions["test-session"] = time.Now().Add(time.Hour)
+	server.auth.sessions[sessionDigest("test-session")] = time.Now().Add(time.Hour)
 	return server
 }
 
@@ -186,7 +186,7 @@ func TestNavigationFailureUsesProductionShellAndEscapesContent(t *testing.T) {
 	server.static = fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte(`<html><div id="root"></div><script src="/assets/app.js"></script></html>`)}}
 	request := authenticatedRequest(http.MethodGet, "/go/one?token=secret", nil)
 	response := httptest.NewRecorder()
-	server.writeFailurePage(response, request, http.StatusBadGateway, `<script>alert("x")</script>`)
+	server.writeFailurePage(response, request, failurePage{Status: http.StatusBadGateway, Code: `<script>alert("x")</script>`})
 	body := response.Body.String()
 	if response.Code != 502 || !strings.Contains(body, `data-navigation-error="&lt;script&gt;`) || !strings.Contains(body, `href="/go/one"`) || !strings.Contains(body, `/assets/app.js`) || !strings.Contains(body, `data-configured-pattern="contour"`) {
 		t.Fatalf("failure response = %d %s", response.Code, body)

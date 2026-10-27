@@ -32,11 +32,14 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci --ignore-scripts
+      - run: npm --prefix web run format:check
       - run: npm --prefix web run lint
       - run: npm --prefix web run typecheck
       - run: npm --prefix web run test
       - run: npm --prefix web run build
       - run: npm --prefix web run storybook:test
+      - run: npm --prefix web audit --audit-level=high --omit=dev
+      - run: npm --prefix web audit --audit-level=high
 
   go:
     name: Go 检查与测试
@@ -59,15 +62,23 @@ jobs:
       - run: npm --prefix web ci --ignore-scripts
       - run: npm --prefix web run build
       - run: go mod verify
+      - run: go mod tidy -diff
       - name: gofmt
         run: |
-          unformatted=$(gofmt -l cmd internal web/embed.go)
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
           [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
-      # Packages are listed explicitly so ./... does not reach web/node_modules.
-      - run: go vet ./internal/... ./cmd/... ./web
-      # macOS is cross-checked only; release-snapshot also cross-compiles it.
-      - run: GOOS=darwin GOARCH=arm64 go vet ./internal/... ./cmd/... ./web
-      - run: go test -race -count=1 ./internal/... ./cmd/... ./web
+      - name: goimports
+        run: |
+          unformatted=$(go run golang.org/x/tools/cmd/goimports@v0.50.0 -local navi -l $(git ls-files '*.go'))
+          [ -z "$unformatted" ] || { echo "$unformatted"; exit 1; }
+      - run: go vet ./...
+      - run: GOOS=linux GOARCH=arm64 go vet ./...
+      - run: GOOS=darwin GOARCH=amd64 go vet ./...
+      - run: GOOS=darwin GOARCH=arm64 go vet ./...
+      - run: go vet -tags integration,scale ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - run: go test -race -count=1 ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   e2e:
     name: E2E (Chromium)
@@ -90,7 +101,7 @@ jobs:
       - name: 安装 Chromium
         working-directory: web
         run: npm exec -- playwright install --with-deps chromium
-      # Visual baselines are macOS screenshots, so the visual project is not run here.
+      # Visual baselines run separately in the pinned Linux container.
       - name: Vite fixture E2E
         working-directory: web
         run: npm exec -- playwright test --project=chromium
@@ -125,3 +136,20 @@ jobs:
           install-only: true
       - run: goreleaser check
       - run: goreleaser release --snapshot --clean
+
+  visual:
+    name: Linux ARM64 visual regression
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --ipc=host
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm --prefix web ci --ignore-scripts
+      - run: npm --prefix web run test:visual -- --workers=2

@@ -16,22 +16,22 @@ import (
 )
 
 func TestManagerRepairsMissingFreshCacheWithoutConditionalRequest(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var conditional atomic.Bool
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/favicon.ico" {
-			writer.WriteHeader(http.StatusForbidden)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/favicon.ico" {
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		conditional.Store(request.Header.Get("If-None-Match") != "")
-		writer.Header().Set("Content-Type", "image/png")
-		_, _ = writer.Write(testPNG(t))
+		conditional.Store(r.Header.Get("If-None-Match") != "")
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(testPNG(t))
 	}))
 	defer target.Close()
-	entry, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
+	entry, err := store.Put(t.Context(), WriteRequest{RuntimeID: "one", SourceURL: target.URL + "/favicon.ico", ContentType: "image/png", SourceETag: `"old"`, LastModified: "", Body: []byte("old")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,43 +42,45 @@ func TestManagerRepairsMissingFreshCacheWithoutConditionalRequest(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager.Start(t.Context())
-	defer manager.Stop()
+	if err := manager.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Shutdown(t.Context())
 	link := catalog.Link{RuntimeID: "one", PublicURL: target.URL}
-	if !manager.shouldFetch("one") {
+	if !manager.shouldFetch(t.Context(), "one") {
 		t.Fatal("fresh metadata suppressed download after blob removal")
 	}
 	manager.fetch(t.Context(), link)
-	if _, body, err := readCachedIcon(store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
+	if _, body, err := readCachedIcon(t.Context(), store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
 		t.Fatalf("cache repair body=%q, err=%v, conditional=%v", body, err, conditional.Load())
 	}
 }
 
 func TestManagerReDownloadsOldInvalidCacheAfterRestart(t *testing.T) {
 	directory := t.TempDir()
-	store, err := NewStore(directory)
+	store, err := NewStore(t.Context(), directory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var conditional atomic.Bool
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/favicon.ico" {
-			writer.WriteHeader(http.StatusForbidden)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/favicon.ico" {
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
-		if request.Header.Get("If-None-Match") != "" {
+		if r.Header.Get("If-None-Match") != "" {
 			conditional.Store(true)
-			writer.WriteHeader(http.StatusNotModified)
+			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		writer.Header().Set("Content-Type", "image/png")
-		_, _ = writer.Write(testPNG(t))
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(testPNG(t))
 	}))
 	defer target.Close()
-	if _, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("\x89PNG\r\n\x1a\ninvalid")); err != nil {
+	if _, err := store.Put(t.Context(), WriteRequest{RuntimeID: "one", SourceURL: target.URL + "/favicon.ico", ContentType: "image/png", SourceETag: `"old"`, LastModified: "", Body: []byte("\x89PNG\r\n\x1a\ninvalid")}); err != nil {
 		t.Fatal(err)
 	}
-	reopened, err := NewStore(directory)
+	reopened, err := NewStore(t.Context(), directory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,9 +89,11 @@ func TestManagerReDownloadsOldInvalidCacheAfterRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager.Start(t.Context())
-	defer manager.Stop()
-	if err := manager.Schedule(catalog.Catalog{Pages: []catalog.Page{{Groups: []catalog.Group{{Links: []catalog.Link{{RuntimeID: "one", PublicURL: target.URL}}}}}}}); err != nil {
+	if err := manager.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Shutdown(t.Context())
+	if err := manager.Schedule(t.Context(), catalog.Catalog{Pages: []catalog.Page{{Groups: []catalog.Group{{Links: []catalog.Link{{RuntimeID: "one", PublicURL: target.URL}}}}}}}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -100,36 +104,36 @@ func TestManagerReDownloadsOldInvalidCacheAfterRestart(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("startup revalidation did not schedule a replacement")
 	}
-	if _, body, err := readCachedIcon(reopened, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
+	if _, body, err := readCachedIcon(t.Context(), reopened, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || conditional.Load() {
 		t.Fatalf("restart repair body=%x, err=%v, conditional=%v", body, err, conditional.Load())
 	}
 }
 
 func TestManagerRepairsCacheDeletedDuringConditionalRefresh(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cachedFile string
 	var requests atomic.Int32
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path != "/favicon.ico" {
-			writer.WriteHeader(http.StatusForbidden)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/favicon.ico" {
+			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		requests.Add(1)
-		if request.Header.Get("If-None-Match") != "" {
+		if r.Header.Get("If-None-Match") != "" {
 			if err := os.Remove(cachedFile); err != nil {
 				t.Error(err)
 			}
-			writer.WriteHeader(http.StatusNotModified)
+			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		writer.Header().Set("Content-Type", "image/png")
-		_, _ = writer.Write(testPNG(t))
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(testPNG(t))
 	}))
 	defer target.Close()
-	entry, err := store.Put("one", target.URL+"/favicon.ico", "image/png", `"old"`, "", []byte("old"))
+	entry, err := store.Put(t.Context(), WriteRequest{RuntimeID: "one", SourceURL: target.URL + "/favicon.ico", ContentType: "image/png", SourceETag: `"old"`, LastModified: "", Body: []byte("old")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +143,7 @@ func TestManagerRepairsCacheDeletedDuringConditionalRefresh(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.fetch(t.Context(), catalog.Link{RuntimeID: "one", PublicURL: target.URL})
-	if _, body, err := readCachedIcon(store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || requests.Load() != 2 {
+	if _, body, err := readCachedIcon(t.Context(), store, "one"); err != nil || !bytes.Equal(body, testPNG(t)) || requests.Load() != 2 {
 		t.Fatalf("cache repair body=%q, err=%v, requests=%d", body, err, requests.Load())
 	}
 	if degraded, _ := manager.Degraded(); degraded {
@@ -148,19 +152,19 @@ func TestManagerRepairsCacheDeletedDuringConditionalRefresh(t *testing.T) {
 }
 
 func TestManagerSkipsUnsolicitedNotModifiedResponse(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
 		case "/":
-			_, _ = writer.Write([]byte(`<link rel="icon" href="/invalid.png">`))
+			_, _ = w.Write([]byte(`<link rel="icon" href="/invalid.png">`))
 		case "/invalid.png":
-			writer.WriteHeader(http.StatusNotModified)
+			w.WriteHeader(http.StatusNotModified)
 		case "/favicon.ico":
-			writer.Header().Set("Content-Type", "image/png")
-			_, _ = writer.Write(testPNG(t))
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(testPNG(t))
 		}
 	}))
 	defer target.Close()
@@ -169,7 +173,7 @@ func TestManagerSkipsUnsolicitedNotModifiedResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.fetch(t.Context(), catalog.Link{RuntimeID: "one", PublicURL: target.URL})
-	entry, ok := store.Entry("one")
+	entry, ok := store.Entry(t.Context(), "one")
 	if !ok || entry.SourceURL != target.URL+"/favicon.ico" {
 		t.Fatalf("unsolicited 304 prevented root fallback: %+v", entry)
 	}
@@ -179,25 +183,25 @@ func TestManagerSkipsUnsolicitedNotModifiedResponse(t *testing.T) {
 }
 
 func TestManagerNegotiatesSupportedImageAndSkipsMalformedCandidate(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
 		case "/":
-			_, _ = writer.Write([]byte(`<link rel="icon" href="/broken.png">`))
+			_, _ = w.Write([]byte(`<link rel="icon" href="/broken.png">`))
 		case "/broken.png":
-			writer.Header().Set("Content-Type", "image/png")
-			_, _ = writer.Write([]byte("\x89PNG\r\n\x1a\ntruncated"))
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("\x89PNG\r\n\x1a\ntruncated"))
 		case "/favicon.ico":
-			if strings.Contains(request.Header.Get("Accept"), "image/avif") {
-				writer.Header().Set("Content-Type", "image/avif")
-				_, _ = writer.Write([]byte("unsupported AVIF response"))
+			if strings.Contains(r.Header.Get("Accept"), "image/avif") {
+				w.Header().Set("Content-Type", "image/avif")
+				_, _ = w.Write([]byte("unsupported AVIF response"))
 				return
 			}
-			writer.Header().Set("Content-Type", "image/png")
-			_, _ = writer.Write(testPNG(t))
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(testPNG(t))
 		}
 	}))
 	defer target.Close()
@@ -206,7 +210,7 @@ func TestManagerNegotiatesSupportedImageAndSkipsMalformedCandidate(t *testing.T)
 		t.Fatal(err)
 	}
 	manager.fetch(t.Context(), catalog.Link{RuntimeID: "one", PublicURL: target.URL})
-	entry, body, err := readCachedIcon(store, "one")
+	entry, body, err := readCachedIcon(t.Context(), store, "one")
 	if err != nil || entry.SourceURL != target.URL+"/favicon.ico" || !bytes.Equal(body, testPNG(t)) {
 		t.Fatalf("negotiated icon = %+v, err=%v", entry, err)
 	}
@@ -217,32 +221,32 @@ func TestManagerUsesConditionalValidatorsAndHandlesNotModified(t *testing.T) {
 	var conditionalETag atomic.Value
 	var conditionalLastModified atomic.Value
 	var iconRequests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
 		case "/page":
-			writer.Header().Set("Content-Type", "text/html")
-			_, _ = writer.Write([]byte(`<link rel="icon" href="/favicon.png">`))
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte(`<link rel="icon" href="/favicon.png">`))
 		case "/favicon.png":
 			iconRequests.Add(1)
-			conditionalETag.Store(request.Header.Get("If-None-Match"))
-			conditionalLastModified.Store(request.Header.Get("If-Modified-Since"))
-			if request.Header.Get("If-None-Match") == `"remote-v1"` {
-				writer.Header().Set("ETag", `"remote-v1"`)
-				writer.Header().Set("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
-				writer.WriteHeader(http.StatusNotModified)
+			conditionalETag.Store(r.Header.Get("If-None-Match"))
+			conditionalLastModified.Store(r.Header.Get("If-Modified-Since"))
+			if r.Header.Get("If-None-Match") == `"remote-v1"` {
+				w.Header().Set("ETag", `"remote-v1"`)
+				w.Header().Set("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+				w.WriteHeader(http.StatusNotModified)
 				return
 			}
-			writer.Header().Set("Content-Type", "image/png")
-			writer.Header().Set("ETag", `"remote-v1"`)
-			writer.Header().Set("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
-			_, _ = writer.Write(testPNG(t))
+			w.Header().Set("Content-Type", "image/png")
+			w.Header().Set("ETag", `"remote-v1"`)
+			w.Header().Set("Last-Modified", "Wed, 01 Jan 2025 00:00:00 GMT")
+			_, _ = w.Write(testPNG(t))
 		default:
-			writer.WriteHeader(http.StatusNotFound)
+			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer server.Close()
 
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +259,7 @@ func TestManagerUsesConditionalValidatorsAndHandlesNotModified(t *testing.T) {
 	}
 	link := catalog.Link{RuntimeID: "one", PublicURL: server.URL + "/page"}
 	manager.fetch(t.Context(), link)
-	entry, ok := store.Entry("one")
+	entry, ok := store.Entry(t.Context(), "one")
 	if !ok || entry.SourceETag != `"remote-v1"` {
 		t.Fatalf("entry after initial fetch = %#v, ok=%v", entry, ok)
 	}
@@ -282,24 +286,27 @@ func TestManagerUsesConditionalValidatorsAndHandlesNotModified(t *testing.T) {
 		t.Fatalf("304 refresh should not publish an update: %#v", event)
 	default:
 	}
-	refreshed, _ := store.Entry("one")
+	refreshed, _ := store.Entry(t.Context(), "one")
 	if !refreshed.FetchedAt.After(entry.FetchedAt) {
 		t.Fatalf("304 refresh did not update fetched_at: before=%s after=%s", entry.FetchedAt, refreshed.FetchedAt)
 	}
 }
 
 func TestManagerDeduplicatesConcurrentDiscoveryBySource(t *testing.T) {
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	t.Parallel()
 	var requests atomic.Int32
 	release := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		<-release
-		writer.Header().Set("Content-Type", "text/html")
-		_, _ = writer.Write([]byte(`<link rel="icon" href="/favicon.png">`))
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<link rel="icon" href="/favicon.png">`))
 	}))
 	defer server.Close()
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,20 +321,21 @@ func TestManagerDeduplicatesConcurrentDiscoveryBySource(t *testing.T) {
 	var start sync.WaitGroup
 	start.Add(2)
 	for range 2 {
-		go func() {
+		background.Go(func() {
 			start.Done()
 			_, err := manager.discover(t.Context(), pageURL)
 			results <- err
-		}()
+		})
 	}
 	start.Wait()
 	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
 	for requests.Load() == 0 {
 		select {
 		case <-deadline:
 			t.Fatal("discovery request did not start")
-		default:
-			time.Sleep(time.Millisecond)
+		case <-ticker.C:
 		}
 	}
 	close(release)
@@ -342,7 +350,7 @@ func TestManagerDeduplicatesConcurrentDiscoveryBySource(t *testing.T) {
 }
 
 func TestManagerReportsStorageFailureAndRecovery(t *testing.T) {
-	store, err := NewStore(t.TempDir())
+	store, err := NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +398,7 @@ func TestManagerReportsStorageFailureAndRecovery(t *testing.T) {
 	if degraded, _ := manager.Degraded(); degraded {
 		t.Fatal("health did not recover")
 	}
-	if _, ok := store.Entry("one"); !ok {
+	if _, ok := store.Entry(t.Context(), "one"); !ok {
 		t.Fatal("root icon not stored")
 	}
 	if event := <-events; event.Type != catalog.EventStatusUpdated {

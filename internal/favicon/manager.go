@@ -32,7 +32,9 @@ const (
 )
 
 // Manager fetches icons in bounded background workers.
+// mu guards lifecycle, inFlight and storageFailures; discoverMu and fetchMu guard their call maps.
 type Manager struct {
+	now     func() time.Time
 	config  Config
 	store   *Store
 	client  *http.Client
@@ -44,6 +46,9 @@ type Manager struct {
 	jobs            chan catalog.Link
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
+	done            chan struct{}
+	started         bool
+	remaining       int
 
 	discoverMu  sync.Mutex
 	discovering map[string]*discoverCall
@@ -66,9 +71,9 @@ type iconFetchResult struct {
 }
 
 // clone gives each waiter ownership of its image bytes.
-func (result iconFetchResult) clone() iconFetchResult {
-	result.contents = bytes.Clone(result.contents)
-	return result
+func (r iconFetchResult) clone() iconFetchResult {
+	r.contents = bytes.Clone(r.contents)
+	return r
 }
 
 type iconCall struct {
@@ -80,55 +85,75 @@ type iconCall struct {
 // NewManager creates a favicon manager around a writable cache store.
 func NewManager(config Config, store *Store, publish func(catalog.Event)) (*Manager, error) {
 	if store == nil {
-		return nil, fmt.Errorf("favicon manager requires a cache store")
+		return nil, errors.New("favicon manager requires a cache store")
 	}
-	if config.FetchTimeout <= 0 || config.RefreshInterval <= 0 || config.MaxFileBytes <= 0 || config.Workers < 1 {
-		return nil, fmt.Errorf("favicon manager has invalid configuration")
+	if config.FetchTimeout <= 0 || config.RefreshInterval <= 0 || config.MaxFileBytes <= 0 || config.Workers < 1 || config.Workers > 16 || config.MaxFileBytes > maxCachedIconBytes {
+		return nil, errors.New("favicon manager has invalid configuration")
 	}
 	client := &http.Client{Timeout: config.FetchTimeout, CheckRedirect: limitRedirects}
 	return &Manager{
-		config: config, store: store, client: client, publish: publish,
+		config: config, store: store, client: client, publish: publish, now: time.Now,
 		storageFailures: make(map[string]bool), inFlight: make(map[string]struct{}), jobs: make(chan catalog.Link, maxQueuedFetches),
 		discovering: make(map[string]*discoverCall), fetching: make(map[string]*iconCall),
 	}, nil
 }
 
 // Start launches the configured number of bounded fetching workers.
-func (m *Manager) Start(parent context.Context) {
+func (m *Manager) Start(parent context.Context) error {
 	m.mu.Lock()
-	if m.cancel != nil {
+	if m.started {
 		m.mu.Unlock()
-		return
+		return errors.New("favicon manager already started")
 	}
 	ctx, cancel := context.WithCancel(parent)
 	m.cancel = cancel
+	m.started = true
+	m.done = make(chan struct{})
+	m.remaining = m.config.Workers
 	for range m.config.Workers {
-		m.wg.Go(func() { m.worker(ctx) })
+		m.wg.Go(func() {
+			defer func() {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				m.remaining--
+				if m.remaining == 0 {
+					close(m.done)
+				}
+			}()
+			m.worker(ctx)
+		})
 	}
 	m.mu.Unlock()
+	return nil
 }
 
-// Stop cancels workers and waits for all owned work to exit.
-func (m *Manager) Stop() {
+// Shutdown cancels workers and waits within the caller deadline.
+func (m *Manager) Shutdown(ctx context.Context) error {
 	m.mu.Lock()
-	cancel := m.cancel
-	m.cancel = nil
+	cancel, done := m.cancel, m.done
 	m.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if cancel == nil {
+		return nil
+	}
+	cancel()
+	select {
+	case <-done:
 		m.wg.Wait()
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("shutdown favicon manager: %w", ctx.Err())
 	}
 }
 
 // Schedule queues missing or expired icons and retires cache entries that are
 // no longer referenced by the active catalog.
-func (m *Manager) Schedule(directory catalog.Catalog) error {
+func (m *Manager) Schedule(ctx context.Context, directory catalog.Catalog) error {
 	activeRuntimeIDs := make(map[string]struct{})
 	for _, page := range directory.Pages {
 		for _, group := range page.Groups {
 			for _, link := range group.Links {
 				activeRuntimeIDs[link.RuntimeID] = struct{}{}
-				if !m.shouldFetch(link.RuntimeID) {
+				if !m.shouldFetch(ctx, link.RuntimeID) {
 					continue
 				}
 				select {
@@ -140,7 +165,7 @@ func (m *Manager) Schedule(directory catalog.Catalog) error {
 		}
 	}
 	m.pruneStorageFailures(activeRuntimeIDs)
-	_, err := m.store.Cleanup(activeRuntimeIDs, cacheCleanupGrace)
+	_, err := m.store.Cleanup(ctx, activeRuntimeIDs, cacheCleanupGrace)
 	m.recordStorageResult(maintenanceFailureKey, err)
 	if err != nil {
 		return fmt.Errorf("cleanup favicon cache: %w", err)
@@ -148,11 +173,11 @@ func (m *Manager) Schedule(directory catalog.Catalog) error {
 	return nil
 }
 
-func (m *Manager) shouldFetch(runtimeID string) bool {
+func (m *Manager) shouldFetch(ctx context.Context, runtimeID string) bool {
 	m.mu.Lock()
 	failed := m.storageFailures[runtimeID]
 	m.mu.Unlock()
-	if entry, ok := m.store.Entry(runtimeID); ok && !failed && time.Since(entry.FetchedAt) < m.config.RefreshInterval {
+	if entry, ok := m.store.Entry(ctx, runtimeID); ok && !failed && m.now().Sub(entry.FetchedAt) < m.config.RefreshInterval {
 		return false
 	}
 	m.mu.Lock()
@@ -186,7 +211,7 @@ func (m *Manager) worker(ctx context.Context) {
 }
 
 func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
-	entry, hasEntry := m.store.Entry(link.RuntimeID)
+	entry, hasEntry := m.store.Entry(ctx, link.RuntimeID)
 	for _, entryURL := range []string{link.PublicURL, link.PrivateURL} {
 		if entryURL == "" {
 			continue
@@ -205,7 +230,7 @@ func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
 				continue
 			}
 			if result.notModified {
-				_, refreshErr := m.store.Refresh(link.RuntimeID, candidate, result.sourceETag, result.lastModified)
+				_, refreshErr := m.store.Refresh(ctx, RefreshRequest{RuntimeID: link.RuntimeID, SourceURL: candidate, SourceETag: result.sourceETag, LastModified: result.lastModified})
 				if !errors.Is(refreshErr, ErrNotFound) {
 					m.recordStorageResult(link.RuntimeID, refreshErr)
 					return
@@ -217,7 +242,7 @@ func (m *Manager) fetch(ctx context.Context, link catalog.Link) {
 					continue
 				}
 			}
-			_, err = m.store.Put(link.RuntimeID, candidate, result.contentType, result.sourceETag, result.lastModified, result.contents)
+			_, err = m.store.Put(ctx, WriteRequest{RuntimeID: link.RuntimeID, SourceURL: candidate, ContentType: result.contentType, SourceETag: result.sourceETag, LastModified: result.lastModified, Body: result.contents})
 			m.recordStorageResult(link.RuntimeID, err)
 			if err != nil {
 				return
@@ -279,8 +304,8 @@ func (m *Manager) discover(ctx context.Context, pageURL string) ([]string, error
 
 func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) (iconFetchResult, error) {
 	parsed, err := url.Parse(source)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return iconFetchResult{}, fmt.Errorf("invalid favicon source")
+	if err != nil || parsed.User != nil || len(source) > 4096 || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return iconFetchResult{}, errors.New("invalid favicon source")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
@@ -299,28 +324,28 @@ func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) 
 	if err != nil {
 		return iconFetchResult{}, fmt.Errorf("fetch favicon: %w", err)
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() // Unread remote bytes are discarded; validated data was read explicitly.
 	sourceETag := response.Header.Get("ETag")
 	lastModified := response.Header.Get("Last-Modified")
 	if response.StatusCode == http.StatusNotModified {
 		if previous.SourceURL != source || (previous.SourceETag == "" && previous.LastModified == "") {
-			return iconFetchResult{}, fmt.Errorf("fetch favicon: unexpected not-modified response")
+			return iconFetchResult{}, errors.New("fetch favicon: unexpected not-modified response")
 		}
 		return iconFetchResult{sourceETag: sourceETag, lastModified: lastModified, notModified: true}, nil
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return iconFetchResult{}, fmt.Errorf("fetch favicon: unexpected status")
+		return iconFetchResult{}, errors.New("fetch favicon: unexpected status")
 	}
 	contents, err := io.ReadAll(io.LimitReader(response.Body, m.config.MaxFileBytes+1))
 	if err != nil {
 		return iconFetchResult{}, fmt.Errorf("read favicon: %w", err)
 	}
 	if int64(len(contents)) > m.config.MaxFileBytes {
-		return iconFetchResult{}, fmt.Errorf("read favicon: file exceeds size limit")
+		return iconFetchResult{}, errors.New("read favicon: file exceeds size limit")
 	}
 	contentType, ok := validatedContentType(response.Header.Get("Content-Type"), contents)
 	if !ok {
-		return iconFetchResult{}, fmt.Errorf("read favicon: unsupported image type")
+		return iconFetchResult{}, errors.New("read favicon: unsupported image type")
 	}
 	return iconFetchResult{
 		contentType:  contentType,
@@ -331,18 +356,25 @@ func (m *Manager) fetchIcon(ctx context.Context, source string, previous Entry) 
 }
 
 func limitRedirects(request *http.Request, via []*http.Request) error {
+	if request != nil && (request.URL.User != nil || request.Header.Get("Authorization") != "" || request.Header.Get("Cookie") != "") {
+		return http.ErrUseLastResponse
+	}
 	if len(via) > 3 {
 		return errors.New("favicon redirect limit reached")
 	}
 	return nil
 }
 
-// Degraded reports local persistence failures; remote sites without icons do not degrade Navi.
+// StatusWriteFailed is the status code of failing icon cache writes.
+const StatusWriteFailed = "icon_cache_write_failed"
+
+// Degraded reports local persistence failures with their status code; remote
+// sites without icons do not degrade Navi.
 func (m *Manager) Degraded() (bool, string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.storageFailures) > 0 {
-		return true, "图标缓存写入失败，当前保留已有图标或使用字标。请检查存储权限和磁盘空间。"
+		return true, StatusWriteFailed
 	}
 	return false, ""
 }

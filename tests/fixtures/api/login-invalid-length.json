@@ -1,0 +1,21 @@
+{
+  "request": {
+    "username": "tester",
+    "password": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "status": 400,
+  "response": {
+    "error": {
+      "code": "invalid_argument",
+      "message": "login fields have invalid lengths",
+      "details": {
+        "fields": [
+          {
+            "path": "password",
+            "reason": "invalid_length"
+          }
+        ]
+      }
+    }
+  }
+}

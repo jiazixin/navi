@@ -10,8 +10,8 @@
   display: grid;
   min-height: 100vh;
   align-content: center;
-  gap: 40px;
-  padding: 48px var(--gutter);
+  gap: var(--space-40px);
+  padding: var(--space-48px) var(--gutter);
 }
 
 .brand {
@@ -19,8 +19,8 @@
   min-height: var(--touch-target);
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  font: 600 15px/1 var(--font-mono);
-  letter-spacing: 0.34em;
+  gap: var(--space-12px);
+  font: var(--design-font-1);
+  letter-spacing: var(--type-0point-34em);
   text-decoration: none;
 }

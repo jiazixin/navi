@@ -1,17 +1,17 @@
 .clock {
   position: relative;
-  margin-bottom: 40px;
+  margin-bottom: var(--space-40px);
 }
 
 .dateline {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 14px;
+  gap: var(--space-8px) var(--space-14px);
   margin: 0;
   color: var(--text-3);
-  font: 500 12px/1.4 var(--font-mono);
-  letter-spacing: 0.2em;
+  font: var(--design-font-7);
+  letter-spacing: var(--type-0point-2em);
   text-transform: uppercase;
 }
 
@@ -24,10 +24,10 @@
 .time {
   display: flex;
   align-items: flex-start;
-  margin: 26px 0 14px;
-  font: 160 calc(clamp(96px, 12.5vw, 184px) * 0.86) / 0.9 var(--font-mono);
+  margin: var(--space-26px) 0 var(--space-14px);
+  font: var(--design-font-8);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.06em;
+  letter-spacing: var(--type-negative-0point-06em);
 }
 
 .time time {
@@ -47,7 +47,7 @@
   position: relative;
   width: 0.3em;
   align-self: stretch;
-  animation: var(--anim-breathe) 2s ease-in-out infinite;
+  animation: var(--anim-breathe) var(--motion-2s) ease-in-out infinite;
 }
 
 .colon::before,
@@ -56,8 +56,8 @@
   left: 50%;
   width: 0.085em;
   height: 0.085em;
-  margin-left: -0.0425em;
-  border-radius: 50%;
+  margin-left: var(--space-negative-0point-0425em);
+  border-radius: var(--radius-50percent);
   background: var(--accent);
   content: '';
 }
@@ -74,11 +74,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  margin: 0.62em 0 0 22px;
+  gap: var(--space-8px);
+  margin: var(--space-0point-62em) 0 0 var(--space-22px);
   color: var(--text-3);
-  font: 500 13px/1 var(--font-mono);
-  letter-spacing: 0.12em;
+  font: var(--design-font-9);
+  letter-spacing: var(--type-0point-12em);
 }
 
 .seconds i {
@@ -87,7 +87,7 @@
   width: 44px;
   height: 2px;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: var(--radius-2px);
   background: var(--line-2);
 }
 
@@ -98,27 +98,27 @@
   content: '';
   transform: scaleX(var(--progress, 0));
   transform-origin: left;
-  transition: transform 1s linear;
+  transition: transform var(--motion-1s) linear;
 }
 
 .greeting {
   margin: 0;
   color: var(--text-2);
-  font: 400 clamp(20px, 2.3vw, 28px) / 1.5 var(--font-cn-serif);
-  letter-spacing: 0.08em;
+  font: var(--design-font-10);
+  letter-spacing: var(--type-0point-08em);
 }
 
 @media (max-width: 720px) {
   .time {
-    margin-top: 20px;
-    font-size: 88px;
+    margin-top: var(--space-20px);
+    font-size: var(--type-88px);
   }
 
   .seconds {
-    margin-left: 14px;
+    margin-left: var(--space-14px);
   }
 
   .clock {
-    margin-bottom: 28px;
+    margin-bottom: var(--space-28px);
   }
 }

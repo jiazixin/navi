@@ -1,41 +1,35 @@
-import { useContext, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import { LogOut, RefreshCw, Search, SunMoon } from 'lucide-react';
-import { BrandMark } from '../components/BrandMark';
-import { AuthRequiredContext } from '../features/auth/AuthContext';
-import type { ConnectionState } from '../features/status/useCatalogEvents';
-import styles from './TopBar.module.css';
+import { useLogout } from '../features/auth/useAuthData'
+import { useNotify } from '../app/notifications'
+import { errorText } from '../app/errors'
+import { useContext, useLayoutEffect, useRef, useState, type RefObject } from 'react'
+import { LogOut, RefreshCw, Search, SunMoon } from 'lucide-react'
+import { BrandMark } from '../components/BrandMark'
+import { AuthRequiredContext } from '../app/AuthContext'
+import type { ConnectionState } from '../features/status/useCatalogEvents'
+import styles from './TopBar.module.css'
 
 type TopBarProps = {
-  pages: readonly { id: string; title: string }[];
-  currentIndex: number;
-  onSelectPage: (index: number) => void;
-  connection: ConnectionState;
-  isRefreshing: boolean;
-  onRefresh: () => void;
-  onOpenSearch: () => void;
-  searchButtonRef: RefObject<HTMLButtonElement | null>;
-  appearanceOpen: boolean;
-  appearancePanelID: string;
-  onToggleAppearance: () => void;
-  appearanceButtonRef: RefObject<HTMLButtonElement | null>;
-  scrolled: boolean;
-};
-
-function connectionLabel(connection: ConnectionState, isRefreshing: boolean): string {
-  if (isRefreshing) return '正在刷新目录';
-  if (connection.kind === 'live') return '实时更新已连接，点击刷新';
-  if (connection.kind === 'connecting') return '正在连接实时更新，点击刷新';
-  return `实时更新正在重连，第 ${connection.attempt} 次，点击刷新`;
+  pages: readonly { id: string; title: string }[]
+  currentIndex: number
+  onSelectPage: (index: number) => void
+  connection: ConnectionState
+  isRefreshing: boolean
+  onRefresh: () => void
+  onOpenSearch: () => void
+  searchButtonRef: RefObject<HTMLButtonElement | null>
+  isAppearanceOpen: boolean
+  appearancePanelID: string
+  onToggleAppearance: () => void
+  appearanceButtonRef: RefObject<HTMLButtonElement | null>
+  isScrolled: boolean
 }
 
-async function logout(): Promise<void> {
-  try {
-    const response = await fetch('/api/auth/logout', { method: 'POST', headers: { 'X-Navi-Request': '1' } });
-    if (!response.ok) throw new Error('logout');
-    window.location.replace('/login');
-  } catch {
-    window.alert('退出失败，请检查网络后重试。');
-  }
+function connectionLabel(connection: ConnectionState, isRefreshing: boolean): string {
+  if (isRefreshing) return '正在刷新目录'
+  if (connection.kind === 'live') return '实时更新已连接，点击刷新'
+  if (connection.kind === 'connecting') return '正在连接实时更新，点击刷新'
+  if (connection.attempt > 2) return '实时更新已中断，点击重试'
+  return `实时更新正在重连，第 ${connection.attempt} 次，点击刷新`
 }
 
 export function TopBar({
@@ -47,33 +41,40 @@ export function TopBar({
   onRefresh,
   onOpenSearch,
   searchButtonRef,
-  appearanceOpen,
+  isAppearanceOpen,
   appearancePanelID,
   onToggleAppearance,
   appearanceButtonRef,
-  scrolled,
+  isScrolled,
 }: TopBarProps): React.JSX.Element {
-  const authRequired = useContext(AuthRequiredContext);
-  const pagesRef = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
-  const refreshLabel = connectionLabel(connection, isRefreshing);
+  const logout = useLogout()
+  const notify = useNotify()
+  function handleSignOut(): void {
+    logout.mutate(undefined, { onError: (error) => notify(errorText(error)) })
+  }
+  const isAuthRequired = useContext(AuthRequiredContext)
+  const pagesRef = useRef<HTMLDivElement>(null)
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null)
+  const refreshLabel = connectionLabel(connection, isRefreshing)
 
   useLayoutEffect(() => {
-    const container = pagesRef.current;
-    if (container === null) return undefined;
+    const container = pagesRef.current
+    if (container === null) return undefined
     const measure = (): void => {
-      const button = container.querySelectorAll<HTMLElement>('button')[currentIndex];
-      setIndicator(button === undefined ? null : { left: button.offsetLeft, width: button.offsetWidth });
-      button?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    };
-    measure();
-    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
-    observer?.observe(container);
-    return () => observer?.disconnect();
-  }, [currentIndex, pages]);
+      const button = container.querySelectorAll<HTMLElement>('button')[currentIndex]
+      setIndicator(
+        button === undefined ? null : { left: button.offsetLeft, width: button.offsetWidth },
+      )
+      button?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+    measure()
+    const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure)
+    observer?.observe(container)
+    return () => observer?.disconnect()
+  }, [currentIndex, pages])
 
   return (
-    <header className={styles.topBar} data-scrolled={scrolled ? 'true' : 'false'}>
+    <header className={styles.topBar} data-scrolled={isScrolled ? 'true' : 'false'}>
       <div className={styles.inner}>
         <a aria-label="Navi 首页" className={styles.brand} href="/">
           <BrandMark className={styles.mark} />
@@ -83,7 +84,11 @@ export function TopBar({
           <nav aria-label="导航页" className={styles.pages}>
             <div className={styles.pageTrack} ref={pagesRef}>
               {indicator === null ? null : (
-                <span aria-hidden="true" className={styles.indicator} style={{ left: indicator.left, width: indicator.width }} />
+                <span
+                  aria-hidden="true"
+                  className={styles.indicator}
+                  style={{ left: indicator.left, width: indicator.width }}
+                />
               )}
               {pages.map((page, index) => (
                 <button
@@ -100,7 +105,13 @@ export function TopBar({
           </nav>
         ) : null}
         <div className={styles.actions}>
-          <button aria-label="搜索链接" className={styles.searchButton} onClick={onOpenSearch} ref={searchButtonRef} type="button">
+          <button
+            aria-label="搜索链接"
+            className={styles.searchButton}
+            onClick={onOpenSearch}
+            ref={searchButtonRef}
+            type="button"
+          >
             <Search aria-hidden="true" size={16} strokeWidth={1.8} />
             <span>搜索链接</span>
             <kbd aria-hidden="true">⌘K</kbd>
@@ -117,8 +128,8 @@ export function TopBar({
             <span aria-hidden="true" className={styles.connection} data-state={connection.kind} />
           </button>
           <button
-            aria-controls={appearanceOpen ? appearancePanelID : undefined}
-            aria-expanded={appearanceOpen}
+            aria-controls={isAppearanceOpen ? appearancePanelID : undefined}
+            aria-expanded={isAppearanceOpen}
             aria-haspopup="dialog"
             aria-label="外观：纹样与色调"
             className={styles.iconButton}
@@ -129,13 +140,20 @@ export function TopBar({
           >
             <SunMoon aria-hidden="true" size={16} strokeWidth={1.8} />
           </button>
-          {authRequired ? (
-            <button aria-label="退出登录" className={styles.iconButton} onClick={() => void logout()} title="退出登录" type="button">
+          {isAuthRequired ? (
+            <button
+              aria-label="退出登录"
+              className={styles.iconButton}
+              disabled={logout.isPending}
+              onClick={handleSignOut}
+              title="退出登录"
+              type="button"
+            >
               <LogOut aria-hidden="true" size={16} strokeWidth={1.8} />
             </button>
           ) : null}
         </div>
       </div>
     </header>
-  );
+  )
 }

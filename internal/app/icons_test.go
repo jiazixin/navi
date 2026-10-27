@@ -10,11 +10,11 @@ import (
 
 func TestServerServesCachedIconWithETag(t *testing.T) {
 	t.Parallel()
-	store, err := favicon.NewStore(t.TempDir())
+	store, err := favicon.NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := store.Put("one", "https://example.test/favicon.png", "image/png", "", "", []byte("\x89PNG\r\n\x1a\nimage"))
+	entry, err := store.Put(t.Context(), favicon.WriteRequest{RuntimeID: "one", SourceURL: "https://example.test/favicon.png", ContentType: "image/png", SourceETag: "", LastModified: "", Body: []byte("\x89PNG\r\n\x1a\nimage")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,15 +36,15 @@ func TestServerServesCachedIconWithETag(t *testing.T) {
 }
 
 func TestIconRefreshRevalidatesSameURL(t *testing.T) {
-	store, err := favicon.NewStore(t.TempDir())
+	store, err := favicon.NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	old, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("old"))
+	old, err := store.Put(t.Context(), favicon.WriteRequest{RuntimeID: "one", SourceURL: "https://example.test/icon.png", ContentType: "image/png", SourceETag: "", LastModified: "", Body: []byte("old")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("new")); err != nil {
+	if _, err := store.Put(t.Context(), favicon.WriteRequest{RuntimeID: "one", SourceURL: "https://example.test/icon.png", ContentType: "image/png", SourceETag: "", LastModified: "", Body: []byte("new")}); err != nil {
 		t.Fatal(err)
 	}
 	server := newTestServer(t, nil)
@@ -59,15 +59,15 @@ func TestIconRefreshRevalidatesSameURL(t *testing.T) {
 }
 
 func TestPublicIconCanUseSharedCache(t *testing.T) {
-	store, err := favicon.NewStore(t.TempDir())
+	store, err := favicon.NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Put("one", "https://example.test/icon.png", "image/png", "", "", []byte("icon")); err != nil {
+	if _, err := store.Put(t.Context(), favicon.WriteRequest{RuntimeID: "one", SourceURL: "https://example.test/icon.png", ContentType: "image/png", SourceETag: "", LastModified: "", Body: []byte("icon")}); err != nil {
 		t.Fatal(err)
 	}
 	server := newTestServer(t, nil)
-	server.config.Auth.Username, server.config.Auth.Password = "", ""
+	server.config.Auth.Username, server.config.Auth.PasswordHash = "", ""
 	server.icons = store
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/icons/one", nil))

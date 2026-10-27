@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,18 +24,18 @@ func TestServerStreamsCatalogEvents(t *testing.T) {
 	t.Parallel()
 	path := writeEventCatalog(t, "version: 1\npages:\n  - {id: page1, title: Navi, urls: []}\n")
 	store := catalog.NewStore()
-	loaded, err := catalog.LoadFile(path)
+	loaded, err := catalog.LoadFile(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store.Publish(loaded)
-	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store, slog.New(slog.DiscardHandler))
+	watcher := catalog.NewWatcher(catalog.WatcherOptions{Path: path, Debounce: time.Millisecond, Load: catalog.LoadFile, Store: store, Logger: slog.New(slog.DiscardHandler)})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer watcher.Stop()
+	defer watcher.Shutdown(t.Context())
 	server := newTestServer(t, nil)
 	server.catalog = store
 	server.watcher = watcher
@@ -46,7 +47,7 @@ func TestServerStreamsCatalogEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-session"})
-	response, err := http.DefaultClient.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,21 +76,24 @@ func TestServerStreamsCatalogEvents(t *testing.T) {
 }
 
 func TestServerKeepsSSEOpenPastServerWriteTimeout(t *testing.T) {
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	t.Parallel()
 	path := writeEventCatalog(t, "version: 1\npages:\n  - {id: page1, title: Navi, urls: []}\n")
 	store := catalog.NewStore()
-	loaded, err := catalog.LoadFile(path)
+	loaded, err := catalog.LoadFile(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	store.Publish(loaded)
-	watcher := catalog.NewWatcher(path, time.Millisecond, catalog.LoadFile, store, slog.New(slog.DiscardHandler))
+	watcher := catalog.NewWatcher(catalog.WatcherOptions{Path: path, Debounce: time.Millisecond, Load: catalog.LoadFile, Store: store, Logger: slog.New(slog.DiscardHandler)})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	if err := watcher.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	defer watcher.Stop()
+	defer watcher.Shutdown(t.Context())
 	server := newTestServer(t, nil)
 	server.catalog = store
 	server.watcher = watcher
@@ -102,9 +106,9 @@ func TestServerKeepsSSEOpenPastServerWriteTimeout(t *testing.T) {
 	}
 	httpServer := &http.Server{Handler: server, WriteTimeout: 30 * time.Millisecond}
 	serveDone := make(chan error, 1)
-	go func() { serveDone <- httpServer.Serve(listener) }()
+	background.Go(func() { serveDone <- httpServer.Serve(listener) })
 	defer func() {
-		shutdown, cancelShutdown := context.WithTimeout(context.Background(), time.Second)
+		shutdown, cancelShutdown := context.WithTimeout(context.WithoutCancel(t.Context()), time.Second)
 		defer cancelShutdown()
 		if err := httpServer.Shutdown(shutdown); err != nil {
 			t.Errorf("shutdown SSE server: %v", err)
@@ -116,7 +120,7 @@ func TestServerKeepsSSEOpenPastServerWriteTimeout(t *testing.T) {
 
 	request, _ := http.NewRequest(http.MethodGet, "http://"+listener.Addr().String()+"/api/events", nil)
 	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "test-session"})
-	response, err := http.DefaultClient.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,19 +167,22 @@ type blockedStreamWriter struct {
 	writing    chan struct{}
 }
 
-func (writer *blockedStreamWriter) Write(body []byte) (int, error) {
+func (w *blockedStreamWriter) Write(body []byte) (int, error) {
 	select {
-	case writer.writing <- struct{}{}:
+	case w.writing <- struct{}{}:
 	default:
 	}
-	return writer.connection.Write(body)
+	return w.connection.Write(body)
 }
 
-func (writer *blockedStreamWriter) SetWriteDeadline(deadline time.Time) error {
-	return writer.connection.SetWriteDeadline(deadline)
+func (w *blockedStreamWriter) SetWriteDeadline(deadline time.Time) error {
+	return w.connection.SetWriteDeadline(deadline)
 }
 
 func TestEventsInterruptBlockedWrites(t *testing.T) {
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	for _, cancelWrite := range []bool{false, true} {
 		t.Run(fmt.Sprintf("cancel=%t", cancelWrite), func(t *testing.T) {
 			server := newTestServer(t, nil)
@@ -192,10 +199,10 @@ func TestEventsInterruptBlockedWrites(t *testing.T) {
 			defer cancel()
 			request := authenticatedRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
 			done := make(chan struct{})
-			go func() {
+			background.Go(func() {
 				defer close(done)
 				server.ServeHTTP(writer, request)
-			}()
+			})
 			select {
 			case <-writer.writing:
 			case <-time.After(time.Second):
@@ -215,7 +222,7 @@ func TestEventsInterruptBlockedWrites(t *testing.T) {
 
 type failedStreamFlusher struct{ *httptest.ResponseRecorder }
 
-func (writer failedStreamFlusher) FlushError() error { return io.ErrClosedPipe }
+func (w failedStreamFlusher) FlushError() error { return io.ErrClosedPipe }
 
 func TestEventsStopAfterFlushFailure(t *testing.T) {
 	server := newTestServer(t, nil)

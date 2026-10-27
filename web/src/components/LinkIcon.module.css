@@ -1,5 +1,5 @@
 .tile {
-  --tile-color: oklch(var(--tile-l) var(--tile-c) var(--hue));
+  --tile-color: var(--icon-fallback-color);
   position: relative;
   display: grid;
   width: 46px;
@@ -8,19 +8,19 @@
   place-items: center;
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--tile-color) 28%, transparent);
-  border-radius: 14px;
+  border-radius: var(--radius-14px);
   background: linear-gradient(
     150deg,
     color-mix(in oklch, var(--tile-color) 30%, transparent),
     color-mix(in oklch, var(--tile-color) 8%, transparent)
   );
-  color: oklch(var(--tile-l-ink) var(--tile-c) var(--hue));
+  color: var(--icon-fallback-ink);
 }
 
 .tile[data-size='small'] {
   width: 34px;
   height: 34px;
-  border-radius: 10px;
+  border-radius: var(--radius-10px);
 }
 
 .tile[data-state='loaded'] {
@@ -29,11 +29,11 @@
 }
 
 .monogram {
-  font: 500 19px/1 var(--font-mono);
+  font: var(--design-font-6);
 }
 
 .tile[data-size='small'] .monogram {
-  font-size: 14px;
+  font-size: var(--type-14px);
 }
 
 .tile[data-state='loaded'] .monogram {

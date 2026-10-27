@@ -1,20 +1,22 @@
-import { useState } from 'react';
-import { hueOf, monogramOf } from './monogram';
-import styles from './LinkIcon.module.css';
+import { useState } from 'react'
+import { monogramOf } from './monogram'
+import styles from './LinkIcon.module.css'
 
 type LinkIconProps = {
-  name: string;
+  name: string
   /** Favicon URL; changing it (e.g. a new cache version) retries after an earlier failure. */
-  src: string;
-  size?: 'regular' | 'small';
-};
-
-function iconState(loaded: boolean | null): 'pending' | 'loaded' | 'fallback' {
-  if (loaded === null) return 'pending';
-  return loaded ? 'loaded' : 'fallback';
+  src: string
+  size?: 'regular' | 'small'
 }
 
-function IconImage({ src, onSettle }: { src: string; onSettle: (loaded: boolean) => void }): React.JSX.Element {
+function iconState(isLoaded: boolean | null): 'pending' | 'loaded' | 'fallback' {
+  if (isLoaded === null) return 'pending'
+  return isLoaded ? 'loaded' : 'fallback'
+}
+
+type IconImageProps = { src: string; onSettle: (isLoaded: boolean) => void }
+
+function IconImage({ src, onSettle }: IconImageProps): React.JSX.Element {
   return (
     <img
       alt=""
@@ -25,25 +27,31 @@ function IconImage({ src, onSettle }: { src: string; onSettle: (loaded: boolean)
       onLoad={() => onSettle(true)}
       src={src}
     />
-  );
+  )
 }
 
 export function LinkIcon({ name, src, size = 'regular' }: LinkIconProps): React.JSX.Element {
-  const [state, setState] = useState<{ src: string; loaded: boolean | null }>({ src, loaded: null });
-  const loaded = state.src === src ? state.loaded : null;
+  const [state, setState] = useState<{ src: string; isLoaded: boolean | null }>({
+    src,
+    isLoaded: null,
+  })
+  const isLoaded = state.src === src ? state.isLoaded : null
 
   return (
     <span
       aria-hidden="true"
       className={styles.tile}
       data-size={size}
-      data-state={iconState(loaded)}
-      style={{ '--hue': hueOf(name) } as React.CSSProperties}
+      data-state={iconState(isLoaded)}
     >
       <span className={styles.monogram}>{monogramOf(name)}</span>
-      {loaded === false ? null : (
-        <IconImage key={src} onSettle={(result) => setState({ src, loaded: result })} src={src} />
+      {isLoaded === false ? null : (
+        <IconImage
+          key={src}
+          onSettle={(isResult) => setState({ src, isLoaded: isResult })}
+          src={src}
+        />
       )}
     </span>
-  );
+  )
 }

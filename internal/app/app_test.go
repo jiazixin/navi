@@ -36,10 +36,13 @@ func TestRunFailsBeforeListeningWhenPortIsUnavailable(t *testing.T) {
 	defer occupied.Close()
 	port := occupied.Addr().(*net.TCPAddr).Port
 
-	loaded := appTestConfig(t, catalogPath, port, false)
-	err = Run(t.Context(), loaded, discardLogger())
+	loaded := appTestConfig(t, catalogPath, appConfigOptions{Port: port, Watch: false})
+	err = Run(t.Context(), loaded, discardLogger(), "test")
 	if err == nil || !strings.Contains(err.Error(), "listen on") {
 		t.Fatalf("Run() error = %v, want listen failure", err)
+	}
+	if _, err := os.Stat(loaded.StorageDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("storage after failed bind: got %v, want no background initialization", err)
 	}
 	if err := occupied.Close(); err != nil {
 		t.Fatal(err)
@@ -56,7 +59,7 @@ func TestRunGracefullyClosesPersistentSSEOnCancellation(t *testing.T) {
 
 	catalogPath := writeAppCatalog(t, "Initial")
 	port := freeAppPort(t)
-	loaded := appTestConfig(t, catalogPath, port, false)
+	loaded := appTestConfig(t, catalogPath, appConfigOptions{Port: port, Watch: false})
 	loaded.Server.ShutdownTimeout = 300 * time.Millisecond
 	baseURL, stop := startTestApp(t, loaded)
 
@@ -67,7 +70,7 @@ func TestRunGracefullyClosesPersistentSSEOnCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.AddCookie(appLoginCookie(t, baseURL))
-	response, err := http.DefaultClient.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,7 @@ func TestRunClosesUnusedConnectionsOnShutdown(t *testing.T) {
 
 	catalogPath := writeAppCatalog(t, "Initial")
 	port := freeAppPort(t)
-	loaded := appTestConfig(t, catalogPath, port, false)
+	loaded := appTestConfig(t, catalogPath, appConfigOptions{Port: port, Watch: false})
 	loaded.Server.ShutdownTimeout = 300 * time.Millisecond
 	baseURL, stop := startTestApp(t, loaded)
 
@@ -102,8 +105,14 @@ func TestRunClosesUnusedConnectionsOnShutdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer spare.Close()
-	// Let the server accept the connection before shutting down.
-	time.Sleep(50 * time.Millisecond)
+	// The server accepts connections in order, so once a request on a later
+	// connection completes, the spare connection has been accepted too.
+	probe := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	response, err := probe.Get(baseURL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
 
 	started := time.Now()
 	if err := stop(); err != nil {
@@ -119,7 +128,7 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 
 	catalogPath := writeAppCatalog(t, "Initial")
 	port := freeAppPort(t)
-	loaded := appTestConfig(t, catalogPath, port, true)
+	loaded := appTestConfig(t, catalogPath, appConfigOptions{Port: port, Watch: true})
 	loaded.Catalog.ReloadDebounce = 20 * time.Millisecond
 	baseURL, stop := startTestApp(t, loaded)
 	defer func() {
@@ -135,7 +144,7 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 		t.Fatal(err)
 	}
 	request.AddCookie(appLoginCookie(t, baseURL))
-	response, err := http.DefaultClient.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +178,7 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 			Title string `json:"title"`
 		} `json:"pages"`
 	}
-	getAppJSON(t, baseURL+"/api/catalog", http.StatusOK, &catalogPayload)
+	getAppJSON(t, baseURL+"/api/catalog", appJSONOptions{Status: http.StatusOK, Payload: &catalogPayload})
 	if catalogPayload.Revision != 2 || len(catalogPayload.Pages) != 1 || catalogPayload.Pages[0].Title != "Recovered" {
 		t.Fatalf("catalog after reload = %#v", catalogPayload)
 	}
@@ -177,9 +186,12 @@ func TestRunHotReloadsCatalogAndReportsDegradedHealth(t *testing.T) {
 
 func startTestApp(t *testing.T, loaded config.Config) (string, func() error) {
 	t.Helper()
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- Run(ctx, loaded, discardLogger()) }()
+	background.Go(func() { done <- Run(ctx, loaded, discardLogger(), "test") })
 	waitContext, waitCancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer waitCancel()
 	address := net.JoinHostPort(loaded.Server.Listen, fmt.Sprint(loaded.Server.Port))
@@ -218,12 +230,14 @@ func waitAppStatus(t *testing.T, endpoint, health string) appStatus {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	var status appStatus
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 	for time.Now().Before(deadline) {
-		status = getAppJSON(t, endpoint, http.StatusOK, &appStatus{})
+		status = getAppJSON(t, endpoint, appJSONOptions{Status: http.StatusOK, Payload: &appStatus{}})
 		if status.Health == health {
 			return status
 		}
-		time.Sleep(10 * time.Millisecond)
+		<-ticker.C
 	}
 	t.Fatalf("health never became %q; last status = %#v", health, status)
 	return appStatus{}
@@ -231,12 +245,15 @@ func waitAppStatus(t *testing.T, endpoint, health string) appStatus {
 
 func awaitAppSSEEvent(t *testing.T, reader *bufio.Reader, want catalog.EventType) catalog.Event {
 	t.Helper()
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	type result struct {
 		event catalog.Event
 		err   error
 	}
 	results := make(chan result, 1)
-	go func() {
+	background.Go(func() {
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
@@ -264,7 +281,7 @@ func awaitAppSSEEvent(t *testing.T, reader *bufio.Reader, want catalog.EventType
 			results <- result{event: event}
 			return
 		}
-	}()
+	})
 	select {
 	case result := <-results:
 		if result.err != nil {
@@ -277,12 +294,20 @@ func awaitAppSSEEvent(t *testing.T, reader *bufio.Reader, want catalog.EventType
 	}
 }
 
-func getAppJSON(t *testing.T, endpoint string, wantStatus int, payload any) appStatus {
+// appJSONOptions groups the inputs for getAppJSON.
+type appJSONOptions struct {
+	Status  int
+	Payload any
+}
+
+func getAppJSON(t *testing.T, endpoint string, options appJSONOptions) appStatus {
 	t.Helper()
+	wantStatus, payload := options.Status, options.Payload
+
 	request, _ := http.NewRequest(http.MethodGet, endpoint, nil)
 	parsed, _ := url.Parse(endpoint)
 	request.AddCookie(appLoginCookie(t, parsed.Scheme+"://"+parsed.Host))
-	response, err := http.DefaultClient.Do(request)
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,14 +328,21 @@ func getAppJSON(t *testing.T, endpoint string, wantStatus int, payload any) appS
 	return appStatus{}
 }
 
-func appTestConfig(t *testing.T, catalogPath string, port int, watch bool) config.Config {
+// appConfigOptions groups the inputs for appTestConfig.
+type appConfigOptions struct {
+	Port  int
+	Watch bool
+}
+
+func appTestConfig(t *testing.T, catalogPath string, options appConfigOptions) config.Config {
 	t.Helper()
+	port, watch := options.Port, options.Watch
+
 	return config.Config{
-		Auth: config.AuthConfig{Username: "tester", Password: "test-password"},
+		Auth: config.AuthConfig{Username: "tester", PasswordHash: "$2a$10$MH76nh/43WkSzvdsv9cze.Jmxo2eu6fQkcVtBgMvT2IAXwdLje7Gu"},
 		Path: filepath.Join(t.TempDir(), "config.yaml"), StorageDir: filepath.Join(t.TempDir(), "storage"),
 		Theme: config.ThemeDefault, BackgroundPattern: config.BackgroundPatternContour, WebSearch: config.WebSearchBaidu,
 		Server:     config.ServerConfig{Listen: "127.0.0.1", Port: port, ReadHeaderTimeout: time.Second, ReadTimeout: time.Second, WriteTimeout: time.Second, IdleTimeout: time.Second, ShutdownTimeout: time.Second},
-		Health:     config.HealthConfig{URI: "/health"},
 		Logging:    config.LoggingConfig{Level: "info", Format: "json"},
 		Catalog:    config.CatalogConfig{Path: catalogPath, Watch: watch, ReloadDebounce: 50 * time.Millisecond},
 		Navigation: config.NavigationConfig{PrivateProbeTimeout: 100 * time.Millisecond, ProbeCacheTTL: time.Second, MaxConcurrentProbes: 2},
@@ -359,7 +391,7 @@ func TestPeriodicIconMaintenanceWithoutCatalogWatcher(t *testing.T) {
 		_, _ = w.Write([]byte("<html></html>"))
 	}))
 	defer target.Close()
-	icons, err := favicon.NewStore(t.TempDir())
+	icons, err := favicon.NewStore(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,12 +400,19 @@ func TestPeriodicIconMaintenanceWithoutCatalogWatcher(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
-	manager.Start(ctx)
-	defer manager.Stop()
+	if err := manager.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Shutdown(t.Context())
 	store := catalog.NewStore()
 	store.Publish(catalog.Catalog{Pages: []catalog.Page{{Groups: []catalog.Group{{Links: []catalog.Link{{RuntimeID: "periodic", PublicURL: target.URL}}}}}}})
-	done := observeCatalogEvents(ctx, nil, store, manager, discardLogger(), 10*time.Millisecond)
-	defer func() { cancel(); <-done }()
+	var workers sync.WaitGroup
+	done := observeCatalogEvents(ctx, catalogObserverOptions{Store: store, Manager: manager, Logger: discardLogger(), RefreshInterval: 10 * time.Millisecond, Workers: &workers})
+	defer func() {
+		cancel()
+		<-done
+		workers.Wait()
+	}()
 	deadline := time.After(2 * time.Second)
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -382,7 +421,7 @@ func TestPeriodicIconMaintenanceWithoutCatalogWatcher(t *testing.T) {
 		case <-deadline:
 			t.Fatal("periodic maintenance did not fetch icon")
 		case <-ticker.C:
-			if _, ok := icons.Entry("periodic"); ok {
+			if _, ok := icons.Entry(t.Context(), "periodic"); ok {
 				return
 			}
 		}
@@ -392,8 +431,8 @@ func TestPeriodicIconMaintenanceWithoutCatalogWatcher(t *testing.T) {
 func appLoginCookie(t *testing.T, baseURL string) *http.Cookie {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, baseURL+"/api/auth/login", strings.NewReader(`{"username":"tester","password":"test-password"}`))
-	req.Header.Set("X-Navi-Request", "1")
-	res, err := http.DefaultClient.Do(req)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

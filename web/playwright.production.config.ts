@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e/production',
@@ -9,10 +9,15 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   reporter: [['list']],
-  use: { trace: 'retain-on-failure', screenshot: 'only-on-failure', locale: 'zh-CN' },
+  use: {
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    locale: 'zh-CN',
+    timezoneId: 'Asia/Shanghai',
+  },
   projects: [
     { name: 'production-chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'production-firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'production-webkit', use: { ...devices['Desktop Safari'] } },
   ],
-});
+})

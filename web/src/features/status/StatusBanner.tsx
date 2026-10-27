@@ -1,13 +1,13 @@
-import { X } from 'lucide-react';
-import styles from './StatusBanner.module.css';
+import { X } from 'lucide-react'
+import styles from './StatusBanner.module.css'
 
-export type StatusBannerKind = 'degraded' | 'offline';
+export type StatusBannerKind = 'degraded' | 'offline'
 
 type StatusBannerProps = {
-  kind: StatusBannerKind;
-  message: string;
-  onDismiss: () => void;
-};
+  kind: StatusBannerKind
+  message: string
+  onDismiss: () => void
+}
 
 export function StatusBanner({ kind, message, onDismiss }: StatusBannerProps): React.JSX.Element {
   return (
@@ -19,5 +19,5 @@ export function StatusBanner({ kind, message, onDismiss }: StatusBannerProps): R
         <X aria-hidden="true" size={16} strokeWidth={1.8} />
       </button>
     </div>
-  );
+  )
 }

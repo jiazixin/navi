@@ -7,11 +7,11 @@
   display: flex;
   height: 64px;
   align-items: center;
-  padding: 0 12px 0 10px;
+  padding: 0 var(--space-12px) 0 var(--space-10px);
   border: 1px solid var(--line-2);
-  border-radius: 20px;
+  border-radius: var(--radius-20px);
   background: var(--surface);
-  box-shadow: 0 40px 70px -40px var(--shadow);
+  box-shadow: var(--shadow-herosearch-87);
   transition:
     border-color var(--duration) var(--ease),
     box-shadow var(--duration) var(--ease);
@@ -19,23 +19,21 @@
 }
 
 .field:focus-within {
-  border-color: rgba(var(--accent-rgb), 0.55);
-  box-shadow:
-    0 0 0 5px rgba(var(--accent-rgb), 0.1),
-    0 40px 70px -40px var(--shadow);
+  border-color: var(--palette-rgba-var-accent-rgb-0_55);
+  box-shadow: var(--design-box-shadow-14);
 }
 
 .engine {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px 6px 6px;
-  border-radius: 12px;
-  background: rgba(var(--accent-rgb), 0.12);
+  gap: var(--space-8px);
+  padding: var(--space-6px) var(--space-12px) var(--space-6px) var(--space-6px);
+  border-radius: var(--radius-12px);
+  background: var(--palette-rgba-var-accent-rgb-0_12);
   color: var(--accent);
-  font: 600 12px/1 var(--font-mono);
-  letter-spacing: 0.04em;
+  font: var(--design-font-15);
+  letter-spacing: var(--type-0point-04em);
   white-space: nowrap;
 }
 
@@ -44,8 +42,8 @@
   width: 24px;
   height: 24px;
   place-items: center;
-  border-radius: 8px;
-  background: #f8fafc;
+  border-radius: var(--radius-8px);
+  background: var(--palette-f8fafc);
 }
 
 .icon {
@@ -58,12 +56,12 @@
   min-width: 0;
   height: 100%;
   flex: 1;
-  padding: 0 16px;
+  padding: 0 var(--space-16px);
   border: 0;
   outline: 0;
   background: none;
   color: var(--text);
-  font: 400 18px var(--font-ui);
+  font: var(--design-font-16);
 }
 
 .field input::placeholder {
@@ -84,17 +82,17 @@
   overflow: auto;
   overscroll-behavior: contain;
   border: 1px solid var(--line-2);
-  border-radius: 20px;
+  border-radius: var(--radius-20px);
   background: var(--panel);
-  box-shadow: 0 50px 90px -40px var(--shadow);
-  animation: var(--anim-pop) 0.3s var(--ease);
+  box-shadow: var(--shadow-herosearch-90);
+  animation: var(--anim-pop) var(--motion-0point-3s) var(--ease);
 }
 
 .engines {
   display: flex;
   align-items: center;
-  gap: 2px;
-  margin-top: 8px;
+  gap: var(--space-2px);
+  margin-top: var(--space-8px);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -104,10 +102,10 @@
 }
 
 .enginesLabel {
-  margin-right: 8px;
+  margin-right: var(--space-8px);
   color: var(--text-3);
-  font: 500 10px var(--font-mono);
-  letter-spacing: 0.2em;
+  font: var(--design-font-17);
+  letter-spacing: var(--type-0point-2em);
 }
 
 .engineOption {
@@ -118,15 +116,15 @@
   background: none;
   color: var(--text-3);
   cursor: pointer;
-  font: 500 12px/1.2 var(--font-mono);
+  font: var(--design-font-18);
   white-space: nowrap;
 }
 
 .engineOption span {
   display: block;
-  padding: 7px 11px;
+  padding: var(--space-7px) var(--space-11px);
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-999px);
   transition:
     color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
@@ -150,26 +148,26 @@
   flex: none;
   width: 1px;
   height: 14px;
-  margin: 0 8px;
+  margin: 0 var(--space-8px);
   background: var(--line-2);
 }
 
 .status {
   min-height: 20px;
-  margin: 10px 0 0;
+  margin: var(--space-10px) 0 0;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--type-13px);
 }
 
 @media (max-width: 720px) {
   .field {
     height: 56px;
-    border-radius: 16px;
+    border-radius: var(--radius-16px);
   }
 
   .field input {
-    padding: 0 12px;
-    font-size: 16px;
+    padding: 0 var(--space-12px);
+    font-size: var(--type-16px);
   }
 
   .field kbd {
@@ -181,6 +179,11 @@
   }
 
   .engines {
-    margin-right: calc(var(--gutter) * -1);
+    margin-right: var(--design-margin-right-19);
   }
+}
+
+.preview {
+  max-width: var(--search-preview-width);
+  padding: var(--space-32px);
 }

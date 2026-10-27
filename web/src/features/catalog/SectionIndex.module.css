@@ -5,10 +5,10 @@
 }
 
 .title {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-16px);
   color: var(--text-3);
-  font: 500 10px var(--font-mono);
-  letter-spacing: 0.24em;
+  font: var(--design-font-17);
+  letter-spacing: var(--type-0point-24em);
 }
 
 .index ol {
@@ -23,11 +23,11 @@
   min-height: 36px;
   grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
-  margin-left: -1px;
-  padding: 6px 8px 6px 16px;
+  margin-left: var(--space-negative-1px);
+  padding: var(--space-6px) var(--space-8px) var(--space-6px) var(--space-16px);
   border-left: 1px solid transparent;
   color: var(--text-3);
-  font-size: 13px;
+  font-size: var(--type-13px);
   text-decoration: none;
   transition:
     color var(--duration) var(--ease),
@@ -37,7 +37,7 @@
 
 .number,
 .count {
-  font: 500 11px var(--font-mono);
+  font: var(--design-font-2);
 }
 
 .name {
@@ -51,7 +51,7 @@
 }
 
 .index a[aria-current='location'] {
-  padding-left: 22px;
+  padding-left: var(--space-22px);
   border-color: var(--accent);
   color: var(--text);
 }
@@ -65,8 +65,8 @@
     position: sticky;
     z-index: var(--z-rail);
     top: var(--topbar-height);
-    margin: 0 calc(var(--gutter) * -1) 32px;
-    padding: 8px var(--gutter);
+    margin: var(--design-margin-21);
+    padding: var(--space-8px) var(--gutter);
     border-bottom: 1px solid var(--line);
     background: color-mix(in srgb, var(--bg) 80%, transparent);
     backdrop-filter: blur(16px);
@@ -78,7 +78,7 @@
 
   .index ol {
     display: flex;
-    gap: 6px;
+    gap: var(--space-6px);
     overflow-x: auto;
     border: 0;
     scrollbar-width: none;
@@ -92,16 +92,16 @@
   .index a[aria-current='location'] {
     display: flex;
     min-height: var(--touch-target);
-    gap: 6px;
+    gap: var(--space-6px);
     margin: 0;
-    padding: 0 14px;
+    padding: 0 var(--space-14px);
     border: 1px solid var(--line);
-    border-radius: 999px;
+    border-radius: var(--radius-999px);
     white-space: nowrap;
   }
 
   .index a[aria-current='location'] {
-    border-color: rgba(var(--accent-rgb), 0.55);
-    background: rgba(var(--accent-rgb), 0.1);
+    border-color: var(--palette-rgba-var-accent-rgb-0_55);
+    background: var(--palette-rgba-var-accent-rgb-0_1);
   }
 }

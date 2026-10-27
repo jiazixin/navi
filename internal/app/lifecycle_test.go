@@ -18,15 +18,15 @@ func TestServerReportsUnavailableWhenCatalogHasNoSnapshot(t *testing.T) {
 
 	store := catalog.NewStore()
 	server, err := newHTTPServer(httpOptions{
-		Config:  config.Config{Health: config.HealthConfig{URI: "/health"}},
+		Config:  config.Config{},
 		Catalog: store,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	server.auth.sessions["test-session"] = time.Now().Add(time.Hour)
-	for _, route := range []string{"/api/catalog", "/api/status", "/health"} {
+	server.auth.sessions[sessionDigest("test-session")] = time.Now().Add(time.Hour)
+	for _, route := range []string{"/api/catalog", "/api/status", "/healthz"} {
 		t.Run(route, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			server.ServeHTTP(recorder, authenticatedRequest(http.MethodGet, route, nil))
@@ -45,7 +45,7 @@ func TestServerReportsDegradedStatusWhileServingLastSnapshot(t *testing.T) {
 
 	server := newTestServer(t, nil)
 	server.degraded = func() (bool, string) {
-		return true, "temporary catalog failure"
+		return true, statusIconCacheUnavailable
 	}
 
 	status := httptest.NewRecorder()
@@ -56,18 +56,20 @@ func TestServerReportsDegradedStatusWhileServingLastSnapshot(t *testing.T) {
 	var payload struct {
 		Health   string `json:"health"`
 		Revision uint64 `json:"revision"`
+		Code     string `json:"code"`
 		Message  string `json:"message"`
 	}
 	if err := json.Unmarshal(status.Body.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload.Health != "degraded" || payload.Revision == 0 || payload.Message != "temporary catalog failure" {
+	if payload.Health != "degraded" || payload.Revision == 0 || payload.Code != statusIconCacheUnavailable || payload.Message == "" {
 		t.Fatalf("status payload = %#v", payload)
 	}
 
 	health := httptest.NewRecorder()
-	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/health", nil))
-	if health.Code != http.StatusOK || strings.TrimSpace(health.Body.String()) != "degraded" {
+	server.ServeHTTP(health, authenticatedRequest(http.MethodGet, "/healthz", nil))
+	// A degraded service still serves; the cause is only in /api/status.
+	if health.Code != http.StatusOK || strings.TrimSpace(health.Body.String()) != `{"status":"ok"}` {
 		t.Fatalf("health response = %d %q", health.Code, health.Body.String())
 	}
 }
@@ -84,9 +86,8 @@ func TestServerRejectsWritesAndDoesNotTreatUnknownAPIRoutesAsSPA(t *testing.T) {
 		allow      string
 		bodyString string
 	}{
-		{name: "options", method: http.MethodOptions, path: "/api/catalog", status: http.StatusNoContent},
-		{name: "put catalog", method: http.MethodPut, path: "/api/catalog", status: http.StatusMethodNotAllowed, allow: "GET, HEAD, OPTIONS"},
-		{name: "post navigation", method: http.MethodPost, path: "/go/one", status: http.StatusMethodNotAllowed, allow: "GET, HEAD, OPTIONS"},
+		{name: "put catalog", method: http.MethodPut, path: "/api/catalog", status: http.StatusMethodNotAllowed, allow: "GET, HEAD"},
+		{name: "post navigation", method: http.MethodPost, path: "/go/one", status: http.StatusMethodNotAllowed, allow: "GET, HEAD"},
 		{name: "unknown api", method: http.MethodGet, path: "/api/not-found", status: http.StatusNotFound},
 		{name: "empty icon id", method: http.MethodGet, path: "/api/icons/", status: http.StatusNotFound},
 		{name: "nested icon id", method: http.MethodGet, path: "/api/icons/one/secret", status: http.StatusNotFound},
@@ -114,15 +115,17 @@ func TestServerHealthHEADAndStaticTraversalFallback(t *testing.T) {
 	server := newTestServer(t, nil)
 
 	health := httptest.NewRecorder()
-	server.ServeHTTP(health, authenticatedRequest(http.MethodHead, "/health", nil))
-	if health.Code != http.StatusOK || health.Body.Len() != 0 {
-		t.Fatalf("HEAD /health = %d body=%q, want 200 and empty body", health.Code, health.Body.String())
+	server.ServeHTTP(health, authenticatedRequest(http.MethodHead, "/healthz", nil))
+	// net/http drops the body of a HEAD response on the wire.
+	if health.Code != http.StatusOK {
+		t.Fatalf("HEAD /healthz = %d, want 200", health.Code)
 	}
 
 	traversal := httptest.NewRecorder()
 	server.ServeHTTP(traversal, authenticatedRequest(http.MethodGet, "/../../etc/passwd", nil))
-	if traversal.Code != http.StatusOK || traversal.Body.String() != "<main>Navi</main>" {
-		t.Fatalf("traversal fallback = %d %q, want SPA fallback", traversal.Code, traversal.Body.String())
+	// The router redirects to the cleaned path instead of reading outside the assets.
+	if traversal.Code != http.StatusTemporaryRedirect || traversal.Header().Get("Location") != "/etc/passwd" {
+		t.Fatalf("traversal = %d %q, want a redirect to the cleaned path", traversal.Code, traversal.Header().Get("Location"))
 	}
 }
 

@@ -1,7 +1,7 @@
-import { createRef } from 'react';
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
-import { AppearancePanel } from './AppearancePanel';
+import { createRef } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
+import { AppearancePanel } from './AppearancePanel'
 
 const meta = {
   title: 'Appearance/AppearancePanel',
@@ -11,9 +11,9 @@ const meta = {
     anchorRef: createRef<HTMLElement>(),
     onClose: fn(),
   },
-} satisfies Meta<typeof AppearancePanel>;
+} satisfies Meta<typeof AppearancePanel>
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+export default meta
+type Story = StoryObj<typeof meta>
 
-export const Default: Story = {};
+export const Default: Story = {}

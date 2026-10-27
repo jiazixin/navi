@@ -4,18 +4,17 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
-	"io"
 	"maps"
+	"mime"
 	"net"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
@@ -26,7 +25,6 @@ const (
 	maxTrackedLoginClients = 4096
 	maxActiveSessions      = 4096
 	maxLoginRequestBytes   = 8192
-	sessionTokenBytes      = 32
 )
 
 type loginAttempt struct {
@@ -34,121 +32,96 @@ type loginAttempt struct {
 	resetAt time.Time
 }
 
+// authState holds the in-memory sessions and login attempts; mu guards both maps.
 type authState struct {
 	mu       sync.Mutex
-	sessions map[string]time.Time
+	sessions map[[sha256.Size]byte]time.Time
+	now      func() time.Time
 	attempts map[string]loginAttempt
 }
 
 func newAuthState() *authState {
-	return &authState{sessions: make(map[string]time.Time), attempts: make(map[string]loginAttempt)}
+	return &authState{sessions: make(map[[sha256.Size]byte]time.Time), now: time.Now, attempts: make(map[string]loginAttempt)}
 }
 
-func (s *httpServer) authenticated(request *http.Request) bool {
+func (s *httpServer) authenticated(r *http.Request) bool {
 	if !s.config.Auth.Enabled() {
 		return true
 	}
-	cookie, err := request.Cookie(sessionCookie)
+	cookie, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return false
 	}
 	s.auth.mu.Lock()
 	defer s.auth.mu.Unlock()
-	expiresAt, ok := s.auth.sessions[cookie.Value]
-	if !ok {
-		return false
+	digest := sessionDigest(cookie.Value)
+	var expiresAt time.Time
+	// Compare the bounded set of stored digests without prefix-dependent equality.
+	// Do not stop at the match: map iteration order must not affect authentication.
+	for stored, expiry := range s.auth.sessions {
+		if subtle.ConstantTimeCompare(digest[:], stored[:]) == 1 {
+			expiresAt = expiry
+		}
 	}
-	if !time.Now().Before(expiresAt) {
-		delete(s.auth.sessions, cookie.Value)
+	if !s.auth.now().Before(expiresAt) {
+		delete(s.auth.sessions, digest)
 		return false
 	}
 	return true
 }
 
-func (s *httpServer) authorize(writer http.ResponseWriter, request *http.Request) bool {
-	requestPath := request.URL.Path
-	if requestPath == s.config.Health.URI || requestPath == "/login" || strings.HasPrefix(requestPath, "/assets/") {
-		return true
-	}
-	writer.Header().Set("Cache-Control", "no-store")
-	if s.authenticated(request) {
-		return true
-	}
-	if isAPIPath(requestPath) {
-		writeJSONError(writer, http.StatusUnauthorized, "请先登录。")
-	} else {
-		http.Redirect(writer, request, "/login", http.StatusFound)
-	}
-	return false
-}
-
-func (s *httpServer) serveAuth(writer http.ResponseWriter, request *http.Request) bool {
-	requestPath := request.URL.Path
-	if requestPath != "/api/auth/login" && requestPath != "/api/auth/logout" && requestPath != "/api/auth/session" {
-		return false
-	}
-	writer.Header().Set("Cache-Control", "no-store")
-	if requestPath == "/api/auth/session" {
-		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			writer.Header().Set("Allow", "GET, HEAD")
-			writeJSONError(writer, http.StatusMethodNotAllowed, "请求方法不支持。")
-		} else if !s.authenticated(request) {
-			writeJSONError(writer, http.StatusUnauthorized, "请先登录。")
-		} else {
-			s.writeSession(writer)
+// requireSession answers an API request without a session with 401.
+func (s *httpServer) requireSession(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authenticated(r) {
+			writeError(w, r, errLoginRequired)
+			return
 		}
-		return true
+		next(w, r)
 	}
-	if request.Method != http.MethodPost {
-		writer.Header().Set("Allow", "POST")
-		writeJSONError(writer, http.StatusMethodNotAllowed, "请求方法不支持。")
-		return true
-	}
-	// JSON plus a required custom header prevents cross-origin simple form requests.
-	// Validate Origin when present; never trust forwarded host/protocol headers.
-	if !isAllowedAuthOrigin(request) {
-		writeJSONError(writer, http.StatusForbidden, "请求来源无效。")
-		return true
-	}
-	if requestPath == "/api/auth/logout" {
-		if cookie, err := request.Cookie(sessionCookie); err == nil {
-			s.auth.mu.Lock()
-			delete(s.auth.sessions, cookie.Value)
-			s.auth.mu.Unlock()
+}
+
+// requirePage sends a page request without a session to the login page.
+func (s *httpServer) requirePage(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authenticated(r) {
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
 		}
-		s.setSessionCookie(writer, request, "", -1)
-		writer.WriteHeader(http.StatusNoContent)
-		return true
+		next(w, r)
 	}
-	s.login(writer, request)
-	return true
 }
 
-func isAllowedAuthOrigin(request *http.Request) bool {
-	if request.Header.Get("X-Navi-Request") != "1" || request.Header.Get("Sec-Fetch-Site") == "cross-site" {
-		return false
-	}
-	origin := request.Header.Get("Origin")
-	if origin == "" {
-		return true
-	}
-	originURL, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	return originURL.Host == request.Host &&
-		(originURL.Scheme == "http" || originURL.Scheme == "https") &&
-		originURL.User == nil && originURL.RawQuery == "" &&
-		originURL.Fragment == "" && originURL.Path == ""
+func (s *httpServer) serveSession(w http.ResponseWriter, _ *http.Request) {
+	s.writeSession(w)
 }
 
-func (s *httpServer) setSessionCookie(writer http.ResponseWriter, request *http.Request, token string, maxAge int) {
-	http.SetCookie(writer, &http.Cookie{
+func (s *httpServer) logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
+		s.auth.mu.Lock()
+		delete(s.auth.sessions, sessionDigest(cookie.Value))
+		s.auth.mu.Unlock()
+	}
+	s.setSessionCookie(w, r, sessionCookieOptions{Token: "", MaxAge: -1})
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// sessionCookieOptions groups the inputs for setSessionCookie.
+type sessionCookieOptions struct {
+	Token  string
+	MaxAge int
+}
+
+func (s *httpServer) setSessionCookie(w http.ResponseWriter, r *http.Request, options sessionCookieOptions) {
+	token, maxAge := options.Token, options.MaxAge
+
+	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   s.config.Auth.SecureCookie || request.TLS != nil,
+		Secure:   s.config.Auth.SecureCookie || r.TLS != nil,
 		SameSite: http.SameSiteStrictMode,
 		MaxAge:   maxAge,
 	})
@@ -159,107 +132,139 @@ type loginCredentials struct {
 	Password string `json:"password"`
 }
 
-func (s *httpServer) login(writer http.ResponseWriter, request *http.Request) {
-	clientIP, _, err := net.SplitHostPort(request.RemoteAddr)
+func (s *httpServer) login(w http.ResponseWriter, r *http.Request) {
+	clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		clientIP = request.RemoteAddr
+		clientIP = r.RemoteAddr
 	}
-	now := time.Now()
+	now := s.auth.now()
 	if !s.auth.recordLoginAttempt(clientIP, now) {
-		writer.Header().Set("Retry-After", strconv.Itoa(int(loginAttemptWindow.Seconds())))
-		writeJSONError(writer, http.StatusTooManyRequests, "尝试次数过多，请一分钟后重试。")
+		w.Header().Set("Retry-After", strconv.Itoa(int(loginAttemptWindow.Seconds())))
+		writeError(w, r, errLoginLimited)
 		return
 	}
-
-	credentials, err := decodeLoginCredentials(http.MaxBytesReader(writer, request.Body, maxLoginRequestBytes))
+	credentials, err := decodeLogin(w, r)
 	if err != nil {
-		writeJSONError(writer, http.StatusBadRequest, "登录请求格式无效。")
+		writeError(w, r, err)
 		return
 	}
 	if !s.credentialsMatch(credentials) {
-		writeJSONError(writer, http.StatusUnauthorized, "账号或密码不正确。")
+		writeError(w, r, errBadLogin)
 		return
 	}
-
-	var tokenBytes [sessionTokenBytes]byte
-	if _, err := rand.Read(tokenBytes[:]); err != nil {
-		writeJSONError(writer, http.StatusInternalServerError, "暂时无法登录，请重试。")
-		return
-	}
-	token := base64.RawURLEncoding.EncodeToString(tokenBytes[:])
+	token := rand.Text()
 	previousToken := ""
-	if cookie, err := request.Cookie(sessionCookie); err == nil {
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
 		previousToken = cookie.Value
 	}
-	if !s.auth.createSession(clientIP, token, previousToken, now) {
-		writeJSONError(writer, http.StatusServiceUnavailable, "会话已满，请稍后重试。")
+	if !s.auth.createSession(sessionRequest{ClientIP: clientIP, Token: token, PreviousToken: previousToken, Now: now}) {
+		writeError(w, r, errSessionsExhausted)
 		return
 	}
-	s.setSessionCookie(writer, request, token, int(sessionLifetime.Seconds()))
-	s.writeSession(writer)
+	s.setSessionCookie(w, r, sessionCookieOptions{Token: token, MaxAge: int(sessionLifetime.Seconds())})
+	s.writeSession(w)
 }
 
-// writeSession reports an authenticated session and whether login is configured.
-func (s *httpServer) writeSession(writer http.ResponseWriter) {
-	writeJSON(writer, http.StatusOK, map[string]bool{"authenticated": true, "authRequired": s.config.Auth.Enabled()})
+// decodeLogin reads one JSON login object, rejecting other media types,
+// oversized bodies and unknown members.
+func decodeLogin(w http.ResponseWriter, r *http.Request) (loginCredentials, error) {
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return loginCredentials{}, errNotJSON
+	}
+	var credentials loginCredentials
+	err = json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxLoginRequestBytes), &credentials, json.RejectUnknownMembers(true))
+	if _, tooLarge := errors.AsType[*http.MaxBytesError](err); tooLarge {
+		return loginCredentials{}, errLoginTooLarge
+	}
+	if err != nil {
+		return loginCredentials{}, errLoginBody
+	}
+	fields := []map[string]string{}
+	if len(credentials.Username) == 0 || len(credentials.Username) > 128 {
+		fields = append(fields, map[string]string{"path": "username", "reason": "invalid_length"})
+	}
+	if len(credentials.Password) == 0 || len(credentials.Password) > 72 {
+		fields = append(fields, map[string]string{"path": "password", "reason": "invalid_length"})
+	}
+	if len(fields) != 0 {
+		return loginCredentials{}, &apiFailure{status: http.StatusBadRequest, code: "invalid_argument", message: "login fields have invalid lengths", details: map[string]any{"fields": fields}}
+	}
+	return credentials, nil
+}
+
+// sessionResponse reports an authenticated session and whether login is configured.
+type sessionResponse struct {
+	Authenticated bool `json:"authenticated"`
+	AuthRequired  bool `json:"auth_required"`
+}
+
+func (s *httpServer) writeSession(w http.ResponseWriter) {
+	writeJSON(w, http.StatusOK, sessionResponse{Authenticated: true, AuthRequired: s.config.Auth.Enabled()})
 }
 
 // recordLoginAttempt checks the fixed window and counts this attempt atomically.
-func (auth *authState) recordLoginAttempt(clientIP string, now time.Time) bool {
-	auth.mu.Lock()
-	defer auth.mu.Unlock()
-	maps.DeleteFunc(auth.attempts, func(_ string, attempt loginAttempt) bool {
+func (a *authState) recordLoginAttempt(clientIP string, now time.Time) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	maps.DeleteFunc(a.attempts, func(_ string, attempt loginAttempt) bool {
 		return !now.Before(attempt.resetAt)
 	})
-	attempt := auth.attempts[clientIP]
-	if attempt.count >= maxLoginAttempts || (attempt.count == 0 && len(auth.attempts) >= maxTrackedLoginClients) {
+	attempt := a.attempts[clientIP]
+	if attempt.count >= maxLoginAttempts || (attempt.count == 0 && len(a.attempts) >= maxTrackedLoginClients) {
 		return false
 	}
 	if attempt.count == 0 {
 		attempt.resetAt = now.Add(loginAttemptWindow)
 	}
 	attempt.count++
-	auth.attempts[clientIP] = attempt
+	a.attempts[clientIP] = attempt
 	return true
 }
 
-func decodeLoginCredentials(body io.Reader) (loginCredentials, error) {
-	var credentials loginCredentials
-	decoder := json.NewDecoder(body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&credentials); err != nil {
-		return loginCredentials{}, err
-	}
-	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return loginCredentials{}, errors.New("login request must contain one JSON value")
-	}
-	return credentials, nil
-}
-
 func (s *httpServer) credentialsMatch(credentials loginCredentials) bool {
+	if len(credentials.Username) == 0 || len(credentials.Username) > 128 || len(credentials.Password) == 0 || len(credentials.Password) > 72 {
+		return false
+	}
 	usernameHash := sha256.Sum256([]byte(credentials.Username))
 	expectedUsernameHash := sha256.Sum256([]byte(s.config.Auth.Username))
-	passwordHash := sha256.Sum256([]byte(credentials.Password))
-	expectedPasswordHash := sha256.Sum256([]byte(s.config.Auth.Password))
-	credentialsEqual := subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) &
-		subtle.ConstantTimeCompare(passwordHash[:], expectedPasswordHash[:])
-	return credentialsEqual == 1 && s.config.Auth.Username != "" && s.config.Auth.Password != ""
+	passwordErr := bcrypt.CompareHashAndPassword([]byte(s.config.Auth.PasswordHash), []byte(credentials.Password))
+	return subtle.ConstantTimeCompare(usernameHash[:], expectedUsernameHash[:]) == 1 && passwordErr == nil && s.config.Auth.Enabled()
+}
+
+// sessionRequest groups the inputs for createSession.
+type sessionRequest struct {
+	ClientIP      string
+	Token         string
+	PreviousToken string
+	Now           time.Time
 }
 
 // createSession prunes expired sessions, replaces the caller's cookie, and resets
 // its login attempts under one lock. Capacity is checked before replacement.
-func (auth *authState) createSession(clientIP, token, previousToken string, now time.Time) bool {
-	auth.mu.Lock()
-	defer auth.mu.Unlock()
-	maps.DeleteFunc(auth.sessions, func(_ string, expiresAt time.Time) bool {
+func (a *authState) createSession(options sessionRequest) bool {
+	clientIP, token, previousToken, now := options.ClientIP, options.Token, options.PreviousToken, options.Now
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	maps.DeleteFunc(a.sessions, func(_ [sha256.Size]byte, expiresAt time.Time) bool {
 		return !now.Before(expiresAt)
 	})
-	_, replacing := auth.sessions[previousToken]
-	if !replacing && len(auth.sessions) >= maxActiveSessions {
+	_, replacing := a.sessions[sessionDigest(previousToken)]
+	if !replacing && len(a.sessions) >= maxActiveSessions {
 		return false
 	}
-	delete(auth.sessions, previousToken)
-	auth.sessions[token] = now.Add(sessionLifetime)
-	delete(auth.attempts, clientIP)
+	delete(a.sessions, sessionDigest(previousToken))
+	a.sessions[sessionDigest(token)] = now.Add(sessionLifetime)
+	delete(a.attempts, clientIP)
 	return true
 }
+
+// sessionDigest ensures the server never retains a reusable cookie token.
+func sessionDigest(token string) [sha256.Size]byte { return sha256.Sum256([]byte(token)) }
+
+// String prevents accidental logging of submitted credentials.
+func (c loginCredentials) String() string { return "loginCredentials{[REDACTED]}" }
+
+// GoString redacts diagnostic formatting of submitted credentials.
+func (c loginCredentials) GoString() string { return c.String() }

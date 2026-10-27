@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"navi/internal/catalog"
@@ -18,11 +19,11 @@ import (
 )
 
 // Run starts Navi and waits for context cancellation or an HTTP server failure.
-func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	directory, err := catalog.LoadFile(loaded.Catalog.Path)
+// version is reported by GET /api/info. It logs service_listening once the
+// port is bound and service_stopping when ctx ends; the caller logs
+// service_starting, service_stopped and failures.
+func Run(ctx context.Context, loaded config.Config, logger *slog.Logger, version string) (runErr error) {
+	directory, err := catalog.LoadFile(ctx, loaded.Catalog.Path)
 	if err != nil {
 		return fmt.Errorf("load initial catalog: %w", err)
 	}
@@ -35,27 +36,50 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("open embedded UI: %w", err)
 	}
-	watcher := catalog.NewWatcher(loaded.Catalog.Path, loaded.Catalog.ReloadDebounce, catalog.LoadFile, store, logger)
+	listenConfig := net.ListenConfig{}
+	listener, err := listenConfig.Listen(ctx, "tcp", net.JoinHostPort(loaded.Server.Listen, fmt.Sprintf("%d", loaded.Server.Port)))
+	if err != nil {
+		return fmt.Errorf("listen on %s:%d: %w", loaded.Server.Listen, loaded.Server.Port, err)
+	}
+	defer func() {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			runErr = errors.Join(runErr, fmt.Errorf("close listener: %w", err))
+		}
+	}()
+	var workers sync.WaitGroup
+	watcher := catalog.NewWatcher(catalog.WatcherOptions{Path: loaded.Catalog.Path, Debounce: loaded.Catalog.ReloadDebounce, Load: catalog.LoadFile, Store: store, Logger: logger})
+	iconStore, iconManager, iconDegraded := startFaviconManager(ctx, loaded, logger, watcher)
+	var eventObserverDone chan struct{}
+	defer func() {
+		cancel()
+		shutdownCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), loaded.Server.ShutdownTimeout)
+		defer stop()
+		runErr = errors.Join(runErr, watcher.Shutdown(shutdownCtx))
+		if eventObserverDone != nil {
+			select {
+			case <-eventObserverDone:
+				workers.Wait()
+			case <-shutdownCtx.Done():
+				runErr = errors.Join(runErr, shutdownCtx.Err())
+			}
+		}
+		if iconManager != nil {
+			runErr = errors.Join(runErr, iconManager.Shutdown(shutdownCtx))
+		}
+	}()
+
 	if loaded.Catalog.Watch {
 		if err := watcher.Start(runCtx); err != nil {
-			logger.Error("catalog watcher unavailable", "error", err)
 			return fmt.Errorf("start catalog watcher: %w", err)
 		}
 	}
-	iconStore, iconManager, iconDegraded := startFaviconManager(loaded, logger, watcher)
 	if iconManager != nil {
-		iconManager.Start(runCtx)
-	}
-	eventObserverDone := observeCatalogEvents(runCtx, watcher, store, iconManager, logger, loaded.Favicon.RefreshInterval)
-	scheduleIcons(iconManager, store, logger)
-	defer func() {
-		cancel()
-		watcher.Stop()
-		<-eventObserverDone
-		if iconManager != nil {
-			iconManager.Stop()
+		if err := iconManager.Start(runCtx); err != nil {
+			return fmt.Errorf("start favicon manager: %w", err)
 		}
-	}()
+	}
+	eventObserverDone = observeCatalogEvents(runCtx, catalogObserverOptions{Watcher: watcher, Store: store, Manager: iconManager, Logger: logger, RefreshInterval: loaded.Favicon.RefreshInterval, Workers: &workers})
+	scheduleIcons(ctx, iconManager, store, logger)
 
 	resolver := navigation.NewResolver(
 		navigation.NewProber(loaded.Navigation.MaxConcurrentProbes),
@@ -63,31 +87,28 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		loaded.Navigation.ProbeCacheTTL,
 	)
 	handler, err := newHTTPServer(httpOptions{
-		Config: loaded, Catalog: store, Watcher: watcher, Icons: iconStore, Resolver: resolver, Static: static,
+		Config: loaded, Version: version, Catalog: store, Watcher: watcher, Icons: iconStore, Resolver: resolver, Static: static,
 		Degraded: iconDegraded, Logger: logger,
 	})
 	if err != nil {
 		return fmt.Errorf("create HTTP API: %w", err)
-	}
-	listener, err := net.Listen("tcp", net.JoinHostPort(loaded.Server.Listen, fmt.Sprintf("%d", loaded.Server.Port)))
-	if err != nil {
-		return fmt.Errorf("listen on %s:%d: %w", loaded.Server.Listen, loaded.Server.Port, err)
 	}
 	unused := newUnusedConnections()
 	server := &http.Server{
 		Handler: handler, ReadHeaderTimeout: loaded.Server.ReadHeaderTimeout, ReadTimeout: loaded.Server.ReadTimeout,
 		WriteTimeout: loaded.Server.WriteTimeout, IdleTimeout: loaded.Server.IdleTimeout,
 		BaseContext: func(net.Listener) context.Context { return runCtx },
-		ConnState:   unused.track,
+		ConnState:   unused.track, MaxHeaderBytes: maxHeaderBytes,
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 	// Shutdown runs these after closing its listeners.
 	server.RegisterOnShutdown(unused.closeAll)
 	serverErrors := make(chan error, 1)
-	go func() {
+	workers.Go(func() {
 		serverErrors <- server.Serve(listener)
-	}()
+	})
 	entries, groups := catalogCounts(snapshot.Catalog())
-	logger.Info("Navi started",
+	logger.Info("service_listening",
 		"listen", listener.Addr().String(),
 		"config_source", loaded.Path,
 		"storage", loaded.StorageDir,
@@ -98,19 +119,18 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 
 	select {
 	case <-ctx.Done():
+		logger.Info("service_stopping")
 		// Propagate process cancellation to long-lived handlers such as SSE before
 		// waiting for the HTTP server to become idle.
 		cancel()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), loaded.Server.ShutdownTimeout)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.WithoutCancel(ctx), loaded.Server.ShutdownTimeout)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			_ = server.Close()
-			return fmt.Errorf("shutdown HTTP server: %w", err)
+			return fmt.Errorf("shutdown HTTP server: %w", errors.Join(err, server.Close()))
 		}
 		if err := <-serverErrors; err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("serve HTTP: %w", err)
 		}
-		logger.Info("Navi stopped")
 		return nil
 	case err := <-serverErrors:
 		if err == nil || errors.Is(err, http.ErrServerClosed) {
@@ -119,6 +139,9 @@ func Run(ctx context.Context, loaded config.Config, logger *slog.Logger) error {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
 }
+
+// maxHeaderBytes bounds request headers; Navi needs only a session cookie.
+const maxHeaderBytes = 64 << 10
 
 func catalogCounts(directory catalog.Catalog) (entries, groups int) {
 	for _, page := range directory.Pages {
@@ -130,15 +153,16 @@ func catalogCounts(directory catalog.Catalog) (entries, groups int) {
 	return entries, groups
 }
 
-// iconCacheUnavailable reports a permanently degraded icon cache; the UI falls back to monograms.
+// iconCacheUnavailable reports a permanently degraded icon cache with its
+// status code; the UI falls back to monograms.
 func iconCacheUnavailable() (bool, string) {
-	return true, "图标缓存暂不可用，当前使用字标。"
+	return true, statusIconCacheUnavailable
 }
 
-func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *catalog.Watcher) (*favicon.Store, *favicon.Manager, func() (bool, string)) {
-	store, err := favicon.NewStore(loaded.StorageDir)
+func startFaviconManager(ctx context.Context, loaded config.Config, logger *slog.Logger, watcher *catalog.Watcher) (*favicon.Store, *favicon.Manager, func() (bool, string)) {
+	store, err := favicon.NewStore(ctx, loaded.StorageDir)
 	if err != nil {
-		logger.Error("favicon cache unavailable", "error", err)
+		logger.Error("favicon_cache_unavailable", "error", err)
 		return nil, nil, iconCacheUnavailable
 	}
 	manager, err := favicon.NewManager(favicon.Config{
@@ -146,14 +170,14 @@ func startFaviconManager(loaded config.Config, logger *slog.Logger, watcher *cat
 		MaxFileBytes: loaded.Favicon.MaxFileBytes, Workers: loaded.Favicon.Workers,
 	}, store, watcher.Publish)
 	if err != nil {
-		logger.Error("favicon manager unavailable", "error", err)
+		logger.Error("favicon_manager_unavailable", "error", err)
 		return store, nil, iconCacheUnavailable
 	}
 	return store, manager, manager.Degraded
 }
 
-// scheduleIcons queues icon work for the current snapshot; logArgs add context to failures.
-func scheduleIcons(manager *favicon.Manager, store *catalog.Store, logger *slog.Logger, logArgs ...any) {
+// scheduleIcons queues icon work for the current snapshot.
+func scheduleIcons(ctx context.Context, manager *favicon.Manager, store *catalog.Store, logger *slog.Logger) {
 	if manager == nil {
 		return
 	}
@@ -161,12 +185,23 @@ func scheduleIcons(manager *favicon.Manager, store *catalog.Store, logger *slog.
 	if !ok {
 		return
 	}
-	if err := manager.Schedule(snapshot.Catalog()); err != nil {
-		logger.Error("favicon cache maintenance failed", append(logArgs, "error", err)...)
+	if err := manager.Schedule(ctx, snapshot.Catalog()); err != nil {
+		logger.Error("favicon_maintenance_failed", "error", err)
 	}
 }
 
-func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *catalog.Store, manager *favicon.Manager, logger *slog.Logger, refreshInterval time.Duration) chan struct{} {
+type catalogObserverOptions struct {
+	Watcher         *catalog.Watcher
+	Store           *catalog.Store
+	Manager         *favicon.Manager
+	Logger          *slog.Logger
+	RefreshInterval time.Duration
+	Workers         *sync.WaitGroup
+}
+
+func observeCatalogEvents(ctx context.Context, options catalogObserverOptions) chan struct{} {
+	watcher, store, manager := options.Watcher, options.Store, options.Manager
+	logger, refreshInterval := options.Logger, options.RefreshInterval
 	done := make(chan struct{})
 	var events <-chan catalog.Event
 	closeSubscription := func() {}
@@ -175,7 +210,7 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 		events = subscription.Events()
 		closeSubscription = subscription.Close
 	}
-	go func() {
+	options.Workers.Go(func() {
 		defer close(done)
 		defer closeSubscription()
 		ticker := time.NewTicker(refreshInterval)
@@ -185,27 +220,27 @@ func observeCatalogEvents(ctx context.Context, watcher *catalog.Watcher, store *
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				scheduleIcons(manager, store, logger)
+				scheduleIcons(ctx, manager, store, logger)
 			case event, ok := <-events:
 				if !ok {
 					return
 				}
 				if event.Type == catalog.EventStatusUpdated && manager != nil {
-					degraded, message := manager.Degraded()
+					degraded, code := manager.Degraded()
 					if degraded {
-						logger.Error("favicon cache degraded", "message", message)
+						logger.Error("favicon_cache_degraded", "code", code)
 					} else {
-						logger.Info("favicon cache recovered")
+						logger.Info("favicon_cache_recovered")
 					}
 					continue
 				}
 				if event.Type != catalog.EventCatalogUpdated {
 					continue
 				}
-				logger.Info("catalog reloaded", "revision", event.Revision)
-				scheduleIcons(manager, store, logger, "revision", event.Revision)
+				logger.Info("catalog_reloaded", "revision", event.Revision)
+				scheduleIcons(ctx, manager, store, logger.With("revision", event.Revision))
 			}
 		}
-	}()
+	})
 	return done
 }

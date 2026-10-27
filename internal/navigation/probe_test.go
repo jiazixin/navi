@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -17,12 +18,11 @@ func (f probeTransportFunc) RoundTrip(request *http.Request) (*http.Response, er
 }
 
 func TestProbeWaiterRetriesCanceledLeader(t *testing.T) {
-	// Keep this test sequential while replacing the process-wide HTTP transport.
-	original := http.DefaultTransport
-	defer func() { http.DefaultTransport = original }()
 	synctest.Test(t, func(t *testing.T) {
+		var background sync.WaitGroup
+		t.Cleanup(background.Wait)
 		var requests atomic.Int32
-		http.DefaultTransport = probeTransportFunc(func(request *http.Request) (*http.Response, error) {
+		transport := probeTransportFunc(func(request *http.Request) (*http.Response, error) {
 			if requests.Add(1) == 1 {
 				<-request.Context().Done()
 				return nil, request.Context().Err()
@@ -30,13 +30,14 @@ func TestProbeWaiterRetriesCanceledLeader(t *testing.T) {
 			return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody, Header: make(http.Header)}, nil
 		})
 		p := NewProber(1)
+		p.transport = transport
 		leaderContext, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		leader := make(chan bool, 1)
 		waiter := make(chan bool, 1)
-		go func() { leader <- p.Probe(leaderContext, "http://target.test", time.Second, time.Minute) }()
+		background.Go(func() { leader <- p.Probe(leaderContext, "http://target.test", time.Second, time.Minute) })
 		synctest.Wait()
-		go func() { waiter <- p.Probe(t.Context(), "http://target.test", time.Second, time.Minute) }()
+		background.Go(func() { waiter <- p.Probe(t.Context(), "http://target.test", time.Second, time.Minute) })
 		synctest.Wait()
 		cancel()
 		synctest.Wait()
@@ -59,16 +60,16 @@ func TestProberTreatsFourXXAsReachableAndFallsBackFromHead(t *testing.T) {
 	t.Parallel()
 
 	var gets atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method == http.MethodHead {
-			writer.WriteHeader(http.StatusMethodNotAllowed)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 		gets.Add(1)
-		if request.Header.Get("Range") != "bytes=0-0" {
+		if r.Header.Get("Range") != "bytes=0-0" {
 			t.Error("GET fallback omitted Range header")
 		}
-		writer.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer server.Close()
 
@@ -82,13 +83,15 @@ func TestProberTreatsFourXXAsReachableAndFallsBackFromHead(t *testing.T) {
 }
 
 func TestProberCachesAndCombinesConcurrentRequests(t *testing.T) {
+	var background sync.WaitGroup
+	t.Cleanup(background.Wait)
+
 	t.Parallel()
 
 	var requests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		time.Sleep(20 * time.Millisecond)
-		writer.WriteHeader(http.StatusNoContent)
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 
@@ -96,9 +99,9 @@ func TestProberCachesAndCombinesConcurrentRequests(t *testing.T) {
 	const callers = 20
 	results := make(chan bool, callers)
 	for range callers {
-		go func() {
+		background.Go(func() {
 			results <- prober.Probe(t.Context(), server.URL, time.Second, time.Minute)
-		}()
+		})
 	}
 	for range callers {
 		if !<-results {
@@ -154,11 +157,49 @@ func TestProberTreatsUntrustedCertificateAsReachable(t *testing.T) {
 	t.Parallel()
 	// Private services commonly use self-signed or internal-CA certificates that
 	// the user's browser trusts but the Navi host does not.
-	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
-		writer.WriteHeader(http.StatusNoContent)
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
 	if !NewProber(1).Probe(t.Context(), server.URL, time.Second, time.Minute) {
 		t.Fatal("certificate verification failure reported the host as unreachable")
+	}
+}
+
+func TestProbeCacheExpiresWithInjectedClock(t *testing.T) {
+	t.Parallel()
+	p := NewProber(1)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	p.now = func() time.Time { return now }
+	var requests int
+	p.transport = probeTransportFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusNoContent, Body: http.NoBody}, nil
+	})
+	for range 2 {
+		if !p.Probe(t.Context(), "https://example.test", time.Second, time.Minute) {
+			t.Fatal("probe failed")
+		}
+	}
+	if requests != 1 {
+		t.Fatalf("got %d requests, want 1", requests)
+	}
+	now = now.Add(time.Minute)
+	if !p.Probe(t.Context(), "https://example.test", time.Second, time.Minute) || requests != 2 {
+		t.Fatalf("got %d requests, want expired cache refresh", requests)
+	}
+}
+
+func TestProbeBoundsConcurrencyAndRejectsCredentials(t *testing.T) {
+	p := NewProber(1_000_000)
+	if cap(p.limit) != 256 {
+		t.Fatalf("got concurrency %d, want 256", cap(p.limit))
+	}
+	p.transport = probeTransportFunc(func(*http.Request) (*http.Response, error) {
+		t.Fatal("credential-bearing URL reached transport")
+		return nil, nil
+	})
+	if p.Probe(t.Context(), "https://secret:password@example.test", time.Second, time.Minute) {
+		t.Fatal("accepted URL credentials")
 	}
 }

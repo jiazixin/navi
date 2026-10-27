@@ -2,16 +2,17 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"navi/internal/catalog"
@@ -23,6 +24,7 @@ import (
 // httpOptions supplies the minimal dependencies required by the HTTP server.
 type httpOptions struct {
 	Config   config.Config
+	Version  string
 	Catalog  *catalog.Store
 	Watcher  *catalog.Watcher
 	Icons    *favicon.Store
@@ -35,6 +37,7 @@ type httpOptions struct {
 // httpServer exposes authentication, read-only navigation, health, and static resources.
 type httpServer struct {
 	config    config.Config
+	version   string
 	catalog   *catalog.Store
 	watcher   *catalog.Watcher
 	icons     *favicon.Store
@@ -44,110 +47,192 @@ type httpServer struct {
 	degraded  func() (bool, string)
 	logger    *slog.Logger
 	heartbeat time.Duration
-	requests  atomic.Uint64
 	auth      *authState
+	mux       *http.ServeMux
+	handler   http.Handler
 }
 
 // newHTTPServer builds the Navi HTTP server handler.
 func newHTTPServer(options httpOptions) (*httpServer, error) {
 	if options.Catalog == nil {
-		return nil, fmt.Errorf("HTTP API requires a catalog store")
+		return nil, errors.New("HTTP API requires a catalog store")
 	}
-	server := &httpServer{
-		config: options.Config, catalog: options.Catalog, watcher: options.Watcher, icons: options.Icons,
-		resolver: options.Resolver, static: options.Static, degraded: options.Degraded, logger: options.Logger,
-		heartbeat: 15 * time.Second, auth: newAuthState(),
+	s := &httpServer{
+		config: options.Config, version: options.Version, catalog: options.Catalog, watcher: options.Watcher,
+		icons: options.Icons, resolver: options.Resolver, static: options.Static, degraded: options.Degraded,
+		logger: options.Logger, heartbeat: 15 * time.Second, auth: newAuthState(),
 	}
-	if server.logger == nil {
-		server.logger = slog.Default()
+	if s.logger == nil {
+		s.logger = slog.New(slog.DiscardHandler)
 	}
 	if options.Static != nil {
-		server.files = http.FileServer(http.FS(options.Static))
+		s.files = http.FileServer(http.FS(options.Static))
 	}
-	return server, nil
+	s.mux = s.routes()
+	s.handler = s.middleware(s.mux)
+	return s, nil
 }
 
-// ServeHTTP handles authentication, protected navigation and static assets.
-func (s *httpServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	requestID := s.requestID()
-	writer.Header().Set("X-Request-ID", requestID)
-	writer.Header().Set("X-Content-Type-Options", "nosniff")
-	writer.Header().Set("Referrer-Policy", "no-referrer")
-	writer.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
-	writer.Header().Set("X-Frame-Options", "DENY")
-	writer.Header().Set("Content-Security-Policy", "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'")
+// ServeHTTP serves the route table through the shared middleware.
+func (s *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.handler.ServeHTTP(w, r)
+}
 
-	started := time.Now()
-	recorder := &responseRecorder{ResponseWriter: writer}
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			s.logger.Error("HTTP handler panic", "request_id", requestID, "method", request.Method, "route", request.URL.Path, "error", recovered)
-			writeJSONError(recorder, http.StatusInternalServerError, "服务暂时无法完成请求。")
-		}
-		s.logAccess(request, requestID, recorder, time.Since(started))
-	}()
-	writer = recorder
-	if s.serveAuth(writer, request) {
-		return
-	}
-	if request.Method == http.MethodOptions {
-		writer.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if request.Method != http.MethodGet && request.Method != http.MethodHead {
-		writer.Header().Set("Allow", "GET, HEAD, OPTIONS")
-		writeJSONError(writer, http.StatusMethodNotAllowed, "只支持只读请求。")
-		return
-	}
+// routes is the route table. GET patterns also match HEAD.
+func (s *httpServer) routes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", s.serveHealth)
+	mux.HandleFunc("GET /api/info", s.serveInfo)
+	mux.HandleFunc("POST /api/auth/login", s.login)
+	mux.HandleFunc("POST /api/auth/logout", s.logout)
+	mux.HandleFunc("GET /api/auth/session", s.requireSession(s.serveSession))
+	mux.HandleFunc("GET /api/catalog", s.requireSession(s.serveCatalog))
+	mux.HandleFunc("GET /api/status", s.requireSession(s.serveStatus))
+	mux.HandleFunc("GET /api/events", s.requireSession(s.serveEvents))
+	mux.HandleFunc("GET /api/icons/{runtime_id}", s.requireSession(s.serveIcon))
+	mux.HandleFunc("GET /go/{runtime_id}", s.requirePage(s.serveGo))
+	mux.HandleFunc("GET /go", s.requirePage(s.serveGo))
+	mux.HandleFunc("GET /go/{$}", s.requirePage(s.serveGo))
+	mux.HandleFunc("GET /", s.serveStatic)
+	return mux
+}
 
-	if !s.authorize(writer, request) {
-		return
+// middleware wraps next in the shared request handling, outermost first:
+// request ID, access log, panic recovery, security headers, the cross-site
+// write check and the JSON form of the router's own 404 / 405 responses.
+func (s *httpServer) middleware(next http.Handler) http.Handler {
+	protection := http.NewCrossOriginProtection()
+	protection.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeError(w, r, errOriginRejected)
+	}))
+	guarded := protection.Handler(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if !requestIDPattern.MatchString(requestID) {
+			requestID = rand.Text()
+		}
+		w.Header().Set("X-Request-ID", requestID)
+		logger := s.logger.With("request_id", requestID)
+		r = r.WithContext(context.WithValue(r.Context(), loggerKey{}, logger))
+		recorder := &responseRecorder{ResponseWriter: w}
+		started := time.Now()
+		defer s.logAccess(logger, accessRecord{Request: r, Response: recorder, Started: started})
+		defer recoverPanic(recorder, r, logger)
+		setSecurityHeaders(recorder.Header(), r)
+		guarded.ServeHTTP(&routerErrorWriter{responseRecorder: recorder, request: r}, r)
+	})
+}
+
+var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
+
+type loggerKey struct{}
+
+// requestLogger returns the logger carrying the request ID.
+func requestLogger(r *http.Request) *slog.Logger {
+	if logger, ok := r.Context().Value(loggerKey{}).(*slog.Logger); ok {
+		return logger
 	}
-	switch request.URL.Path {
-	case "/api/catalog":
-		s.serveCatalog(writer, request)
-	case "/api/status":
-		s.serveStatus(writer, request)
-	case "/api/events":
-		s.serveEvents(writer, request)
-	case s.config.Health.URI:
-		s.serveHealth(writer, request)
-	default:
-		if strings.HasPrefix(request.URL.Path, "/api/icons/") {
-			s.serveIcon(writer, request)
-			return
-		}
-		if isAPIPath(request.URL.Path) {
-			writeJSONError(writer, http.StatusNotFound, "接口不存在。")
-			return
-		}
-		if request.URL.Path == "/go" || strings.HasPrefix(request.URL.Path, "/go/") {
-			s.serveGo(writer, request)
-			return
-		}
-		s.serveStatic(writer, request)
+	return slog.New(slog.DiscardHandler)
+}
+
+func setSecurityHeaders(header http.Header, r *http.Request) {
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("X-Frame-Options", "DENY")
+	header.Set("Referrer-Policy", "no-referrer")
+	header.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+	header.Set("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'")
+	if isAPIPath(r.URL.Path) {
+		header.Set("Cache-Control", "no-store")
 	}
 }
 
-func (s *httpServer) logAccess(request *http.Request, requestID string, recorder *responseRecorder, duration time.Duration) {
-	if !s.config.Logging.AccessLog {
+// recoverPanic logs a handler panic and answers 500 internal unless the
+// response has started. http.ErrAbortHandler keeps aborting the response.
+func recoverPanic(w *responseRecorder, r *http.Request, logger *slog.Logger) {
+	recovered := recover()
+	if recovered == nil {
 		return
 	}
-	if !s.config.Logging.LogHealthChecks && request.URL.Path == s.config.Health.URI {
+	if recovered == http.ErrAbortHandler {
+		panic(recovered)
+	}
+	logger.Error("http_handler_panic", "method", r.Method, "path", r.URL.Path, "error", fmt.Sprint(recovered))
+	if !w.wroteHeader {
+		writeError(w, r, errInternal)
+	}
+}
+
+// accessRecord groups the inputs for logAccess.
+type accessRecord struct {
+	Request  *http.Request
+	Response *responseRecorder
+	Started  time.Time
+}
+
+func (s *httpServer) logAccess(logger *slog.Logger, options accessRecord) {
+	r, w, started := options.Request, options.Response, options.Started
+
+	if !s.config.Logging.AccessLog || (!s.config.Logging.LogHealthChecks && r.URL.Path == healthPath) {
 		return
 	}
-	status := recorder.status
+	status := w.status
 	if status == 0 {
 		status = http.StatusOK
 	}
-	s.logger.Info("HTTP request",
-		"request_id", requestID,
-		"method", request.Method,
-		"route", request.URL.Path,
+	logger.Info("http_request",
+		"method", r.Method,
+		"path", r.URL.Path,
 		"status", status,
-		"duration", duration,
-		"bytes", recorder.bytes,
+		"duration_ms", time.Since(started).Milliseconds(),
+		"bytes", w.bytes,
 	)
+}
+
+// allowedMethods lists the methods another route serves for r's API path; the
+// page fallback "GET /" would otherwise answer every GET with 404 instead of 405.
+func (s *httpServer) allowedMethods(r *http.Request) string {
+	var allowed []string
+	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		probe := r.Clone(r.Context())
+		probe.Method = method
+		if _, pattern := s.mux.Handler(probe); pattern != "" && pattern != "GET /" {
+			allowed = append(allowed, method)
+		}
+	}
+	return strings.Join(allowed, ", ")
+}
+
+// healthPath is the unauthenticated health check (代码规范.md §5.1).
+const healthPath = "/healthz"
+
+// routerErrorWriter replaces the router's plain-text 404 and 405 responses
+// with the JSON error body. Handlers write JSON errors themselves.
+type routerErrorWriter struct {
+	*responseRecorder
+	request  *http.Request
+	replaced bool
+}
+
+func (w *routerErrorWriter) WriteHeader(status int) {
+	plainText := strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain")
+	if !w.wroteHeader && plainText && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed) {
+		w.replaced = true
+		w.Header().Del("Content-Length")
+		if status == http.StatusNotFound {
+			writeError(w.responseRecorder, w.request, errNoRoute)
+		} else {
+			writeError(w.responseRecorder, w.request, errMethodNotAllowed)
+		}
+		return
+	}
+	w.responseRecorder.WriteHeader(status)
+}
+
+func (w *routerErrorWriter) Write(payload []byte) (int, error) {
+	if w.replaced {
+		return len(payload), nil
+	}
+	return w.responseRecorder.Write(payload)
 }
 
 // responseRecorder preserves the optional interfaces used by SSE and static
@@ -181,26 +266,9 @@ func (r *responseRecorder) Write(payload []byte) (int, error) {
 	return count, err
 }
 
-func (r *responseRecorder) WriteString(payload string) (int, error) {
-	if writer, ok := r.ResponseWriter.(io.StringWriter); ok {
-		if !r.wroteHeader {
-			r.WriteHeader(http.StatusOK)
-		}
-		count, err := writer.WriteString(payload)
-		r.bytes += int64(count)
-		return count, err
-	}
-	return r.Write([]byte(payload))
-}
-
 func (r *responseRecorder) ReadFrom(reader io.Reader) (int64, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
-	}
-	if source, ok := r.ResponseWriter.(io.ReaderFrom); ok {
-		count, err := source.ReadFrom(reader)
-		r.bytes += count
-		return count, err
 	}
 	count, err := io.Copy(r.ResponseWriter, reader)
 	r.bytes += count
@@ -223,21 +291,6 @@ func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return hijacker.Hijack()
 	}
 	return nil, nil, http.ErrNotSupported
-}
-
-func (r *responseRecorder) Push(target string, options *http.PushOptions) error {
-	if pusher, ok := r.ResponseWriter.(http.Pusher); ok {
-		return pusher.Push(target, options)
-	}
-	return http.ErrNotSupported
-}
-
-func (s *httpServer) requestID() string {
-	var buffer [9]byte
-	if _, err := rand.Read(buffer[:]); err == nil {
-		return base64.RawURLEncoding.EncodeToString(buffer[:])
-	}
-	return fmt.Sprintf("req-%d", s.requests.Add(1))
 }
 
 func isAPIPath(path string) bool {

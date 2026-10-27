@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { StatePanel } from './StatePanel';
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { StatePanel } from './StatePanel'
 
 const meta = {
   title: 'Components/StatePanel',
@@ -15,13 +15,18 @@ const meta = {
       </>
     ),
   },
-} satisfies Meta<typeof StatePanel>;
+} satisfies Meta<typeof StatePanel>
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+export default meta
+type Story = StoryObj<typeof meta>
 
-export const Failure: Story = {};
+export const Failure: Story = {}
 
 export const Empty: Story = {
-  args: { eyebrow: 'EMPTY', title: '目录还是空的', description: '在 urls.yaml 中添加链接后，这里会自动更新。', children: undefined },
-};
+  args: {
+    eyebrow: 'EMPTY',
+    title: '目录还是空的',
+    description: '在 urls.yaml 中添加链接后，这里会自动更新。',
+    children: undefined,
+  },
+}

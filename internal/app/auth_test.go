@@ -13,13 +13,13 @@ import (
 
 func authServer(t *testing.T) *httpServer {
 	server := newTestServer(t, nil)
-	server.config.Auth = config.AuthConfig{Username: "tester", Password: "correct-password"}
+	server.config.Auth = config.AuthConfig{Username: "tester", PasswordHash: "$2a$10$x5UV.kUW13vcqk.TuL9OguoMZkBTXE0HsSXon0Y08VU5PhiZ.24my"}
 	return server
 }
 
 func loginRequest(server *httpServer, password string) *httptest.ResponseRecorder {
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"tester","password":"`+password+`"}`))
-	request.Header.Set("X-Navi-Request", "1")
+	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	return response
@@ -41,7 +41,7 @@ func TestAuthenticationBoundary(t *testing.T) {
 			t.Errorf("%s is cacheable", path)
 		}
 	}
-	for _, path := range []string{"/login", "/health"} {
+	for _, path := range []string{"/login", "/healthz"} {
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
 		if response.Code != http.StatusOK {
@@ -60,7 +60,7 @@ func TestLoginLogoutAndExpiry(t *testing.T) {
 		t.Fatalf("login: %d", response.Code)
 	}
 	cookie := response.Result().Cookies()[0]
-	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge != int(sessionLifetime.Seconds()) || len(cookie.Value) < 40 {
+	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.MaxAge != int(sessionLifetime.Seconds()) || len(cookie.Value) < 26 {
 		t.Fatal("insecure cookie")
 	}
 	assertCatalogStatus := func(expectedStatus int) {
@@ -76,7 +76,6 @@ func TestLoginLogoutAndExpiry(t *testing.T) {
 	assertCatalogStatus(http.StatusOK)
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	request.AddCookie(cookie)
-	request.Header.Set("X-Navi-Request", "1")
 	response = httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent || response.Result().Cookies()[0].MaxAge != -1 {
@@ -84,7 +83,7 @@ func TestLoginLogoutAndExpiry(t *testing.T) {
 	}
 	assertCatalogStatus(http.StatusUnauthorized)
 	cookie = loginRequest(server, "correct-password").Result().Cookies()[0]
-	server.auth.sessions[cookie.Value] = time.Now().Add(-time.Second)
+	server.auth.now = func() time.Time { return time.Now().Add(sessionLifetime + time.Second) }
 	assertCatalogStatus(http.StatusUnauthorized)
 	server.config.Auth.SecureCookie = true
 	if !loginRequest(server, "correct-password").Result().Cookies()[0].Secure {
@@ -92,19 +91,20 @@ func TestLoginLogoutAndExpiry(t *testing.T) {
 	}
 }
 
-func TestLoginCSRFMethodsAndThrottle(t *testing.T) {
+func TestLoginCrossOriginMethodsAndThrottle(t *testing.T) {
 	server := authServer(t)
 	for _, endpoint := range []string{"login", "logout"} {
-		for _, origin := range []string{"", "https://attacker.example", "null"} {
+		for _, header := range [][2]string{
+			{"Sec-Fetch-Site", "cross-site"},
+			{"Origin", "https://attacker.example"},
+			{"Origin", "null"},
+		} {
 			request := httptest.NewRequest(http.MethodPost, "/api/auth/"+endpoint, nil)
-			if origin != "" {
-				request.Header.Set("X-Navi-Request", "1")
-				request.Header.Set("Origin", origin)
-			}
+			request.Header.Set(header[0], header[1])
 			response := httptest.NewRecorder()
 			server.ServeHTTP(response, request)
 			if response.Code != http.StatusForbidden {
-				t.Fatalf("CSRF accepted: %s %s %d", endpoint, origin, response.Code)
+				t.Fatalf("cross-site write accepted: %s %v %d", endpoint, header, response.Code)
 			}
 		}
 		request := httptest.NewRequest(http.MethodGet, "/api/auth/"+endpoint, nil)
@@ -136,7 +136,7 @@ func TestEmptyCredentialsAllowPublicAccess(t *testing.T) {
 		if len(response.Result().Cookies()) != 0 {
 			t.Errorf("public access set cookie")
 		}
-		if path == "/api/auth/session" && !strings.Contains(response.Body.String(), `"authRequired":false`) {
+		if path == "/api/auth/session" && !strings.Contains(response.Body.String(), `"auth_required":false`) {
 			t.Fatal("missing public mode")
 		}
 	}
@@ -150,19 +150,24 @@ func TestEmptyCredentialsAllowPublicAccess(t *testing.T) {
 }
 
 func TestLoginRejectsMalformedCredentials(t *testing.T) {
-	for _, body := range []string{
-		`{"username":"tester","password":"correct-password","extra":true}`,
-		`{"username":"tester","password":"correct-password"} {}`,
-		`{"username":"tester","password":`,
-		`{"username":"tester","password":"` + strings.Repeat("x", maxLoginRequestBytes) + `"}`,
+	for _, tc := range []struct {
+		body        string
+		contentType string
+		status      int
+	}{
+		{`{"username":"tester","password":"correct-password","extra":true}`, "application/json", http.StatusBadRequest},
+		{`{"username":"tester","password":"correct-password"} {}`, "application/json", http.StatusBadRequest},
+		{`{"username":"tester","password":`, "application/json", http.StatusBadRequest},
+		{`{"username":"tester","password":"` + strings.Repeat("x", maxLoginRequestBytes) + `"}`, "application/json", http.StatusRequestEntityTooLarge},
+		{`username=tester&password=correct-password`, "application/x-www-form-urlencoded", http.StatusUnsupportedMediaType},
 	} {
 		server := authServer(t)
-		request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
-		request.Header.Set("X-Navi-Request", "1")
+		request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(tc.body))
+		request.Header.Set("Content-Type", tc.contentType)
 		response := httptest.NewRecorder()
 		server.ServeHTTP(response, request)
-		if response.Code != http.StatusBadRequest || len(response.Result().Cookies()) != 0 {
-			t.Fatalf("invalid credentials: status=%d, cookies=%v", response.Code, response.Result().Cookies())
+		if response.Code != tc.status || len(response.Result().Cookies()) != 0 {
+			t.Fatalf("invalid credentials: status=%d, want %d, cookies=%v", response.Code, tc.status, response.Result().Cookies())
 		}
 	}
 }
@@ -192,14 +197,14 @@ func TestLoginReplacesPreviousSession(t *testing.T) {
 	previousCookie := loginRequest(server, "correct-password").Result().Cookies()[0]
 	sessionCountBefore := len(server.auth.sessions)
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"tester","password":"correct-password"}`))
-	request.Header.Set("X-Navi-Request", "1")
+	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(previousCookie)
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("second login: %d", response.Code)
 	}
-	if _, exists := server.auth.sessions[previousCookie.Value]; exists {
+	if _, exists := server.auth.sessions[sessionDigest(previousCookie.Value)]; exists {
 		t.Fatal("previous session remained valid")
 	}
 	if len(server.auth.sessions) != sessionCountBefore || response.Result().Cookies()[0].Value == previousCookie.Value {
@@ -211,20 +216,20 @@ func TestLoginReplacesSessionAtCapacity(t *testing.T) {
 	server := authServer(t)
 	clear(server.auth.sessions)
 	for i := range maxActiveSessions {
-		server.auth.sessions[fmt.Sprintf("session-%d", i)] = time.Now().Add(time.Hour)
+		server.auth.sessions[sessionDigest(fmt.Sprintf("session-%d", i))] = time.Now().Add(time.Hour)
 	}
 	if response := loginRequest(server, "correct-password"); response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("new session at capacity = %d, want 503", response.Code)
 	}
 	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"tester","password":"correct-password"}`))
-	request.Header.Set("X-Navi-Request", "1")
+	request.Header.Set("Content-Type", "application/json")
 	request.AddCookie(&http.Cookie{Name: sessionCookie, Value: "session-0"})
 	response := httptest.NewRecorder()
 	server.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || len(server.auth.sessions) != maxActiveSessions {
 		t.Fatalf("replacement at capacity = %d, sessions=%d", response.Code, len(server.auth.sessions))
 	}
-	if _, exists := server.auth.sessions["session-0"]; exists {
+	if _, exists := server.auth.sessions[sessionDigest("session-0")]; exists {
 		t.Fatal("old session survived replacement")
 	}
 	check := httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
@@ -234,32 +239,55 @@ func TestLoginReplacesSessionAtCapacity(t *testing.T) {
 	}
 }
 
-func TestAuthOriginValidation(t *testing.T) {
+func TestAuthCrossOriginCheck(t *testing.T) {
 	for _, testCase := range []struct {
-		origin  string
+		name    string
+		headers map[string]string
 		allowed bool
 	}{
-		{"", true},
-		{"https://example.com", true},
-		{"http://example.com", true},
-		{"https://attacker.example", false},
-		{"https://user@example.com", false},
-		{"https://example.com/path", false},
-		{"https://example.com?query=value", false},
-		{"https://example.com#fragment", false},
-		{"null", false},
+		{"command-line client", nil, true},
+		{"same-origin fetch", map[string]string{"Sec-Fetch-Site": "same-origin"}, true},
+		{"matching origin", map[string]string{"Origin": "https://example.com"}, true},
+		{"cross-site fetch", map[string]string{"Sec-Fetch-Site": "cross-site"}, false},
+		{"foreign origin", map[string]string{"Origin": "https://attacker.example"}, false},
+		{"opaque origin", map[string]string{"Origin": "null"}, false},
 	} {
-		t.Run(testCase.origin, func(t *testing.T) {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := authServer(t)
 			request := httptest.NewRequest(http.MethodPost, "https://example.com/api/auth/logout", nil)
-			request.Header.Set("X-Navi-Request", "1")
-			request.Header.Set("Origin", testCase.origin)
-			if allowed := isAllowedAuthOrigin(request); allowed != testCase.allowed {
-				t.Fatalf("origin allowed = %v, want %v", allowed, testCase.allowed)
+			for name, value := range testCase.headers {
+				request.Header.Set(name, value)
 			}
-			request.Header.Set("Sec-Fetch-Site", "cross-site")
-			if isAllowedAuthOrigin(request) {
-				t.Fatal("cross-site request accepted")
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if allowed := response.Code != http.StatusForbidden; allowed != testCase.allowed {
+				t.Fatalf("allowed = %v (status %d), want %v", allowed, response.Code, testCase.allowed)
 			}
 		})
+	}
+}
+
+func TestCookieDigestCannotBeReplayed(t *testing.T) {
+	server := authServer(t)
+	response := loginRequest(server, "correct-password")
+	cookie := response.Result().Cookies()[0]
+	digest := sessionDigest(cookie.Value)
+	if _, exists := server.auth.sessions[digest]; !exists {
+		t.Fatal("session digest missing")
+	}
+	cookie.Value = fmt.Sprintf("%x", digest)
+	request := httptest.NewRequest(http.MethodGet, "/api/catalog", nil)
+	request.AddCookie(cookie)
+	denied := httptest.NewRecorder()
+	server.ServeHTTP(denied, request)
+	if denied.Code != http.StatusUnauthorized {
+		t.Fatalf("got %d, want unauthorized", denied.Code)
+	}
+}
+
+func TestRejectsPasswordBeyondBcryptLimit(t *testing.T) {
+	server := authServer(t)
+	if response := loginRequest(server, strings.Repeat("x", 73)); response.Code != http.StatusBadRequest {
+		t.Fatalf("got %d, want field validation error for oversized password", response.Code)
 	}
 }

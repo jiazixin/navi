@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -26,21 +27,25 @@ const (
 	EventFaviconUpdated EventType = "favicon.updated"
 )
 
-// reloadFailureMessage is the generic, user-facing reload failure; the cause is only logged.
-const reloadFailureMessage = "目录更新失败，当前仍显示最近一次有效内容。"
+// Status codes of the catalog. The cause of a reload failure is only logged.
+const (
+	StatusUnavailable  = "catalog_unavailable"
+	StatusReloadFailed = "catalog_reload_failed"
+)
 
 // Event is a compact catalog reload notification suitable for SSE delivery.
 type Event struct {
 	Type      EventType `json:"type"`
 	Revision  uint64    `json:"revision,omitzero"`
-	Message   string    `json:"message,omitempty"`
-	RuntimeID string    `json:"runtimeId,omitempty"`
+	Code      string    `json:"code,omitzero"`
+	RuntimeID string    `json:"runtime_id,omitzero"`
 }
 
 // Loader validates a catalog file and returns a fully constructed catalog.
-type Loader func(string) (Catalog, error)
+type Loader func(context.Context, string) (Catalog, error)
 
 // Watcher reloads its catalog after file changes and publishes nonblocking events.
+// mu guards lifecycle and degradation fields; eventHub guards its subscriptions.
 type Watcher struct {
 	path      string
 	directory string
@@ -50,15 +55,16 @@ type Watcher struct {
 	logger    *slog.Logger
 	events    *eventHub
 
-	mu       sync.RWMutex
-	watcher  *fsnotify.Watcher
-	started  bool
-	stopped  bool
-	degraded bool
-	message  string
+	mu         sync.RWMutex
+	watcher    *fsnotify.Watcher
+	started    bool
+	stopped    bool
+	degraded   bool
+	statusCode string
 
 	stopOnce sync.Once
 	done     chan struct{}
+	wg       sync.WaitGroup
 }
 
 // Subscription owns one nonblocking catalog event stream.
@@ -77,31 +83,39 @@ func (s Subscription) Close() {
 	s.close()
 }
 
-// NewWatcher creates a file watcher for one catalog path. Reload failures are
-// logged with their cause; subscribers receive only a generic message.
-func NewWatcher(path string, debounce time.Duration, load Loader, store *Store, logger *slog.Logger) *Watcher {
+// WatcherOptions supplies the dependencies of a catalog watcher.
+type WatcherOptions struct {
+	Path     string
+	Debounce time.Duration
+	Load     Loader
+	Store    *Store
+	Logger   *slog.Logger
+}
+
+// NewWatcher constructs a watcher; call Start before Shutdown.
+func NewWatcher(options WatcherOptions) *Watcher {
 	return &Watcher{
-		path:      filepath.Clean(path),
-		directory: filepath.Dir(path),
-		debounce:  debounce,
-		load:      load,
-		store:     store,
-		logger:    logger,
+		path:      filepath.Clean(options.Path),
+		directory: filepath.Dir(options.Path),
+		debounce:  options.Debounce,
+		load:      options.Load,
+		store:     options.Store,
+		logger:    options.Logger,
 		events:    newEventHub(),
 		done:      make(chan struct{}),
 	}
 }
 
-// Start begins watching the catalog parent directory until Stop or context cancellation.
+// Start begins watching the catalog parent directory until Shutdown or context cancellation.
 func (w *Watcher) Start(ctx context.Context) error {
 	if w.load == nil {
-		return fmt.Errorf("catalog watcher requires a loader")
+		return errors.New("catalog watcher requires a loader")
 	}
 	if w.store == nil {
-		return fmt.Errorf("catalog watcher requires a store")
+		return errors.New("catalog watcher requires a store")
 	}
 	if w.debounce <= 0 {
-		return fmt.Errorf("catalog watcher debounce must be greater than zero")
+		return errors.New("catalog watcher debounce must be greater than zero")
 	}
 
 	watcher, err := fsnotify.NewWatcher()
@@ -109,30 +123,30 @@ func (w *Watcher) Start(ctx context.Context) error {
 		return fmt.Errorf("create catalog watcher: %w", err)
 	}
 	if err := watcher.Add(w.directory); err != nil {
-		watcher.Close()
+		watcher.Close() // fsnotify Close is idempotent cleanup; worker completion is awaited.
 		return fmt.Errorf("watch catalog directory: %w", err)
 	}
 	w.mu.Lock()
 	if w.watcher != nil {
 		w.mu.Unlock()
-		watcher.Close()
-		return fmt.Errorf("catalog watcher is already running")
+		watcher.Close() // fsnotify Close is idempotent cleanup; worker completion is awaited.
+		return errors.New("catalog watcher is already running")
 	}
 	if w.stopped {
 		w.mu.Unlock()
-		watcher.Close()
-		return fmt.Errorf("catalog watcher has been stopped")
+		watcher.Close() // fsnotify Close is idempotent cleanup; worker completion is awaited.
+		return errors.New("catalog watcher has been stopped")
 	}
 	w.watcher = watcher
 	w.started = true
 	w.mu.Unlock()
 
-	go w.run(ctx, watcher)
+	w.wg.Go(func() { w.run(ctx, watcher) })
 	return nil
 }
 
-// Stop releases watcher resources and waits for its worker to exit.
-func (w *Watcher) Stop() {
+// Shutdown releases watcher resources and waits within the caller deadline.
+func (w *Watcher) Shutdown(ctx context.Context) error {
 	w.stopOnce.Do(func() {
 		w.mu.Lock()
 		watcher := w.watcher
@@ -144,10 +158,16 @@ func (w *Watcher) Stop() {
 		}
 		w.mu.Unlock()
 		if watcher != nil {
-			_ = watcher.Close()
+			_ = watcher.Close() // fsnotify Close is idempotent cleanup; worker completion is awaited.
 		}
 	})
-	<-w.done
+	select {
+	case <-w.done:
+		w.wg.Wait()
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("shutdown catalog watcher: %w", ctx.Err())
+	}
 }
 
 // Subscribe creates an event stream that retains only the newest pending event.
@@ -160,11 +180,12 @@ func (w *Watcher) Publish(event Event) {
 	w.events.Publish(event)
 }
 
-// Degraded reports whether the most recent reload attempt failed.
+// Degraded reports whether the most recent reload attempt failed, with its
+// status code.
 func (w *Watcher) Degraded() (bool, string) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	return w.degraded, w.message
+	return w.degraded, w.statusCode
 }
 
 func (w *Watcher) run(ctx context.Context, watcher *fsnotify.Watcher) {
@@ -182,7 +203,7 @@ func (w *Watcher) run(ctx context.Context, watcher *fsnotify.Watcher) {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = watcher.Close()
+			_ = watcher.Close() // fsnotify Close is idempotent cleanup; worker completion is awaited.
 			return
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -200,13 +221,13 @@ func (w *Watcher) run(ctx context.Context, watcher *fsnotify.Watcher) {
 		case <-timerChannel:
 			timer = nil
 			timerChannel = nil
-			w.reload()
+			w.reload(ctx)
 		}
 	}
 }
 
-func (w *Watcher) reload() {
-	loaded, err := w.load(w.path)
+func (w *Watcher) reload(ctx context.Context) {
+	loaded, err := w.load(ctx, w.path)
 	if err != nil {
 		w.recordFailure(err)
 		return
@@ -214,7 +235,7 @@ func (w *Watcher) reload() {
 	snapshot := w.store.Publish(loaded)
 	w.mu.Lock()
 	w.degraded = false
-	w.message = ""
+	w.statusCode = ""
 	w.mu.Unlock()
 	w.events.Publish(Event{Type: EventCatalogUpdated, Revision: snapshot.Revision()})
 }
@@ -222,14 +243,14 @@ func (w *Watcher) reload() {
 func (w *Watcher) recordFailure(err error) {
 	w.mu.Lock()
 	w.degraded = true
-	w.message = reloadFailureMessage
+	w.statusCode = StatusReloadFailed
 	w.mu.Unlock()
 	revision := uint64(0)
 	if snapshot, ok := w.store.Snapshot(); ok {
 		revision = snapshot.Revision()
 	}
-	w.logger.Error("catalog reload failed", "path", w.path, "revision", revision, "error", err)
-	w.events.Publish(Event{Type: EventCatalogError, Revision: revision, Message: reloadFailureMessage})
+	w.logger.Error("catalog_reload_failed", "path", w.path, "revision", revision, "error", err)
+	w.events.Publish(Event{Type: EventCatalogError, Revision: revision, Code: StatusReloadFailed})
 }
 
 func resetTimer(timer *time.Timer, duration time.Duration) (*time.Timer, <-chan time.Time) {
@@ -241,6 +262,9 @@ func resetTimer(timer *time.Timer, duration time.Duration) (*time.Timer, <-chan 
 	return timer, timer.C
 }
 
+const maxEventSubscribers = 4096
+
+// eventHub.mu protects all subscriber and lifecycle state.
 type eventHub struct {
 	mu     sync.Mutex
 	nextID uint64
@@ -256,7 +280,7 @@ func (h *eventHub) Subscribe() Subscription {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	channel := make(chan Event, 1)
-	if h.closed {
+	if h.closed || len(h.subs) >= maxEventSubscribers {
 		close(channel)
 		return Subscription{events: channel, close: func() {}}
 	}

@@ -1,133 +1,169 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
-import { StatePanel } from '../components/StatePanel';
-import { AppearancePanel } from '../features/appearance/AppearancePanel';
-import { Backdrop } from '../features/appearance/Backdrop';
-import { getPattern } from '../features/appearance/options';
-import { useAppearance } from '../features/appearance/useAppearance';
-import { CatalogView } from '../features/catalog/CatalogView';
-import { LoadingCatalog } from '../features/catalog/LoadingCatalog';
-import { HeroClock } from '../features/clock/HeroClock';
-import { CommandPalette } from '../features/search/CommandPalette';
-import { HeroSearch } from '../features/search/HeroSearch';
-import { buildSearchIndex } from '../features/search/linkSearch';
-import { StatusBanner } from '../features/status/StatusBanner';
-import { TopBar } from '../layouts/TopBar';
-import type { WebSearchProviderID } from './api/webSearch';
-import { useCatalogState } from './useCatalogState';
-import { usePageSelection } from './usePageSelection';
-import styles from './App.module.css';
+import { errorText } from './errors'
+import { formatCount } from '../lib/format/number'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { RotateCcw } from 'lucide-react'
+import { StatePanel } from '../components/StatePanel'
+import { AppearancePanel } from '../features/appearance/AppearancePanel'
+import { Backdrop } from '../features/appearance/Backdrop'
+import { parseWebSearchProvider } from './api/webSearch'
+import { useURLString } from './urlState'
+import { getPattern } from './appearance/options'
+import { useAppearance } from './appearance/useAppearance'
+import { CatalogView } from '../features/catalog/CatalogView'
+import { LoadingCatalog } from '../features/catalog/LoadingCatalog'
+import { HeroClock } from '../features/clock/HeroClock'
+import { CommandPalette } from '../features/search/CommandPalette'
+import { HeroSearch } from '../features/search/HeroSearch'
+import { buildSearchIndex } from '../features/search/linkSearch'
+import { StatusBanner } from '../features/status/StatusBanner'
+import { TopBar } from '../layouts/TopBar'
+import type { WebSearchProviderID } from './api/webSearch'
+import { useCatalogState } from './useCatalogState'
+import { usePageSelection } from './usePageSelection'
+import styles from './App.module.css'
 
 type AppProps = {
-  configuredSearch: WebSearchProviderID;
-};
+  configuredSearch: WebSearchProviderID
+}
 
 function isTyping(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+  )
 }
 
 export function App({ configuredSearch }: AppProps): React.JSX.Element {
-  const { catalogQuery, statusQuery, faviconVersions, connection, refreshCatalog, visibleBanner, dismissBanner } =
-    useCatalogState();
-  const appearance = useAppearance();
-  const pages = useMemo(() => catalogQuery.data?.pages ?? [], [catalogQuery.data?.pages]);
-  const [pageIndex, selectPage] = usePageSelection(pages);
-  const page = pages[pageIndex];
-  const searchIndex = useMemo(() => buildSearchIndex(pages), [pages]);
-  const [providerID, setProviderID] = useState(configuredSearch);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [appearanceOpen, setAppearanceOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const heroInputRef = useRef<HTMLInputElement>(null);
-  const searchButtonRef = useRef<HTMLButtonElement>(null);
-  const appearanceButtonRef = useRef<HTMLButtonElement>(null);
-  const catalogRef = useRef<HTMLDivElement>(null);
-  const appearancePanelID = `appearance-${useId().replace(/:/g, '')}`;
-  const linkCount = page?.groups.reduce((total, group) => total + group.links.length, 0) ?? 0;
-  const activePattern = getPattern(appearance.pattern);
+  const {
+    catalogQuery,
+    statusQuery,
+    faviconVersions,
+    connection,
+    refreshCatalog,
+    visibleBanner,
+    dismissBanner,
+  } = useCatalogState()
+  const appearance = useAppearance()
+  const pages = useMemo(() => catalogQuery.data?.pages ?? [], [catalogQuery.data?.pages])
+  const [pageIndex, selectPage] = usePageSelection(pages)
+  const page = pages[pageIndex]
+  // Search effects depend on a stable index; rebuild only when the catalog changes.
+  const searchIndex = useMemo(() => buildSearchIndex(pages), [pages])
+  const [providerValue, setProviderID] = useURLString('provider', configuredSearch)
+  const providerID = parseWebSearchProvider(providerValue)
+  const [isPaletteOpen, setPaletteOpen] = useState(false)
+  const [isAppearanceOpen, setAppearanceOpen] = useState(false)
+  const [isScrolled, setScrolled] = useState(false)
+  const heroInputRef = useRef<HTMLInputElement>(null)
+  const searchButtonRef = useRef<HTMLButtonElement>(null)
+  const appearanceButtonRef = useRef<HTMLButtonElement>(null)
+  const catalogRef = useRef<HTMLDivElement>(null)
+  const appearancePanelID = `appearance-${useId().replace(/:/g, '')}`
+  const linkCount = page?.groups.reduce((total, group) => total + group.links.length, 0) ?? 0
+  const activePattern = getPattern(appearance.pattern)
 
   useEffect(() => {
-    document.title = page === undefined ? 'Navi' : `${page.title} · Navi`;
-  }, [page]);
+    const previousTitle = document.title
+    document.title = page === undefined ? 'Navi' : `${page.title} · Navi`
+    return () => {
+      document.title = previousTitle
+    }
+  }, [page])
 
   useEffect(() => {
     const handleScroll = (): void => {
-      setScrolled(window.scrollY > 24);
-      const fade = 1 - Math.min(window.scrollY / (Math.max(window.innerHeight, 1) * 0.9), 1) * 0.55;
-      document.documentElement.style.setProperty('--scroll-fade', fade.toFixed(3));
-    };
-    handleScroll();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+      setScrolled(window.scrollY > 24)
+      const fade = 1 - Math.min(window.scrollY / (Math.max(window.innerHeight, 1) * 0.9), 1) * 0.55
+      document.documentElement.dataset.scrollFade = String(Math.round(fade * 100))
+    }
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      delete document.documentElement.dataset.scrollFade
+    }
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setAppearanceOpen(false);
-        setPaletteOpen((open) => !open);
-      } else if (event.key === '/' && !isTyping(event.target) && !paletteOpen) {
-        event.preventDefault();
-        if (window.scrollY < window.innerHeight * 0.5 && heroInputRef.current !== null) heroInputRef.current.focus();
-        else setPaletteOpen(true);
+        event.preventDefault()
+        setAppearanceOpen(false)
+        setPaletteOpen((isOpen) => !isOpen)
+      } else if (event.key === '/' && !isTyping(event.target) && !isPaletteOpen) {
+        event.preventDefault()
+        if (window.scrollY < window.innerHeight * 0.5 && heroInputRef.current !== null)
+          heroInputRef.current.focus()
+        else setPaletteOpen(true)
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [paletteOpen]);
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isPaletteOpen])
 
-  const closePalette = useCallback(() => {
-    setPaletteOpen(false);
-    searchButtonRef.current?.focus();
-  }, []);
+  const handleClosePalette = useCallback(() => {
+    setPaletteOpen(false)
+    searchButtonRef.current?.focus()
+  }, [])
 
-  const closeAppearance = useCallback((restoreFocus: boolean) => {
-    setAppearanceOpen(false);
-    if (restoreFocus) appearanceButtonRef.current?.focus();
-  }, []);
+  const handleCloseAppearance = useCallback((isRestoreFocus: boolean) => {
+    setAppearanceOpen(false)
+    if (isRestoreFocus) appearanceButtonRef.current?.focus()
+  }, [])
 
   function handleSelectPage(index: number): void {
-    if (index === pageIndex) return;
-    selectPage(index);
-    const catalogTop = (catalogRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 80;
-    if (window.scrollY > catalogTop) window.scrollTo({ top: catalogTop, behavior: appearance.reducedMotion ? 'auto' : 'smooth' });
+    if (index === pageIndex) return
+    selectPage(index)
+    const catalogTop = (catalogRef.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 80
+    if (window.scrollY > catalogTop)
+      window.scrollTo({ top: catalogTop, behavior: appearance.isReducedMotion ? 'auto' : 'smooth' })
   }
 
-  let catalog: React.ReactNode;
-  if (catalogQuery.isPending) catalog = <LoadingCatalog />;
+  let catalog: React.ReactNode
+  if (catalogQuery.isPending) catalog = <LoadingCatalog />
   else if (catalogQuery.data === undefined)
     catalog = (
-      <StatePanel description="服务暂时没有返回导航目录，请检查连接后重试。" eyebrow="UNAVAILABLE" title="目录暂时无法加载">
+      <StatePanel
+        role="alert"
+        description={errorText(catalogQuery.error)}
+        eyebrow="UNAVAILABLE"
+        title="目录暂时无法加载"
+      >
         <button onClick={refreshCatalog} type="button">
           <RotateCcw aria-hidden="true" size={16} strokeWidth={1.8} />
           重新加载
         </button>
       </StatePanel>
-    );
+    )
   else if (page === undefined || linkCount === 0)
-    catalog = <StatePanel description="在 urls.yaml 中添加链接后，这里会自动更新。" eyebrow="EMPTY" title="目录还是空的" />;
-  else catalog = <CatalogView faviconVersions={faviconVersions} key={page.id} page={page} />;
+    catalog = (
+      <StatePanel
+        description="在 urls.yaml 中添加链接后，这里会自动更新。"
+        eyebrow="EMPTY"
+        title="目录还是空的"
+      />
+    )
+  else catalog = <CatalogView faviconVersions={faviconVersions} key={page.id} page={page} />
 
   return (
     <div className={styles.app}>
       <Backdrop />
       <TopBar
         appearanceButtonRef={appearanceButtonRef}
-        appearanceOpen={appearanceOpen}
+        isAppearanceOpen={isAppearanceOpen}
         appearancePanelID={appearancePanelID}
         connection={connection}
         currentIndex={pageIndex}
         isRefreshing={catalogQuery.isFetching || statusQuery.isFetching}
         onOpenSearch={() => {
-          setAppearanceOpen(false);
-          setPaletteOpen(true);
+          setAppearanceOpen(false)
+          setPaletteOpen(true)
         }}
         onRefresh={refreshCatalog}
         onSelectPage={handleSelectPage}
-        onToggleAppearance={() => setAppearanceOpen((open) => !open)}
+        onToggleAppearance={() => setAppearanceOpen((isOpen) => !isOpen)}
         pages={pages}
-        scrolled={scrolled}
+        isScrolled={isScrolled}
         searchButtonRef={searchButtonRef}
       />
 
@@ -156,9 +192,14 @@ export function App({ configuredSearch }: AppProps): React.JSX.Element {
           <div className={styles.heroFoot}>
             <a className={styles.cue} href="#catalog">
               <span aria-hidden="true" className={styles.cueLine} />
-              {page === undefined ? '目录' : `目录 · ${page.groups.length} 个分区 · ${linkCount} 个链接`}
+              {page === undefined
+                ? '目录'
+                : `目录 · ${formatCount(page.groups.length)} 个分区 · ${formatCount(linkCount)} 个链接`}
             </a>
-            <span className={styles.patternBadge} data-animated={appearance.animated ? 'true' : 'false'}>
+            <span
+              className={styles.patternBadge}
+              data-animated={appearance.isAnimated ? 'true' : 'false'}
+            >
               <span aria-hidden="true" className={styles.live} />
               纹样 — <b>{activePattern.name}</b> {activePattern.en}
             </span>
@@ -178,12 +219,21 @@ export function App({ configuredSearch }: AppProps): React.JSX.Element {
         </div>
       </footer>
 
-      {appearanceOpen ? (
-        <AppearancePanel anchorRef={appearanceButtonRef} id={appearancePanelID} onClose={closeAppearance} />
+      {isAppearanceOpen ? (
+        <AppearancePanel
+          anchorRef={appearanceButtonRef}
+          id={appearancePanelID}
+          onClose={handleCloseAppearance}
+        />
       ) : null}
-      {paletteOpen ? (
-        <CommandPalette faviconVersions={faviconVersions} index={searchIndex} onClose={closePalette} providerID={providerID} />
+      {isPaletteOpen ? (
+        <CommandPalette
+          faviconVersions={faviconVersions}
+          index={searchIndex}
+          onClose={handleClosePalette}
+          providerID={providerID}
+        />
       ) : null}
     </div>
-  );
+  )
 }

@@ -1,4 +1,4 @@
-// Command navi starts the Navi service.
+// Command navi serves the Navi personal start page.
 package main
 
 import (
@@ -25,7 +25,7 @@ func main() {
 }
 
 // run reports usage and startup errors as plain text on stderr; once the
-// configuration loads, the service logs through its configured logger.
+// logger is ready, failures are logged.
 func run(args []string, stdout, stderr io.Writer) int {
 	o, err := parseArgs(args)
 	if err != nil {
@@ -41,35 +41,34 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "navi", build)
 		return exitOK
 	}
-	loaded, err := config.Load(configEnv(o.configFile, os.LookupEnv))
+	path, explicit, err := o.configPath(os.LookupEnv)
 	if err != nil {
 		fmt.Fprintf(stderr, "navi: config: %v\n", err)
 		return exitFailure
 	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(stderr, "navi: config: %v\n", err)
+		return exitFailure
+	}
+	cfg, err := config.Load(config.Source{Path: path, Explicit: explicit, WorkDir: workDir, LookupEnv: os.LookupEnv})
+	if err != nil {
+		fmt.Fprintf(stderr, "navi: config: %v\n", err)
+		return exitFailure
+	}
+	logger := newLogger(cfg.Logging, stdout)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	logger := app.NewLogger(loaded.Logging, stdout).With(
-		"version", build.Version,
+	context.AfterFunc(ctx, stop) // a second signal terminates the process
+	logger.Info("service_starting",
+		"version", build.String(),
 		"commit", cmp.Or(build.Revision, "unknown"),
 		"build_time", cmp.Or(build.Time, "unknown"),
 	)
-	if err := app.Run(ctx, loaded, logger); err != nil {
-		fmt.Fprintf(stderr, "navi: %v\n", err)
+	if err := app.Run(ctx, cfg, logger, build.String()); err != nil {
+		logger.Error("service_failed", "error", err)
 		return exitFailure
 	}
+	logger.Info("service_stopped")
 	return exitOK
-}
-
-// configEnv makes --config take the place of CONFIG_FILE, which config.Load
-// reads to select the configuration file.
-func configEnv(file string, lookupEnv config.LookupEnv) config.LookupEnv {
-	if file == "" {
-		return lookupEnv
-	}
-	return func(name string) (string, bool) {
-		if name == "CONFIG_FILE" {
-			return file, true
-		}
-		return lookupEnv(name)
-	}
 }

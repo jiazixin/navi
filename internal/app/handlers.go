@@ -3,11 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"io/fs"
 	"net/http"
 	"path"
@@ -26,7 +25,7 @@ type catalogResponse struct {
 type pageResponse struct {
 	ID       string          `json:"id"`
 	Title    string          `json:"title"`
-	Subtitle string          `json:"subtitle,omitempty"`
+	Subtitle string          `json:"subtitle,omitzero"`
 	Groups   []groupResponse `json:"groups"`
 }
 
@@ -36,11 +35,11 @@ type groupResponse struct {
 }
 
 type linkResponse struct {
-	RuntimeID   string   `json:"runtimeId"`
+	RuntimeID   string   `json:"runtime_id"`
 	Name        string   `json:"name"`
-	Description string   `json:"description,omitempty"`
-	PrivateURL  string   `json:"privateUrl,omitempty"`
-	PublicURL   string   `json:"publicUrl,omitempty"`
+	Description string   `json:"description,omitzero"`
+	PrivateURL  string   `json:"private_url,omitzero"`
+	PublicURL   string   `json:"public_url,omitzero"`
 	Tags        []string `json:"tags"`
 }
 
@@ -51,25 +50,42 @@ const (
 	healthUnavailable = "unavailable"
 )
 
+// statusResponse reports service health. Code names the cause of degraded or
+// unavailable health for clients; Message is its English description.
 type statusResponse struct {
 	Health   string `json:"health"`
 	Revision uint64 `json:"revision"`
-	Message  string `json:"message,omitempty"`
+	Code     string `json:"code,omitzero"`
+	Message  string `json:"message,omitzero"`
 }
 
-func (s *httpServer) serveCatalog(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Cache-Control", "no-store")
+// Status codes and their English descriptions.
+var statusMessages = map[string]string{
+	catalog.StatusUnavailable:  "catalog not available yet",
+	catalog.StatusReloadFailed: "catalog reload failed; the last valid catalog stays active",
+	statusIconCacheUnavailable: "icon cache unavailable; monograms are used",
+	favicon.StatusWriteFailed:  "icon cache writes failed; existing icons or monograms are used",
+}
+
+const statusIconCacheUnavailable = "icon_cache_unavailable"
+
+func degradedStatus(revision uint64, code string) statusResponse {
+	return statusResponse{Health: healthDegraded, Revision: revision, Code: code, Message: statusMessages[code]}
+}
+
+func (s *httpServer) serveCatalog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
-		writeJSONError(writer, http.StatusServiceUnavailable, "目录暂时不可用。")
+		writeError(w, r, errCatalogMissing)
 		return
 	}
-	writer.Header().Set("ETag", snapshot.ETag())
-	if request.Header.Get("If-None-Match") == snapshot.ETag() {
-		writer.WriteHeader(http.StatusNotModified)
+	w.Header().Set("ETag", snapshot.ETag())
+	if r.Header.Get("If-None-Match") == snapshot.ETag() {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	writeJSON(writer, http.StatusOK, s.catalogResponse(snapshot))
+	writeJSON(w, http.StatusOK, s.catalogResponse(snapshot))
 }
 
 func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse {
@@ -94,46 +110,53 @@ func (s *httpServer) catalogResponse(snapshot *catalog.Snapshot) catalogResponse
 	return catalogResponse{Revision: snapshot.Revision(), Pages: pages}
 }
 
-func (s *httpServer) serveStatus(writer http.ResponseWriter, request *http.Request) {
+func (s *httpServer) serveStatus(w http.ResponseWriter, r *http.Request) {
 	status := s.status()
 	code := http.StatusOK
 	if status.Health == healthUnavailable {
 		code = http.StatusServiceUnavailable
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	writeJSON(writer, code, status)
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, code, status)
 }
 
-func (s *httpServer) serveHealth(writer http.ResponseWriter, request *http.Request) {
-	health := s.status().Health
-	writer.Header().Set("Cache-Control", "no-store")
-	if health == healthUnavailable {
-		writer.WriteHeader(http.StatusServiceUnavailable)
+// serveHealth reports that the process serves requests; degraded details are
+// in /api/status. It needs no session.
+func (s *httpServer) serveHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if s.status().Health == healthUnavailable {
+		writeError(w, r, errCatalogMissing)
 		return
 	}
-	writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	if request.Method == http.MethodHead {
-		writer.WriteHeader(http.StatusOK)
-		return
-	}
-	_, _ = io.WriteString(writer, health)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Request) {
+// infoResponse lists the server version and the optional features clients may
+// check before using them (代码规范.md §5.1).
+type infoResponse struct {
+	Version      string   `json:"version"`
+	Capabilities []string `json:"capabilities"`
+}
+
+func (s *httpServer) serveInfo(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, infoResponse{Version: s.version, Capabilities: []string{"catalog_events", "favicons"}})
+}
+
+func (s *httpServer) serveEvents(w http.ResponseWriter, r *http.Request) {
 	var events <-chan catalog.Event
 	if s.watcher != nil {
 		subscription := s.watcher.Subscribe()
 		defer subscription.Close()
 		events = subscription.Events()
 	}
-	writer.Header().Set("Content-Type", "text/event-stream")
-	writer.Header().Set("Cache-Control", "no-cache")
-	writer.Header().Set("Connection", "keep-alive")
-	if request.Method == http.MethodHead {
-		writer.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	controller := http.NewResponseController(writer)
+	controller := http.NewResponseController(w)
 	writeTimeout := s.config.Server.WriteTimeout
 	if writeTimeout <= 0 {
 		writeTimeout = 30 * time.Second
@@ -141,7 +164,7 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 	// Idle streams may live indefinitely, but each write has a bounded lifetime.
 	// Cancellation interrupts a write blocked on a client that stopped reading.
 	writeCanceled := make(chan struct{})
-	stop := context.AfterFunc(request.Context(), func() {
+	stop := context.AfterFunc(r.Context(), func() {
 		defer close(writeCanceled)
 		_ = controller.SetWriteDeadline(time.Now())
 	})
@@ -152,7 +175,7 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 	}()
 	beginWrite := func() error {
 		err := controller.SetWriteDeadline(time.Now().Add(writeTimeout))
-		if contextErr := request.Context().Err(); contextErr != nil {
+		if contextErr := r.Context().Err(); contextErr != nil {
 			_ = controller.SetWriteDeadline(time.Now())
 			return contextErr
 		}
@@ -176,7 +199,7 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 		if err := beginWrite(); err != nil {
 			return err
 		}
-		if _, err := writer.Write([]byte(frame)); err != nil {
+		if _, err := w.Write([]byte(frame)); err != nil {
 			return err
 		}
 		return flushWrite()
@@ -194,10 +217,10 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 	for {
 		var frame string
 		select {
-		case <-request.Context().Done():
+		case <-r.Context().Done():
 			return
 		case event, ok := <-events:
-			if !ok || !s.authenticated(request) {
+			if !ok || !s.authenticated(r) {
 				return
 			}
 			payload, err := json.Marshal(event)
@@ -206,7 +229,7 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 			}
 			frame = fmt.Sprintf("event: %s\ndata: %s\n\n", event.Type, payload)
 		case <-heartbeat.C:
-			if !s.authenticated(request) {
+			if !s.authenticated(r) {
 				return
 			}
 			frame = ": heartbeat\n\n"
@@ -217,147 +240,174 @@ func (s *httpServer) serveEvents(writer http.ResponseWriter, request *http.Reque
 	}
 }
 
-func (s *httpServer) serveIcon(writer http.ResponseWriter, request *http.Request) {
+func (s *httpServer) serveIcon(w http.ResponseWriter, r *http.Request) {
 	if s.icons == nil {
-		writeJSONError(writer, http.StatusNotFound, "图标暂不可用。")
+		writeError(w, r, errIconsUnavailable)
 		return
 	}
-	runtimeID := strings.TrimPrefix(request.URL.Path, "/api/icons/")
-	if runtimeID == "" || strings.Contains(runtimeID, "/") {
-		writeJSONError(writer, http.StatusNotFound, "图标不存在。")
-		return
-	}
-	entry, file, err := s.icons.Open(runtimeID)
+	runtimeID := r.PathValue("runtime_id")
+	entry, file, err := s.icons.Open(r.Context(), runtimeID)
 	if errors.Is(err, favicon.ErrNotFound) {
-		writeJSONError(writer, http.StatusNotFound, "图标不存在。")
+		writeError(w, r, errIconNotFound)
 		return
 	}
 	if err != nil {
-		writeJSONError(writer, http.StatusInternalServerError, "图标暂时不可用。")
+		writeError(w, r, errInternal)
 		return
 	}
-	defer file.Close()
-	writer.Header().Set("ETag", entry.ETag)
+	defer file.Close() // Read-only descriptor; failures cannot invalidate the completed read.
+	w.Header().Set("ETag", entry.ETag)
 	if s.config.Auth.Enabled() {
-		writer.Header().Set("Cache-Control", "private, no-cache")
+		w.Header().Set("Cache-Control", "private, no-cache")
 	} else {
-		writer.Header().Set("Cache-Control", "public, no-cache")
+		w.Header().Set("Cache-Control", "public, no-cache")
 	}
-	writer.Header().Set("Content-Type", entry.ContentType)
+	w.Header().Set("Content-Type", entry.ContentType)
 	if entry.ContentType == "image/svg+xml" {
-		writer.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	}
-	if request.Header.Get("If-None-Match") == entry.ETag {
-		writer.WriteHeader(http.StatusNotModified)
+	if r.Header.Get("If-None-Match") == entry.ETag {
+		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	if request.Method == http.MethodHead {
-		writer.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-	http.ServeContent(writer, request, "icon", entry.FetchedAt, file)
+	http.ServeContent(w, r, "icon", entry.FetchedAt, file)
 }
 
-func (s *httpServer) serveGo(writer http.ResponseWriter, request *http.Request) {
-	runtimeID := strings.TrimPrefix(request.URL.Path, "/go/")
-	if runtimeID == "" || strings.Contains(runtimeID, "/") {
-		s.writeFailurePage(writer, request, http.StatusNotFound, "链接不存在")
+func (s *httpServer) serveGo(w http.ResponseWriter, r *http.Request) {
+	runtimeID := r.PathValue("runtime_id")
+	if runtimeID == "" {
+		s.writeFailurePage(w, r, failurePage{Status: http.StatusNotFound, Code: navigationLinkNotFound})
 		return
 	}
 	if s.resolver == nil {
-		s.writeFailurePage(writer, request, http.StatusServiceUnavailable, "链接暂时不可用")
+		s.writeFailurePage(w, r, failurePage{Status: http.StatusServiceUnavailable, Code: navigationLinkUnavailable})
 		return
 	}
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
-		s.writeFailurePage(writer, request, http.StatusServiceUnavailable, "目录暂时不可用")
+		s.writeFailurePage(w, r, failurePage{Status: http.StatusServiceUnavailable, Code: navigationCatalogUnavailable})
 		return
 	}
 	link, ok := snapshot.FindLink(runtimeID)
 	if !ok {
-		s.writeFailurePage(writer, request, http.StatusNotFound, "链接不存在")
+		s.writeFailurePage(w, r, failurePage{Status: http.StatusNotFound, Code: navigationLinkNotFound})
 		return
 	}
-	writer.Header().Set("Cache-Control", "no-store")
-	http.Redirect(writer, request, s.resolver.Resolve(request.Context(), link), http.StatusFound)
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, s.resolver.Resolve(r.Context(), link), http.StatusFound)
 }
 
-func (s *httpServer) serveStatic(writer http.ResponseWriter, request *http.Request) {
-	if s.static == nil || s.files == nil {
-		writeJSONError(writer, http.StatusServiceUnavailable, "前端资源尚未构建。")
+// serveStatic serves the web client. Every page except the login page and
+// its assets needs a session; unknown API paths answer 404.
+func (s *httpServer) serveStatic(w http.ResponseWriter, r *http.Request) {
+	if isAPIPath(r.URL.Path) {
+		if allowed := s.allowedMethods(r); allowed != "" {
+			w.Header().Set("Allow", allowed)
+			writeError(w, r, errMethodNotAllowed)
+			return
+		}
+		writeError(w, r, errNoRoute)
 		return
 	}
-	filePath := strings.TrimPrefix(path.Clean(request.URL.Path), "/")
+	public := r.URL.Path == "/login" || r.URL.Path == "/assets" || strings.HasPrefix(r.URL.Path, "/assets/")
+	if !public && !s.authenticated(r) {
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	if s.static == nil || s.files == nil {
+		writeError(w, r, errFrontendMissing)
+		return
+	}
+	filePath := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if filePath != "." && filePath != "" && filePath != "index.html" {
 		if info, err := fs.Stat(s.static, filePath); err == nil && info.Mode().IsRegular() {
-			s.files.ServeHTTP(writer, request)
+			s.files.ServeHTTP(w, r)
 			return
 		}
 	}
-	if request.URL.Path == "/assets" || strings.HasPrefix(request.URL.Path, "/assets/") {
-		writeJSONError(writer, http.StatusNotFound, "静态资源不存在。")
+	if r.URL.Path == "/assets" || strings.HasPrefix(r.URL.Path, "/assets/") {
+		writeError(w, r, errAssetNotFound)
 		return
 	}
 	contents, err := fs.ReadFile(s.static, "index.html")
 	if err != nil {
-		writeJSONError(writer, http.StatusServiceUnavailable, "前端资源尚未构建。")
+		writeError(w, r, errFrontendMissing)
 		return
 	}
 	contents = bytes.Replace(contents, []byte(`id="root"`), fmt.Appendf(nil, `id="root"%s`, s.appearanceAttributes()), 1)
-	writer.Header().Set("Cache-Control", "no-store")
-	http.ServeContent(writer, request, "index.html", time.Time{}, bytes.NewReader(contents))
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(contents))
 }
 
 func (s *httpServer) status() statusResponse {
 	snapshot, ok := s.catalog.Snapshot()
 	if !ok {
-		return statusResponse{Health: healthUnavailable, Message: "目录尚不可用。"}
+		code := catalog.StatusUnavailable
+		return statusResponse{Health: healthUnavailable, Code: code, Message: statusMessages[code]}
 	}
 	if s.watcher != nil {
-		if degraded, message := s.watcher.Degraded(); degraded {
-			return statusResponse{Health: healthDegraded, Revision: snapshot.Revision(), Message: message}
+		if degraded, code := s.watcher.Degraded(); degraded {
+			return degradedStatus(snapshot.Revision(), code)
 		}
 	}
 	if s.degraded != nil {
-		if degraded, message := s.degraded(); degraded {
-			return statusResponse{Health: healthDegraded, Revision: snapshot.Revision(), Message: message}
+		if degraded, code := s.degraded(); degraded {
+			return degradedStatus(snapshot.Revision(), code)
 		}
 	}
 	return statusResponse{Health: healthOK, Revision: snapshot.Revision()}
 }
 
-func writeJSON(writer http.ResponseWriter, status int, payload any) {
-	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	writer.WriteHeader(status)
-	_ = json.NewEncoder(writer).Encode(payload)
+// Navigation failure codes passed to the web client in data-navigation-error.
+const (
+	navigationLinkNotFound       = "link_not_found"
+	navigationLinkUnavailable    = "link_unavailable"
+	navigationCatalogUnavailable = "catalog_unavailable"
+)
+
+// navigationFallbackTitles title the failure page for browsers without
+// JavaScript; the web client renders its own text from the code.
+var navigationFallbackTitles = map[string]string{
+	navigationLinkNotFound:       "链接不存在",
+	navigationLinkUnavailable:    "链接暂时不可用",
+	navigationCatalogUnavailable: "目录暂时不可用",
 }
 
-func writeJSONError(writer http.ResponseWriter, status int, message string) {
-	writeJSON(writer, status, map[string]string{"message": message})
+// failurePage groups the inputs for writeFailurePage.
+type failurePage struct {
+	Status int
+	Code   string
 }
 
-func (s *httpServer) writeFailurePage(writer http.ResponseWriter, request *http.Request, status int, message string) {
-	writer.Header().Set("Cache-Control", "no-store")
-	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	writer.WriteHeader(status)
-	if request.Method == http.MethodHead {
+func (s *httpServer) writeFailurePage(w http.ResponseWriter, r *http.Request, options failurePage) {
+	status, code := options.Status, options.Code
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if r.Method == http.MethodHead {
 		return
 	}
-	retryPath := request.URL.EscapedPath()
+	retryPath := r.URL.EscapedPath()
 	// Only a local navigation route can be used as the retry destination.
 	if !strings.HasPrefix(retryPath, "/go/") {
 		retryPath = "/"
 	}
-	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, html.EscapeString(message), html.EscapeString(retryPath))
-	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, html.EscapeString(message), html.EscapeString(retryPath), s.appearanceAttributes(), fallback)
+	fallback := fmt.Sprintf(`<main><h1>%s</h1><p>暂时无法连接到目标站点，请稍后重试。</p><a href="%s">重试访问</a> <a href="/">返回导航</a></main>`, html.EscapeString(navigationFallbackTitles[code]), html.EscapeString(retryPath))
+	root := fmt.Sprintf(`<div id="root" data-navigation-error="%s" data-retry-path="%s"%s>%s</div>`, html.EscapeString(code), html.EscapeString(retryPath), s.appearanceAttributes(), fallback)
 	emptyRoot := []byte(`<div id="root"></div>`)
 	if s.static != nil {
 		if shell, err := fs.ReadFile(s.static, "index.html"); err == nil && bytes.Contains(shell, emptyRoot) {
-			_, _ = writer.Write(bytes.Replace(shell, emptyRoot, []byte(root), 1))
+			_, _ = w.Write(bytes.Replace(shell, emptyRoot, []byte(root), 1))
 			return
 		}
 	}
-	_, _ = fmt.Fprintf(writer, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navi</title><body>%s</body></html>`, fallback)
+	_, _ = fmt.Fprintf(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navi</title><body>%s</body></html>`, fallback)
 }
 
 // appearanceAttributes exposes the configured appearance defaults to the shell before

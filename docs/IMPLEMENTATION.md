@@ -4,7 +4,7 @@
 
 ## 开发约定
 
-- Go 模块保持显式依赖；前端按业务功能组织，API 边界用 Zod 校验。YAML 使用 snake_case，JSON 使用 camelCase，内部标识符服从语言惯例。
+- Go 模块保持显式依赖；前端按业务功能组织，API 边界用 Zod 校验。YAML 使用 snake_case，JSON 使用 snake_case，内部标识符服从语言惯例。
 - goroutine、订阅、timer、文件及响应体有明确释放路径；外部 I/O 设置超时和并发上限。取消请求不作为目标不可达的缓存证据。
 - 不回写 YAML；图标目录只保存可重建缓存。日志不输出查询参数、凭证和原始远端响应。
 - TypeScript 使用严格类型，避免以 any、非空断言或 lint suppression 绕过错误。为真实行为失败补充对应回归测试；覆盖率不能替代浏览器和后端集成。
@@ -20,20 +20,21 @@
 ```sh
 go mod download
 npm --prefix web ci
+npm --prefix web run format:check
 npm --prefix web run lint
 npm --prefix web run typecheck
 npm --prefix web run test
 npm --prefix web run build
 test -z "$(gofmt -l cmd internal web/embed.go)"
 go mod verify
-go test ./internal/... ./cmd/... ./web
-go test -race ./internal/... ./cmd/... ./web
-go vet ./internal/... ./cmd/... ./web
+go test ./...
+go test -race ./...
+go vet ./...
 CGO_ENABLED=0 go build -trimpath -o bin/navi ./cmd/navi
 ./bin/navi --version
 ```
 
-版本、提交与提交时间由 Go 从 git 嵌入，不再用 `-ldflags` 注入；无 `.git` 时可用 `-X main.version=...` 指定版本，详见 README。显式列出 Go 包，避免 `./...` 扫入 `web/node_modules` 内第三方 Go 文件。Go 检查需要可写构建缓存；race 需要受支持的平台与本机 C 工具链。
+版本、提交与提交时间由 Go 从 git 嵌入，不再用 `-ldflags` 注入；无 `.git` 时可用 `-X main.version=...` 指定版本，详见 README。`go.mod` 已忽略 `web/node_modules`，Go 检查使用 `./...`。Go 检查需要可写构建缓存；race 需要受支持的平台与本机 C 工具链。
 
 前端测试执行所有被发现的单元与契约测试，V8 覆盖率统计 `src/**/*.{ts,tsx}` 生产源码，包括未触达的入口和组件；排除声明、测试 setup、测试文件与 Storybook 故事。不能为达到门槛而排除 App、main 或其他未测生产文件，覆盖率也不能替代真实浏览器验证。
 
@@ -47,7 +48,7 @@ npm --prefix web run test:visual
 npm --prefix web run test:production
 ```
 
-Linux 可在 `web/` 执行 `npx playwright install --with-deps` 安装浏览器所需系统库；这一步可能需要系统包管理权限。浏览器版本由项目 Playwright 版本决定。现有视觉基线命名包含 `darwin`，跨操作系统建立新基线时先人工审查，不为消除失败直接接受新图。
+Linux 可在 `web/` 执行 `npx playwright install --with-deps` 安装浏览器所需系统库；这一步可能需要系统包管理权限。浏览器版本由项目 Playwright 版本决定。视觉基线命名包含 `linux`，必须使用 CI 固定的 Playwright 容器、Node 版本及 Linux ARM64 架构。不能在 macOS 生成替代基线，也不为消除失败直接接受新图。
 
 - `storybook:test` 只构建 Storybook 测试模式产物，检查故事能够打包；它不运行组件浏览器交互断言。
 - `test:e2e` 和 `test:visual` 启动 4173 端口的 Vite fixture 服务，验证前端布局与交互，不读取真实配置。已有同端口服务会在非 CI 下复用，执行前确保它确实属于当前代码。
@@ -60,8 +61,8 @@ Linux 可在 `web/` 执行 `npx playwright install --with-deps` 安装浏览器�
 预先安装对应 Go 工具后执行：
 
 ```sh
-staticcheck ./internal/... ./cmd/... ./web
-govulncheck ./internal/... ./cmd/... ./web
+staticcheck ./...
+govulncheck ./...
 govulncheck -mode=binary bin/navi
 npm --prefix web audit
 ```
@@ -82,4 +83,27 @@ npm --prefix web audit
 - 人工检查真实触控、200%/400% 浏览器缩放、字体放大、高 DPI、reduced motion 和高刷新率；视口模拟不等于真机验收。
 - 容器按 README 用配置目录只读挂载、可写缓存 volume 和环境变量覆盖。验证 UID/GID 65532 的配置读取与缓存写入、外部 health、HTTPS Cookie、反向代理 Host、SSE 长连接与关闭。守护进程不可用时明确记录容器构建/运行未执行。
 
-CI 为 GitHub Actions（[ci.yml](../.github/workflows/ci.yml)、[release.yml](../.github/workflows/release.yml)），直接编排上述原生命令并声明先 Web 后 Go 的依赖；浏览器只在 Linux Chromium 上运行 fixture 与生产集成 E2E，Firefox/WebKit、视觉基线、静态检查与漏洞扫描及手工范围仍按本文在本地执行。
+CI 为 GitHub Actions（[ci.yml](../.github/workflows/ci.yml)、[release.yml](../.github/workflows/release.yml)），直接编排上述原生命令并声明先 Web 后 Go 的依赖；浏览器只在 Linux Chromium 上运行 fixture 与生产集成 E2E，视觉回归、静态检查与漏洞扫描也在 CI 执行；Firefox/WebKit 与手工范围按本文在本地执行。
+
+## Linux 视觉基线与模糊测试
+
+视觉 job 使用 `mcr.microsoft.com/playwright:v1.62.1-noble`（摘要固定在 CI）和 Node 24.22.1，架构为 Linux ARM64。先在隔离副本中 `npm --prefix web ci --ignore-scripts`，再执行 `npm --prefix web run test:visual -- --workers=2`。更新时加 `--update-snapshots`，逐张审阅后移入默认快照目录，并在不带更新参数时重跑。macOS 不能直接更新这些基线。容器原装 Node 版本较低，需按 CI 的 setup-node 版本安装；本轮使用 nodejs.org 官方 linux-arm64 压缩包并核验 SHASUMS256。
+
+默认 Go 测试执行 `internal/<包>/testdata/fuzz/<目标>/` 中的固定语料；持续模糊测试单独执行：
+
+```sh
+go test ./internal/catalog -run '^$' -fuzz '^FuzzDecodeCatalog$' -fuzztime=5s -parallel=2
+go test ./internal/config -run '^$' -fuzz '^FuzzDecodeConfig$' -fuzztime=5s -parallel=2
+go test ./internal/app -run '^$' -fuzz '^FuzzDecodeLogin$' -fuzztime=5s -parallel=2
+go test ./internal/favicon -run '^$' -fuzz '^FuzzValidateIcon$' -fuzztime=5s -parallel=2
+```
+
+四个发布组合均运行 vet：`GOOS=linux/darwin` × `GOARCH=amd64/arm64`；版本构建集成测试使用 `go test -tags integration ./cmd/navi`。静态检查版本以 CI 固定值为准，前端完整审计包含开发依赖。
+
+## 本轮补充边界
+
+逐条复核见 [STANDARDS_AUDIT.md](STANDARDS_AUDIT.md)。浏览器构建目标为 ES2022，不下发 sourcemap；支持具备 AbortSignal.any/timeout、ReadableStream、原生 dialog 与现代 CSS 的当前 Chromium、Firefox、Safari/WebKit，具体实测版本由 Playwright 1.62.1 锁定。旧浏览器不在本项目支持范围。
+
+图标缓存同时限制单文件 4 MiB、单份元数据 32 KiB、4096 条索引和 16384 个启动扫描文件；导航探测并发为 1–256、探测缓存/进行中目标最多 4096；事件订阅最多 4096。缓存目录和文件通过 os.Root 限制在 storage 内，外部符号链接拒绝读取。元数据只属可重建缓存，非法项跳过并由后台重新获取。
+
+额外 HTML 发现解析器 fuzz：`go test ./internal/favicon -run '^$' -fuzz '^FuzzDiscoverCandidates$' -fuzztime=5s -parallel=2`。品牌路径可执行 `node scripts/update-brand-icons.mjs` 重建（需要网络与 npm/tar），生成后检查差异。

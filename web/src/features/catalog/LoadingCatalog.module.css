@@ -3,14 +3,14 @@
 }
 
 .group + .group {
-  margin-top: 72px;
+  margin-top: var(--space-72px);
 }
 
 .heading {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: var(--space-16px);
+  margin-bottom: var(--space-24px);
 }
 
 .number,
@@ -18,9 +18,9 @@
 .icon,
 .lines span {
   display: block;
-  border-radius: 8px;
+  border-radius: var(--radius-8px);
   background: var(--line-2);
-  animation: var(--anim-breathe) 1.8s ease-in-out infinite;
+  animation: var(--anim-breathe) var(--motion-1point-8s) ease-in-out infinite;
 }
 
 .number {
@@ -42,7 +42,7 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 252px), 1fr));
-  gap: 12px;
+  gap: var(--space-12px);
 }
 
 .card {
@@ -50,8 +50,8 @@
   min-height: 88px;
   grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
-  padding: 16px;
+  gap: var(--space-14px);
+  padding: var(--space-16px);
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   background: var(--surface);
@@ -60,12 +60,12 @@
 .icon {
   width: 46px;
   height: 46px;
-  border-radius: 14px;
+  border-radius: var(--radius-14px);
 }
 
 .lines {
   display: grid;
-  gap: 8px;
+  gap: var(--space-8px);
 }
 
 .lines span {

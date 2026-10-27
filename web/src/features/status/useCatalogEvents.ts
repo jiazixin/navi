@@ -1,88 +1,112 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
+import { isRetryable, retryDelayMs } from '../../app/queryClient'
+import { ApiError, openEventStream, type EventStream } from '../../app/api'
 
 export type ConnectionState =
-  | { kind: 'connecting' }
-  | { kind: 'live' }
-  | { kind: 'reconnecting'; attempt: number };
+  { kind: 'connecting' } | { kind: 'live' } | { kind: 'reconnecting'; attempt: number }
 
 type UseCatalogEventsOptions = {
-  onCatalogUpdate: () => void;
+  onCatalogUpdate: () => void
   /** A reload failed or service health changed; re-read /api/status. */
-  onStatusChange: () => void;
-  onFaviconUpdate?: (runtimeId: string) => void;
-};
+  onStatusChange: () => void
+  onFaviconUpdate?: (runtime_id: string) => void
+}
 
 export function useCatalogEvents({
   onCatalogUpdate,
   onStatusChange,
   onFaviconUpdate,
 }: UseCatalogEventsOptions): ConnectionState {
-  const [connection, setConnection] = useState<ConnectionState>({ kind: 'connecting' });
+  const [connection, setConnection] = useState<ConnectionState>({ kind: 'connecting' })
 
   useEffect(() => {
-    let source: EventSource | undefined;
-    let reconnectTimer: number | undefined;
-    let attempt = 0;
-    let disposed = false;
+    let source: EventStream | undefined
+    let reconnectTimer: number | undefined
+    let attempt = 0
+    let isDisposed = false
 
     function connect(): void {
-      if (disposed) return;
+      if (isDisposed) return
 
-      source = new EventSource('/api/events');
+      source = openEventStream()
       source.addEventListener('open', () => {
-        attempt = 0;
-        setConnection({ kind: 'live' });
+        attempt = 0
+        setConnection({ kind: 'live' })
         // Reconcile changes missed before subscription or during disconnection.
-        onCatalogUpdate();
-      });
-      source.addEventListener('catalog.updated', onCatalogUpdate);
+        onCatalogUpdate()
+      })
+      source.addEventListener('catalog.updated', onCatalogUpdate)
       source.addEventListener('favicon.updated', (event) => {
-        const runtimeId = parseFaviconRuntimeId(event);
+        const runtimeId = parseFaviconRuntimeId(event)
         if (runtimeId !== undefined && onFaviconUpdate !== undefined) {
-          onFaviconUpdate(runtimeId);
-          return;
+          onFaviconUpdate(runtimeId)
+          return
         }
-        onCatalogUpdate();
-      });
-      source.addEventListener('catalog.error', onStatusChange);
-      source.addEventListener('status.updated', onStatusChange);
-      source.addEventListener('error', () => {
-        source?.close();
-        attempt += 1;
-        setConnection({ kind: 'reconnecting', attempt });
-        const delay = Math.min(1_000 * 2 ** (attempt - 1), 30_000);
-        reconnectTimer = window.setTimeout(connect, delay);
-      });
+        onCatalogUpdate()
+      })
+      source.addEventListener('catalog.error', onStatusChange)
+      source.addEventListener('status.updated', onStatusChange)
+      source.addEventListener('error', (event) => {
+        source?.close()
+        attempt += 1
+        setConnection({ kind: 'reconnecting', attempt })
+        const failure: unknown =
+          event instanceof CustomEvent
+            ? event.detail
+            : new ApiError('stream disconnected', {
+                status: 0,
+                code: 'network_unavailable',
+                requestId: '',
+              })
+        if (attempt <= 2 && isRetryable(failure))
+          reconnectTimer = window.setTimeout(connect, retryDelayMs(attempt - 1, failure))
+      })
     }
 
-    connect();
+    const retry = () => {
+      if (attempt === 0 || isDisposed) return
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer)
+      attempt = 0
+      connect()
+    }
+    window.addEventListener('online', retry)
+    window.addEventListener('navi:retry-events', retry)
+    connect()
     return () => {
-      disposed = true;
-      source?.close();
+      window.removeEventListener('online', retry)
+      window.removeEventListener('navi:retry-events', retry)
+      isDisposed = true
+      source?.close()
       if (reconnectTimer !== undefined) {
-        window.clearTimeout(reconnectTimer);
+        window.clearTimeout(reconnectTimer)
       }
-    };
-  }, [onCatalogUpdate, onFaviconUpdate, onStatusChange]);
+    }
+  }, [onCatalogUpdate, onFaviconUpdate, onStatusChange])
 
-  return connection;
+  return connection
 }
 
 function parseFaviconRuntimeId(event: Event): string | undefined {
-  if (!(event instanceof MessageEvent) || typeof event.data !== 'string') return undefined;
+  if (
+    !(event instanceof MessageEvent) ||
+    typeof event.data !== 'string' ||
+    event.data.length > 16_384
+  )
+    return undefined
   try {
-    const payload: unknown = JSON.parse(event.data);
+    const payload: unknown = JSON.parse(event.data)
     if (
       typeof payload === 'object' &&
       payload !== null &&
-      'runtimeId' in payload &&
-      typeof payload.runtimeId === 'string' &&
-      payload.runtimeId.length > 0
+      'runtime_id' in payload &&
+      typeof payload.runtime_id === 'string' &&
+      payload.runtime_id.length > 0 &&
+      payload.runtime_id.length <= 256
     ) {
-      return payload.runtimeId;
+      return payload.runtime_id
     }
   } catch {
     // Reconcile the complete catalog when an event cannot identify one icon.
   }
-  return undefined;
+  return undefined
 }

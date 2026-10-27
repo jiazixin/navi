@@ -14,12 +14,12 @@ func TestResolverPrefersPrivateAndFallsBackToPublicWithoutProbingIt(t *testing.T
 	t.Parallel()
 
 	var publicRequests atomic.Int32
-	public := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	public := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		publicRequests.Add(1)
 	}))
 	defer public.Close()
-	private := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		writer.WriteHeader(http.StatusNoContent)
+	private := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer private.Close()
 	resolver := NewResolver(NewProber(2), time.Second, time.Minute)
@@ -39,9 +39,9 @@ func TestResolverReturnsSingleDestinationWithoutProbing(t *testing.T) {
 	t.Parallel()
 
 	var requests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		writer.WriteHeader(http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 	resolver := NewResolver(NewProber(1), time.Second, time.Minute)

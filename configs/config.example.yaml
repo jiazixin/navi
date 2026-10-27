@@ -1,23 +1,26 @@
 # Navi 主配置示例
 # 复制为 configs/config.local.yaml 后按部署环境修改。启动方式：./bin/navi --config /路径/config.local.yaml
-# 配置选择：-f/--config 优先于 CONFIG_FILE；均未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
+# 配置选择：-c/--config 优先于 CONFIG_FILE；均未设置时仅查找 ./configs/config.local.yaml，缺失使用内置默认值。
 # 主配置修改后需要重启；只有 catalog.path 指向的导航 YAML 支持热加载。
 # 未知字段、非法取值、重复 YAML 键和多个 YAML 文档会导致启动失败。
 # 下列值均为默认值；省略字段时使用默认值，不用空字符串代替省略。
 # 时间使用 Go duration 写法，例如 250ms、3s、10m、168h；不支持 7d。
 
-# 账号密码都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
+# 用户名和密码哈希都为空（或省略 auth）时直接进入首页；两者都配置时启用登录。
 # 仅填写其中一项会启动报错；修改后重启生效。
+# password_hash 为 bcrypt（cost 10–14，推荐 12），用 htpasswd -nB -C 12 navi 交互生成。
+# 不写明文密码；旧 password / NAVI_AUTH__PASSWORD 已移除。密码最多 72 UTF-8 字节。
+# 主配置大小不能超过 1 MiB。
 # 通过 HTTPS（包括反向代理）访问时设置 secure_cookie: true。
 auth:
   username: ""
-  password: ""
+  password_hash: ""
   secure_cookie: false
 
 # 可重建缓存目录；相对路径以本配置文件所在目录为基准，不是进程工作目录。
 # 目录内的 favicons 保存图标及元数据，不保存第二份导航目录；可在停机后删除重建。
 # 运行用户需要写入权限及足够磁盘空间。Docker 通常设置 /app/.cache 并挂载可写 volume。
-# 字段覆盖：NAVI_<字段> 或 NAVI_<节>_<字段>，如 NAVI_SERVER_PORT=8081。环境变量 > 文件 > 默认值。
+# 字段覆盖：NAVI_<字段> 或 NAVI_<节>__<字段>，如 NAVI_SERVER__PORT=8081。环境变量 > 文件 > 默认值。
 storage: ../.cache
 
 # 默认色调；default 跟随浏览器所在系统：深色用 ink（墨夜），浅色用 paper（宣纸）。
@@ -38,7 +41,7 @@ web_search: baidu
 
 server:
   # 监听地址：127.0.0.1 只接受本机连接；容器或局域网访问通常用 0.0.0.0。
-  # 配置 auth 账号和密码后才保护目录，目录 API 包含配置的内外网地址。
+  # 配置 auth 用户名和密码哈希后才保护目录，目录 API 包含配置的内外网地址。
   # 对外开放时使用 HTTPS 反向代理，并设置 auth.secure_cookie: true。
   listen: 127.0.0.1
   # TCP 端口，范围 1–65535；确保未被其他进程占用。
@@ -55,13 +58,6 @@ server:
   # 收到 SIGINT/SIGTERM 后的关闭等待时间；到期强制关闭残留连接。
   shutdown_timeout: 10s
 
-health:
-  # 健康检查路径，不带域名、查询参数或 #片段。
-  # 不能为 /、/login、/index.html、/assets 前缀、/api、/go 或其 API/跳转子路径。
-  # 正常返回 HTTP 200 + ok；仍能提供导航的降级状态为 200 + degraded。
-  # 需要区分降级原因时读取 /api/status（启用认证时需登录），不要只判断 HTTP 状态码。
-  uri: /health
-
 logging:
   # 日志最低级别，可选 debug、info、warn、error。
   level: info
@@ -69,7 +65,7 @@ logging:
   format: json
   # 是否记录请求方法、路径、状态码、耗时等访问日志；不记录 URL 查询参数。
   access_log: true
-  # 是否在访问日志中包含健康检查；默认关闭，避免探活日志刷屏。
+  # 是否在访问日志中包含 GET /healthz 健康检查；默认关闭，避免探活日志刷屏。
   log_health_checks: false
 
 catalog:
@@ -94,7 +90,7 @@ navigation:
   # 请求取消/超时不写入缓存；不会向目标转发浏览器 Cookie 或 Authorization。
   probe_cache_ttl: 30s
   # 同时实际探测的最大数量，正整数；个人使用通常保持 32 即可。
-  max_concurrent_probes: 32
+  max_concurrent_probes: 32 # 1–256
 
 favicon:
   # 每次发现页面/下载图标的 HTTP 超时，不是整个链接所有候选的总预算。

@@ -1,7 +1,10 @@
 // Package favicon discovers and serves validated, disposable site icon cache entries.
+// Construct a Manager, call Start once, and call Shutdown with a deadline before exit.
 package favicon
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"navi/internal/timefmt"
 )
 
 // ErrNotFound indicates that no cached icon exists for a runtime ID.
@@ -21,6 +26,9 @@ var ErrNotFound = errors.New("favicon not found")
 // Main configuration permits at most 4 MiB per icon. Recheck persisted blobs
 // within that same bound when upgrading from an older cache validator.
 const maxCachedIconBytes = 4 * 1024 * 1024
+const maxMetadataBytes = 32 * 1024
+const maxCacheEntries = 4096
+const maxCacheFiles = maxCacheEntries * 4
 
 // Entry describes one validated locally cached favicon.
 type Entry struct {
@@ -36,22 +44,22 @@ type Entry struct {
 }
 
 type metadata struct {
-	RuntimeID    string    `json:"runtime_id"`
-	SourceURL    string    `json:"source_url"`
-	ContentType  string    `json:"content_type"`
-	SourceETag   string    `json:"source_etag,omitempty"`
-	ETag         string    `json:"etag"`
-	LastModified string    `json:"last_modified,omitempty"`
-	FetchedAt    time.Time `json:"fetched_at"`
-	StaleSince   time.Time `json:"stale_since,omitzero"`
-	FileName     string    `json:"file_name"`
+	RuntimeID    string       `json:"runtime_id"`
+	SourceURL    string       `json:"source_url"`
+	ContentType  string       `json:"content_type"`
+	SourceETag   string       `json:"source_etag,omitzero"`
+	ETag         string       `json:"etag"`
+	LastModified string       `json:"last_modified,omitzero"`
+	FetchedAt    timefmt.Time `json:"fetched_at"`
+	StaleSince   timefmt.Time `json:"stale_since,omitzero"`
+	FileName     string       `json:"file_name"`
 }
 
 func (e Entry) metadata() metadata {
 	return metadata{
 		RuntimeID: e.RuntimeID, SourceURL: e.SourceURL, ContentType: e.ContentType,
 		SourceETag: e.SourceETag, ETag: e.ETag, LastModified: e.LastModified,
-		FetchedAt: e.FetchedAt, StaleSince: e.StaleSince, FileName: e.fileName,
+		FetchedAt: timefmt.Time(e.FetchedAt), StaleSince: timefmt.Time(e.StaleSince), FileName: e.fileName,
 	}
 }
 
@@ -59,32 +67,45 @@ func (m metadata) entry() Entry {
 	return Entry{
 		RuntimeID: m.RuntimeID, SourceURL: m.SourceURL, ContentType: m.ContentType,
 		SourceETag: m.SourceETag, ETag: m.ETag, LastModified: m.LastModified,
-		FetchedAt: m.FetchedAt, StaleSince: m.StaleSince, fileName: m.FileName,
+		FetchedAt: time.Time(m.FetchedAt), StaleSince: time.Time(m.StaleSince), fileName: m.FileName,
 	}
 }
 
-// Store owns the favicon directory and its small derived metadata index.
+// Store owns the favicon directory and its bounded derived metadata index.
+// mu guards entries; now is configured before concurrent use.
 type Store struct {
 	directory string
 	mu        sync.RWMutex
 	entries   map[string]Entry
+	now       func() time.Time
 }
 
 // NewStore creates or opens a favicon cache below dataDir.
-func NewStore(dataDir string) (*Store, error) {
+func NewStore(ctx context.Context, dataDir string) (*Store, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	directory := filepath.Join(dataDir, "favicons")
-	if err := os.MkdirAll(directory, 0o750); err != nil {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create favicon cache directory: %w", err)
 	}
-	store := &Store{directory: directory, entries: make(map[string]Entry)}
-	if err := store.loadMetadata(); err != nil {
+	parent, err := os.OpenRoot(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("open favicon storage root: %w", err)
+	}
+	defer parent.Close() // No buffered writes on a directory handle.
+	if err := parent.Mkdir("favicons", 0o750); err != nil && !errors.Is(err, os.ErrExist) {
+		return nil, fmt.Errorf("create favicon directory: %w", err)
+	}
+	store := &Store{directory: directory, entries: make(map[string]Entry), now: time.Now}
+	if err := store.loadMetadata(ctx); err != nil {
 		return nil, err
 	}
 	return store, nil
 }
 
 // Entry returns cache metadata for a runtime ID.
-func (s *Store) Entry(runtimeID string) (Entry, bool) {
+func (s *Store) Entry(ctx context.Context, runtimeID string) (Entry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	entry, ok := s.entries[runtimeID]
@@ -93,41 +114,61 @@ func (s *Store) Entry(runtimeID string) (Entry, bool) {
 	}
 	// Cache files are disposable and may be removed outside this process. Never
 	// let fresh metadata suppress a replacement download for a missing blob.
-	info, err := os.Stat(filepath.Join(s.directory, entry.fileName))
-	return entry, err == nil && info.Mode().IsRegular()
+	info, err := s.statEntry(ctx, entry.fileName)
+	return entry, err == nil && info.Mode().IsRegular() && info.Size() <= maxCachedIconBytes
 }
 
 // Open returns a locally cached icon file and its metadata.
-func (s *Store) Open(runtimeID string) (Entry, *os.File, error) {
+func (s *Store) Open(ctx context.Context, runtimeID string) (Entry, *os.File, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	entry, ok := s.entries[runtimeID]
 	if !ok {
 		return Entry{}, nil, ErrNotFound
 	}
-	file, err := os.Open(filepath.Join(s.directory, entry.fileName))
+	root, err := s.cacheRoot(ctx)
+	if err != nil {
+		return Entry{}, nil, fmt.Errorf("open favicon cache root: %w", err)
+	}
+	defer root.Close() // The returned file owns its descriptor independently.
+	file, err := root.Open(entry.fileName)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Entry{}, nil, ErrNotFound
 		}
 		return Entry{}, nil, fmt.Errorf("open favicon cache entry: %w", err)
 	}
-	if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() {
-		file.Close()
+	if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() || info.Size() > maxCachedIconBytes {
+		_ = file.Close() // Read-only descriptor; the invalid entry is already rejected.
 		return Entry{}, nil, ErrNotFound
 	}
 	return entry, file, nil
 }
 
+// WriteRequest groups the inputs for Put.
+type WriteRequest struct {
+	RuntimeID    string
+	SourceURL    string
+	ContentType  string
+	SourceETag   string
+	LastModified string
+	Body         []byte
+}
+
 // Put atomically persists an icon and the validators returned by its remote
 // source. ETag is derived locally from the validated bytes and is kept separate
 // from SourceETag, which is only used for conditional refreshes.
-func (s *Store) Put(runtimeID, sourceURL, contentType, sourceETag, lastModified string, body []byte) (Entry, error) {
+func (s *Store) Put(ctx context.Context, options WriteRequest) (Entry, error) {
+	runtimeID, sourceURL, contentType, sourceETag, lastModified, body := options.RuntimeID, options.SourceURL, options.ContentType, options.SourceETag, options.LastModified, options.Body
+
 	if runtimeID == "" {
-		return Entry{}, fmt.Errorf("favicon runtime ID must not be empty")
+		return Entry{}, errors.New("favicon runtime ID must not be empty")
 	}
-	if len(body) == 0 {
-		return Entry{}, fmt.Errorf("favicon body must not be empty")
+	if len(runtimeID) > 256 || len(sourceURL) > 4096 || len(sourceETag) > 4096 || len(lastModified) > 256 {
+		return Entry{}, errors.New("favicon metadata exceeds field limits")
+	}
+	if len(body) == 0 || len(body) > maxCachedIconBytes {
+		return Entry{}, errors.New("favicon body must contain 1 byte to 4 MiB")
 	}
 	digest := sha256.Sum256(append([]byte(sourceURL+"\x00"+runtimeID+"\x00"), body...))
 	contentDigest := sha256.Sum256(body)
@@ -135,37 +176,53 @@ func (s *Store) Put(runtimeID, sourceURL, contentType, sourceETag, lastModified 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	previous, hadPrevious := s.entries[runtimeID]
+	if !hadPrevious && len(s.entries) >= maxCacheEntries {
+		return Entry{}, errors.New("favicon cache capacity reached")
+	}
 	entry := Entry{
 		RuntimeID: runtimeID, SourceURL: sourceURL, ContentType: contentType,
 		SourceETag: sourceETag, ETag: "\"" + hex.EncodeToString(contentDigest[:]) + "\"", LastModified: lastModified,
-		FetchedAt: time.Now().UTC(), fileName: fileName,
+		FetchedAt: s.now().UTC().Truncate(time.Millisecond), fileName: fileName,
 	}
 
-	if err := writeAtomically(s.directory, fileName, body, 0o640); err != nil {
+	if err := s.writeAtomically(ctx, fileName, body); err != nil {
 		return Entry{}, err
 	}
-	if err := s.writeMetadataLocked(entry); err != nil {
+	if err := s.writeMetadataLocked(ctx, entry); err != nil {
 		return Entry{}, err
 	}
 	s.entries[runtimeID] = entry
 	if hadPrevious && previous.fileName != "" && previous.fileName != fileName {
 		// The new entry is already published. A failed removal leaves only a
 		// harmless orphaned blob, so the error does not fail the update.
-		_ = os.Remove(filepath.Join(s.directory, previous.fileName))
+		_ = s.removeEntry(ctx, previous.fileName)
 	}
 	return entry, nil
 }
 
+// RefreshRequest groups the inputs for Refresh.
+type RefreshRequest struct {
+	RuntimeID    string
+	SourceURL    string
+	SourceETag   string
+	LastModified string
+}
+
 // Refresh records a successful conditional refresh (HTTP 304) without
 // rewriting the cached bytes. It returns the updated cache entry.
-func (s *Store) Refresh(runtimeID, sourceURL, sourceETag, lastModified string) (Entry, error) {
+func (s *Store) Refresh(ctx context.Context, options RefreshRequest) (Entry, error) {
+	runtimeID, sourceURL, sourceETag, lastModified := options.RuntimeID, options.SourceURL, options.SourceETag, options.LastModified
+
+	if len(sourceETag) > 4096 || len(lastModified) > 256 {
+		return Entry{}, errors.New("favicon validators exceed field limits")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, ok := s.entries[runtimeID]
 	if !ok || entry.SourceURL != sourceURL {
 		return Entry{}, ErrNotFound
 	}
-	if info, err := os.Stat(filepath.Join(s.directory, entry.fileName)); err != nil || !info.Mode().IsRegular() {
+	if info, err := s.statEntry(ctx, entry.fileName); err != nil || !info.Mode().IsRegular() || info.Size() > maxCachedIconBytes {
 		return Entry{}, ErrNotFound
 	}
 	if sourceETag != "" {
@@ -174,9 +231,9 @@ func (s *Store) Refresh(runtimeID, sourceURL, sourceETag, lastModified string) (
 	if lastModified != "" {
 		entry.LastModified = lastModified
 	}
-	entry.FetchedAt = time.Now().UTC()
+	entry.FetchedAt = s.now().UTC().Truncate(time.Millisecond)
 	entry.StaleSince = time.Time{}
-	if err := s.writeMetadataLocked(entry); err != nil {
+	if err := s.writeMetadataLocked(ctx, entry); err != nil {
 		return Entry{}, err
 	}
 	s.entries[runtimeID] = entry
@@ -186,11 +243,11 @@ func (s *Store) Refresh(runtimeID, sourceURL, sourceETag, lastModified string) (
 // Cleanup marks entries absent from activeRuntimeIDs as cleanup candidates and
 // removes candidates only after grace has elapsed. This keeps a removed link's
 // derived cache around briefly in case a catalog edit is reverted.
-func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duration) (int, error) {
+func (s *Store) Cleanup(ctx context.Context, activeRuntimeIDs map[string]struct{}, grace time.Duration) (int, error) {
 	if grace < 0 {
-		return 0, fmt.Errorf("favicon cleanup grace must not be negative")
+		return 0, errors.New("favicon cleanup grace must not be negative")
 	}
-	now := time.Now().UTC()
+	now := s.now().UTC().Truncate(time.Millisecond)
 	removed := 0
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -200,7 +257,7 @@ func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duratio
 				continue
 			}
 			entry.StaleSince = time.Time{}
-			if err := s.writeMetadataLocked(entry); err != nil {
+			if err := s.writeMetadataLocked(ctx, entry); err != nil {
 				return removed, err
 			}
 			s.entries[runtimeID] = entry
@@ -208,7 +265,7 @@ func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duratio
 		}
 		if entry.StaleSince.IsZero() {
 			entry.StaleSince = now
-			if err := s.writeMetadataLocked(entry); err != nil {
+			if err := s.writeMetadataLocked(ctx, entry); err != nil {
 				return removed, err
 			}
 			s.entries[runtimeID] = entry
@@ -217,10 +274,10 @@ func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duratio
 		if now.Sub(entry.StaleSince) < grace {
 			continue
 		}
-		if err := os.Remove(filepath.Join(s.directory, entry.fileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := s.removeEntry(ctx, entry.fileName); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return removed, fmt.Errorf("remove stale favicon cache file: %w", err)
 		}
-		if err := os.Remove(filepath.Join(s.directory, metadataName(runtimeID))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := s.removeEntry(ctx, metadataName(runtimeID)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return removed, fmt.Errorf("remove stale favicon metadata: %w", err)
 		}
 		delete(s.entries, runtimeID)
@@ -229,77 +286,156 @@ func (s *Store) Cleanup(activeRuntimeIDs map[string]struct{}, grace time.Duratio
 	return removed, nil
 }
 
-func (s *Store) loadMetadata() error {
-	paths, err := filepath.Glob(filepath.Join(s.directory, "*.meta.json"))
-	if err != nil {
-		return fmt.Errorf("list favicon metadata: %w", err)
+// cacheRoot keeps both the cache directory and its children inside dataDir.
+func (s *Store) cacheRoot(ctx context.Context) (*os.Root, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	for _, path := range paths {
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			continue
+	parent, err := os.OpenRoot(filepath.Dir(s.directory))
+	if err != nil {
+		return nil, err
+	}
+	defer parent.Close() // The child root owns an independent descriptor.
+	return parent.OpenRoot(filepath.Base(s.directory))
+}
+
+func (s *Store) statEntry(ctx context.Context, name string) (os.FileInfo, error) {
+	root, err := s.cacheRoot(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open favicon cache root: %w", err)
+	}
+	defer root.Close() // Read-only descriptor cleanup cannot change the result.
+	return root.Stat(name)
+}
+
+func (s *Store) removeEntry(ctx context.Context, name string) error {
+	root, err := s.cacheRoot(ctx)
+	if err != nil {
+		return fmt.Errorf("open favicon cache root: %w", err)
+	}
+	defer root.Close() // No writable file remains on this descriptor.
+	return root.Remove(name)
+}
+
+func readCacheFile(ctx context.Context, root *os.Root, name string, limit int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	info, err := root.Stat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > limit {
+		return nil, errors.New("invalid cached file type or size")
+	}
+	file, err := root.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close() // Reads have no buffered writes to flush.
+	data, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("cached file exceeds size limit")
+	}
+	return data, nil
+}
+
+func (s *Store) loadMetadata(ctx context.Context) error {
+	root, err := s.cacheRoot(ctx)
+	if err != nil {
+		return fmt.Errorf("open favicon cache root: %w", err)
+	}
+	defer root.Close() // Read-only descriptor cleanup.
+	directory, err := root.Open(".")
+	if err != nil {
+		return fmt.Errorf("open favicon directory listing: %w", err)
+	}
+	defer directory.Close() // Read-only directory descriptor.
+	// Corrupt, oversized or missing derived cache entries are deliberately skipped;
+	// the manager downloads them again. Bound both listing and retained metadata.
+	for scanned := 0; scanned < maxCacheFiles && len(s.entries) < maxCacheEntries; {
+		entries, err := directory.ReadDir(64)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("read favicon directory: %w", err)
 		}
-		var meta metadata
-		if err := json.Unmarshal(contents, &meta); err != nil || !validMetadata(meta) {
-			continue
+		for _, entry := range entries {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			scanned++
+			if !strings.HasSuffix(entry.Name(), ".meta.json") {
+				continue
+			}
+			data, err := readCacheFile(ctx, root, entry.Name(), maxMetadataBytes)
+			if err != nil {
+				continue
+			}
+			var meta metadata
+			if err := json.Unmarshal(data, &meta); err != nil || !validMetadata(meta) {
+				continue
+			}
+			icon, err := readCacheFile(ctx, root, meta.FileName, maxCachedIconBytes)
+			if err != nil {
+				continue
+			}
+			if contentType, ok := validatedContentType(meta.ContentType, icon); !ok || contentType != meta.ContentType {
+				continue
+			}
+			if len(s.entries) >= maxCacheEntries {
+				break
+			}
+			s.entries[meta.RuntimeID] = meta.entry()
 		}
-		if info, err := os.Stat(filepath.Join(s.directory, meta.FileName)); err != nil || !info.Mode().IsRegular() {
-			continue
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		icon, err := os.Open(filepath.Join(s.directory, meta.FileName))
-		if err != nil {
-			continue
-		}
-		contents, readErr := io.ReadAll(io.LimitReader(icon, maxCachedIconBytes+1))
-		closeErr := icon.Close()
-		if readErr != nil || closeErr != nil || len(contents) > maxCachedIconBytes {
-			continue
-		}
-		if actualType, ok := validatedContentType(meta.ContentType, contents); !ok || actualType != meta.ContentType {
-			continue
-		}
-		s.entries[meta.RuntimeID] = meta.entry()
 	}
 	return nil
 }
 
-func (s *Store) writeMetadataLocked(entry Entry) error {
+func (s *Store) writeMetadataLocked(ctx context.Context, entry Entry) error {
 	encoded, err := json.Marshal(entry.metadata())
 	if err != nil {
 		return fmt.Errorf("encode favicon metadata: %w", err)
 	}
-	return writeAtomically(s.directory, metadataName(entry.RuntimeID), encoded, 0o640)
+	if len(encoded) > maxMetadataBytes {
+		return errors.New("favicon metadata exceeds size limit")
+	}
+	return s.writeAtomically(ctx, metadataName(entry.RuntimeID), encoded)
 }
 
 func validMetadata(meta metadata) bool {
 	if meta.RuntimeID == "" || meta.SourceURL == "" || meta.ContentType == "" || meta.FileName == "" || meta.ETag == "" {
 		return false
 	}
-	if filepath.Base(meta.FileName) != meta.FileName || strings.Contains(meta.FileName, string(filepath.Separator)) {
+	if !filepath.IsLocal(meta.FileName) || filepath.Base(meta.FileName) != meta.FileName {
 		return false
 	}
 	return true
 }
 
-func writeAtomically(directory, name string, body []byte, permissions os.FileMode) error {
-	temporary, err := os.CreateTemp(directory, ".navi-*")
+func (s *Store) writeAtomically(ctx context.Context, name string, body []byte) error {
+	root, err := s.cacheRoot(ctx)
+	if err != nil {
+		return fmt.Errorf("open favicon cache root: %w", err)
+	}
+	defer root.Close() // The file is explicitly closed before publication.
+	temporaryName := ".navi-" + rand.Text()
+	temporary, err := root.OpenFile(temporaryName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o640)
 	if err != nil {
 		return fmt.Errorf("create favicon temporary file: %w", err)
 	}
-	temporaryName := temporary.Name()
-	defer os.Remove(temporaryName)
-	if err := temporary.Chmod(permissions); err != nil {
-		temporary.Close()
-		return fmt.Errorf("set favicon temporary file permissions: %w", err)
-	}
+	defer func() { _ = root.Remove(temporaryName) }() // Best-effort orphan cleanup after rename or failure.
 	if _, err := temporary.Write(body); err != nil {
-		temporary.Close()
-		return fmt.Errorf("write favicon temporary file: %w", err)
+		return fmt.Errorf("write favicon temporary file: %w", errors.Join(err, temporary.Close()))
 	}
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close favicon temporary file: %w", err)
 	}
-	if err := os.Rename(temporaryName, filepath.Join(directory, name)); err != nil {
+	if err := root.Rename(temporaryName, name); err != nil {
 		return fmt.Errorf("publish favicon cache file: %w", err)
 	}
 	return nil

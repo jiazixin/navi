@@ -10,7 +10,7 @@ import (
 
 func TestRepositoryExampleCatalogIsValid(t *testing.T) {
 	t.Parallel()
-	if _, err := LoadFile("../../configs/urls.example.yaml"); err != nil {
+	if _, err := LoadFile(t.Context(), "../../configs/urls.example.yaml"); err != nil {
 		t.Fatalf("shipped example catalog is invalid: %v", err)
 	}
 }
@@ -31,9 +31,9 @@ pages:
     urls: []
 `)
 
-	loaded, err := LoadFile(path)
+	loaded, err := LoadFile(t.Context(), path)
 	if err != nil {
-		t.Fatalf("LoadFile() error = %v", err)
+		t.Fatalf("LoadFile(t.Context(), ) error = %v", err)
 	}
 	if len(loaded.Pages) != 2 || loaded.Pages[0].ID != "page1" || loaded.Pages[1].ID != "page2" {
 		t.Fatalf("pages = %#v", loaded.Pages)
@@ -56,9 +56,9 @@ func TestLoadFileAcceptsSingleDestinationVariants(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			contents := "version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - name: Single\n        group: One\n        " + urlField + "\n"
-			loaded, err := LoadFile(writeCatalog(t, contents))
+			loaded, err := LoadFile(t.Context(), writeCatalog(t, contents))
 			if err != nil {
-				t.Fatalf("LoadFile() error = %v", err)
+				t.Fatalf("LoadFile(t.Context(), ) error = %v", err)
 			}
 			if len(loaded.Pages[0].Groups[0].Links) != 1 {
 				t.Fatalf("pages = %#v", loaded.Pages)
@@ -71,7 +71,7 @@ func TestCatalogPreservesDestinationFragments(t *testing.T) {
 	for _, destination := range []string{"https://Example.Test/docs#section", "https://Example.Test/docs?q=search#section", "https://Example.Test/#section"} {
 		t.Run(destination, func(t *testing.T) {
 			contents := fmt.Sprintf("version: 1\npages:\n  - id: page1\n    title: Navi\n    urls:\n      - {name: Anchor, group: One, public_url: %q}\n", destination)
-			loaded, err := LoadFile(writeCatalog(t, contents))
+			loaded, err := LoadFile(t.Context(), writeCatalog(t, contents))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -132,9 +132,9 @@ func TestLoadFileRejectsInvalidCatalogsWithoutLeakingQuery(t *testing.T) {
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := LoadFile(writeCatalog(t, test.contents))
+			_, err := LoadFile(t.Context(), writeCatalog(t, test.contents))
 			if err == nil {
-				t.Fatal("LoadFile() error = nil, want validation error")
+				t.Fatal("LoadFile(t.Context(), ) error = nil, want validation error")
 			}
 			if !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("error = %q, want %q", err, test.want)
@@ -149,7 +149,7 @@ func TestLoadFileRejectsInvalidCatalogsWithoutLeakingQuery(t *testing.T) {
 func TestRuntimeIDIncludesPageIdentity(t *testing.T) {
 	t.Parallel()
 
-	loaded, err := LoadFile(writeCatalog(t, `version: 1
+	loaded, err := LoadFile(t.Context(), writeCatalog(t, `version: 1
 pages:
   - id: page1
     title: One
@@ -178,9 +178,9 @@ func TestLoadFileRejectsFilesOverTwoMiB(t *testing.T) {
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := LoadFile(path)
+	_, err := LoadFile(t.Context(), path)
 	if err == nil || !strings.Contains(err.Error(), "2 MiB") {
-		t.Fatalf("LoadFile() error = %v, want size error", err)
+		t.Fatalf("LoadFile(t.Context(), ) error = %v, want size error", err)
 	}
 }
 

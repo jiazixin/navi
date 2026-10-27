@@ -1,9 +1,10 @@
-import { createRef } from 'react';
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { fn } from 'storybook/test';
-import { mockCatalog } from '../../../tests/fixtures/mockCatalog';
-import { HeroSearch } from './HeroSearch';
-import { buildSearchIndex } from './linkSearch';
+import { createRef } from 'react'
+import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
+import { mockCatalog } from '../../../tests/fixtures/mockCatalog'
+import styles from './HeroSearch.module.css'
+import { HeroSearch } from './HeroSearch'
+import { buildSearchIndex } from './linkSearch'
 
 const meta = {
   title: 'Search/HeroSearch',
@@ -17,14 +18,14 @@ const meta = {
   },
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: 700, padding: 32 }}>
+      <div className={styles.preview}>
         <Story />
       </div>
     ),
   ],
-} satisfies Meta<typeof HeroSearch>;
+} satisfies Meta<typeof HeroSearch>
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+export default meta
+type Story = StoryObj<typeof meta>
 
-export const Default: Story = {};
+export const Default: Story = {}

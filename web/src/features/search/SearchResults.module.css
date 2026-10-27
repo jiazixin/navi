@@ -1,18 +1,18 @@
 .list {
-  padding: 8px;
+  padding: var(--space-8px);
 }
 
 .caption,
 .empty {
-  margin: 6px 10px;
+  margin: var(--space-6px) var(--space-10px);
   color: var(--text-3);
-  font: 500 10px/1.6 var(--font-mono);
-  letter-spacing: 0.2em;
+  font: var(--design-font-12);
+  letter-spacing: var(--type-0point-2em);
 }
 
 .empty {
-  padding: 8px 2px;
-  font: 13px/1.6 var(--font-ui);
+  padding: var(--space-8px) var(--space-2px);
+  font: var(--design-font-13);
   letter-spacing: 0;
 }
 
@@ -21,16 +21,16 @@
   min-height: var(--touch-target);
   grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  border-radius: 12px;
+  gap: var(--space-12px);
+  padding: var(--space-8px) var(--space-10px);
+  border-radius: var(--radius-12px);
   color: var(--text);
   cursor: pointer;
   text-decoration: none;
 }
 
 .option[aria-selected='true'] {
-  background: rgba(var(--accent-rgb), 0.1);
+  background: var(--palette-rgba-var-accent-rgb-0_1);
 }
 
 .text {
@@ -47,13 +47,13 @@
 }
 
 .name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--type-14px);
+  font-weight: var(--design-font-weight-5);
 }
 
 .meta {
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--type-12px);
 }
 
 .option mark {
@@ -75,6 +75,6 @@
   height: 34px;
   place-items: center;
   border: 1px dashed var(--line-2);
-  border-radius: 10px;
+  border-radius: var(--radius-10px);
   color: var(--accent);
 }

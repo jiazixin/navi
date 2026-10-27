@@ -2,19 +2,22 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
+	"golang.org/x/crypto/bcrypt"
 )
+
+const maxConfigBytes = 1 << 20
 
 const (
 	// ThemeDefault follows the operating system color scheme: ink when dark, paper when light.
@@ -51,7 +54,6 @@ type Config struct {
 	BackgroundPattern string           `yaml:"background_pattern"`
 	WebSearch         string           `yaml:"web_search"`
 	Server            ServerConfig     `yaml:"server"`
-	Health            HealthConfig     `yaml:"health"`
 	Logging           LoggingConfig    `yaml:"logging"`
 	Catalog           CatalogConfig    `yaml:"catalog"`
 	Navigation        NavigationConfig `yaml:"navigation"`
@@ -61,12 +63,12 @@ type Config struct {
 // AuthConfig supplies the single account used to access Navi.
 type AuthConfig struct {
 	Username     string `yaml:"username"`
-	Password     string `yaml:"password"`
+	PasswordHash string `yaml:"password_hash"`
 	SecureCookie bool   `yaml:"secure_cookie"`
 }
 
 // Enabled reports whether authentication is configured. Validation rejects partial accounts.
-func (a AuthConfig) Enabled() bool { return a.Username != "" || a.Password != "" }
+func (a AuthConfig) Enabled() bool { return a.Username != "" || a.PasswordHash != "" }
 
 // ServerConfig controls the inbound HTTP server.
 type ServerConfig struct {
@@ -77,11 +79,6 @@ type ServerConfig struct {
 	WriteTimeout      time.Duration `yaml:"write_timeout"`
 	IdleTimeout       time.Duration `yaml:"idle_timeout"`
 	ShutdownTimeout   time.Duration `yaml:"shutdown_timeout"`
-}
-
-// HealthConfig configures the health endpoint.
-type HealthConfig struct {
-	URI string `yaml:"uri"`
 }
 
 // LoggingConfig controls structured logging.
@@ -114,79 +111,97 @@ type FaviconConfig struct {
 	Workers         int           `yaml:"workers"`
 }
 
-// LookupEnv is compatible with os.LookupEnv and permits deterministic tests.
-type LookupEnv func(string) (string, bool)
+// Source describes where configuration comes from.
+type Source struct {
+	Path      string                      // selected file
+	Explicit  bool                        // chosen by --config or CONFIG_FILE
+	WorkDir   string                      // base for a relative Path; must be absolute
+	LookupEnv func(string) (string, bool) // os.LookupEnv in production; nil disables overrides
+}
 
-// Load selects, loads, and validates the main configuration file.
-func Load(lookupEnv LookupEnv) (Config, error) {
-	configPath := "./configs/config.local.yaml"
-	explicit := false
-	if lookupEnv != nil {
-		if value, ok := lookupEnv("CONFIG_FILE"); ok {
-			if strings.TrimSpace(value) == "" {
-				return Config{}, fmt.Errorf("CONFIG_FILE must not be empty")
-			}
-			configPath, explicit = value, true
+// Load reads the selected file, applies NAVI_* overrides, resolves paths, and
+// validates the result. A missing file is an error when src.Explicit is set;
+// otherwise the built-in defaults apply.
+func Load(src Source) (Config, error) {
+	if src.LookupEnv != nil {
+		if _, exists := src.LookupEnv("NAVI_AUTH__PASSWORD"); exists {
+			return Config{}, errors.New("NAVI_AUTH__PASSWORD is no longer supported; configure NAVI_AUTH__PASSWORD_HASH")
 		}
 	}
-	loaded, err := loadFile(configPath, lookupEnv)
-	if err == nil || explicit || !errors.Is(err, os.ErrNotExist) {
-		return loaded, err
+	if strings.TrimSpace(src.Path) == "" {
+		return Config{}, errors.New("config path must not be empty")
 	}
-	// Only an absent implicit configuration permits built-in defaults.
-	absPath, err := filepath.Abs(configPath)
+	absPath := src.Path
+	if !filepath.IsAbs(absPath) {
+		if !filepath.IsAbs(src.WorkDir) {
+			return Config{}, fmt.Errorf("resolve config path %q: work directory %q is not absolute", src.Path, src.WorkDir)
+		}
+		absPath = filepath.Join(src.WorkDir, absPath)
+	}
+	absPath = filepath.Clean(absPath)
+	loaded, err := decodeFile(absPath)
+	if errors.Is(err, fs.ErrNotExist) && !src.Explicit {
+		// Only an absent implicit configuration permits built-in defaults.
+		loaded, err = defaultConfig(), nil
+	}
 	if err != nil {
 		return Config{}, err
 	}
-	return finishConfig(defaultConfig(), absPath, lookupEnv)
+	return finishConfig(loaded, absPath, src.LookupEnv)
 }
 
-func loadFile(path string, lookupEnv LookupEnv) (Config, error) {
-	if strings.TrimSpace(path) == "" {
-		return Config{}, fmt.Errorf("configuration path must not be empty")
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("resolve configuration path %q: %w", path, err)
-	}
-	absPath = filepath.Clean(absPath)
-
+func decodeFile(absPath string) (Config, error) {
 	file, err := os.Open(absPath)
 	if err != nil {
-		return Config{}, fmt.Errorf("open configuration %s: %w", absPath, err)
+		return Config{}, err // *fs.PathError names the operation and the file
 	}
-	defer file.Close()
+	defer file.Close() // Read-only descriptor; failures cannot invalidate the completed read.
 
+	loaded, err := decodeConfig(file)
+	if err != nil {
+		return Config{}, fmt.Errorf("config %q: %w", absPath, err)
+	}
+	return loaded, nil
+}
+
+func decodeConfig(reader io.Reader) (Config, error) {
+	contents, err := io.ReadAll(io.LimitReader(reader, maxConfigBytes+1))
+	if err != nil {
+		return Config{}, fmt.Errorf("read config: %w", err)
+	}
+	if len(contents) > maxConfigBytes {
+		return Config{}, errors.New("config exceeds size limit of 1 MiB")
+	}
 	loaded := defaultConfig()
-	decoder := yaml.NewDecoder(file)
+	decoder := yaml.NewDecoder(bytes.NewReader(contents))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&loaded); err != nil {
-		return Config{}, fmt.Errorf("decode configuration %s: %w", absPath, err)
+		return Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	var trailing yaml.Node
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return Config{}, fmt.Errorf("decode configuration %s: %w", absPath, err)
+			return Config{}, fmt.Errorf("decode config: %w", err)
 		}
-		return Config{}, fmt.Errorf("decode configuration %s: multiple YAML documents are not supported", absPath)
+		return Config{}, errors.New("config contains multiple YAML documents")
 	}
-
-	return finishConfig(loaded, absPath, lookupEnv)
+	return loaded, nil
 }
 
-func finishConfig(loaded Config, absPath string, lookupEnv LookupEnv) (Config, error) {
+// finishConfig normalizes a decoded configuration; Validate only checks it.
+func finishConfig(loaded Config, absPath string, lookupEnv func(string) (string, bool)) (Config, error) {
 	if lookupEnv != nil {
-		if err := applyEnvironment(reflect.ValueOf(&loaded).Elem(), "NAVI", lookupEnv); err != nil {
-			return Config{}, err
+		if err := applyEnvironment(reflect.ValueOf(&loaded).Elem(), environmentScope{Prefix: "NAVI", FieldPrefix: "", Lookup: lookupEnv}); err != nil {
+			return Config{}, fmt.Errorf("%s: %w", absPath, err)
 		}
 	}
 	if strings.TrimSpace(loaded.StorageDir) == "" {
-		return Config{}, fmt.Errorf("configuration %s: storage: must not be empty", absPath)
+		return Config{}, fmt.Errorf("%s: %w", absPath, fieldError("storage", "must not be empty"))
 	}
 	loaded.Path = absPath
 	resolvePaths(&loaded)
-	if err := validate(loaded); err != nil {
-		return Config{}, fmt.Errorf("configuration %s: %w", absPath, err)
+	if err := loaded.Validate(); err != nil {
+		return Config{}, fmt.Errorf("%s: %w", absPath, err)
 	}
 	return loaded, nil
 }
@@ -202,7 +217,6 @@ func defaultConfig() Config {
 			ReadTimeout: 20 * time.Second, WriteTimeout: 30 * time.Second,
 			IdleTimeout: 90 * time.Second, ShutdownTimeout: 10 * time.Second,
 		},
-		Health:  HealthConfig{URI: "/health"},
 		Logging: LoggingConfig{Level: "info", Format: "json", AccessLog: true},
 		Catalog: CatalogConfig{Path: "./urls.yaml", Watch: true, ReloadDebounce: 250 * time.Millisecond},
 		Navigation: NavigationConfig{
@@ -215,17 +229,32 @@ func defaultConfig() Config {
 	}
 }
 
-// applyEnvironment maps YAML fields to NAVI_<SECTION>_<FIELD> variables.
-func applyEnvironment(value reflect.Value, prefix string, lookup LookupEnv) error {
+// environmentScope groups the inputs for applyEnvironment.
+type environmentScope struct {
+	Prefix      string
+	FieldPrefix string
+	Lookup      func(string) (string, bool)
+}
+
+// applyEnvironment maps YAML fields to NAVI_<FIELD> and NAVI_<SECTION>__<FIELD>
+// variables (Go代码规范.md §7); errors name the field path and the variable.
+func applyEnvironment(value reflect.Value, options environmentScope) error {
+	prefix, fieldPrefix, lookup := options.Prefix, options.FieldPrefix, options.Lookup
+
+	separator := "_"
+	if fieldPrefix != "" {
+		separator = "__"
+	}
 	for i := range value.NumField() {
 		field := value.Field(i)
 		tag := value.Type().Field(i).Tag.Get("yaml")
 		if tag == "-" || tag == "" {
 			continue
 		}
-		name := prefix + "_" + strings.ToUpper(tag)
+		name := prefix + separator + strings.ToUpper(tag)
+		fieldPath := fieldPrefix + tag
 		if field.Kind() == reflect.Struct {
-			if err := applyEnvironment(field, name, lookup); err != nil {
+			if err := applyEnvironment(field, environmentScope{Prefix: name, FieldPrefix: fieldPath + ".", Lookup: lookup}); err != nil {
 				return err
 			}
 			continue
@@ -240,15 +269,15 @@ func applyEnvironment(value reflect.Value, prefix string, lookup LookupEnv) erro
 		}
 		var node yaml.Node
 		if err := yaml.Unmarshal([]byte(raw), &node); err != nil || len(node.Content) != 1 || node.Content[0].Kind != yaml.ScalarNode || node.Content[0].Tag == "!!null" {
-			return fmt.Errorf("%s: expected a non-null scalar", name)
+			return fieldError(fieldPath, name+" must be a single non-null scalar")
 		}
 		decoder := yaml.NewDecoder(strings.NewReader(raw))
 		if err := decoder.Decode(field.Addr().Interface()); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			return fmt.Errorf("%s: decode %s: %w", fieldPath, name, err)
 		}
 		var trailing yaml.Node
 		if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s: expected one scalar value", name)
+			return fieldError(fieldPath, name+" must be a single non-null scalar")
 		}
 	}
 	return nil
@@ -268,66 +297,68 @@ func resolvePath(baseDir, path string) string {
 	return filepath.Clean(filepath.Join(baseDir, trimmed))
 }
 
-func validate(loaded Config) error {
-	if loaded.Auth.Enabled() && (strings.TrimSpace(loaded.Auth.Username) == "" || len(loaded.Auth.Username) > 128) {
+// Validate checks a loaded configuration without modifying it. The catalog
+// file must exist and be readable.
+func (c Config) Validate() error {
+	if c.Auth.Enabled() && (strings.TrimSpace(c.Auth.Username) == "" || len(c.Auth.Username) > 128) {
 		return fieldError("auth.username", "must contain 1–128 bytes and not be blank")
 	}
-	if loaded.Auth.Enabled() && (strings.TrimSpace(loaded.Auth.Password) == "" || len(loaded.Auth.Password) > 1024) {
-		return fieldError("auth.password", "must contain 1–1024 bytes and not be blank")
+	if c.Auth.Enabled() {
+		cost, err := bcrypt.Cost([]byte(c.Auth.PasswordHash))
+		if err != nil || cost < 10 || cost > 14 || len(c.Auth.PasswordHash) != 60 {
+			return fieldError("auth.password_hash", "must be a bcrypt hash with cost 10–14")
+		}
 	}
-	if _, ok := themes[loaded.Theme]; !ok {
+	if _, ok := themes[c.Theme]; !ok {
 		return fieldError("theme", "must be a supported theme")
 	}
-	if _, ok := backgroundPatterns[loaded.BackgroundPattern]; !ok {
+	if _, ok := backgroundPatterns[c.BackgroundPattern]; !ok {
 		return fieldError("background_pattern", "must be a supported background pattern")
 	}
-	if _, ok := webSearchProviders[loaded.WebSearch]; !ok {
+	if _, ok := webSearchProviders[c.WebSearch]; !ok {
 		return fieldError("web_search", "must be a supported search provider")
 	}
-	if strings.TrimSpace(loaded.Server.Listen) == "" {
+	if strings.TrimSpace(c.Server.Listen) == "" {
 		return fieldError("server.listen", "must not be empty")
 	}
-	if loaded.Server.Port < 1 || loaded.Server.Port > 65_535 {
+	if c.Server.Port < 1 || c.Server.Port > 65_535 {
 		return fieldError("server.port", "must be between 1 and 65535")
 	}
 	for _, durationField := range []struct {
 		path     string
 		duration time.Duration
 	}{
-		{"server.read_header_timeout", loaded.Server.ReadHeaderTimeout},
-		{"server.read_timeout", loaded.Server.ReadTimeout},
-		{"server.write_timeout", loaded.Server.WriteTimeout},
-		{"server.idle_timeout", loaded.Server.IdleTimeout},
-		{"server.shutdown_timeout", loaded.Server.ShutdownTimeout},
-		{"catalog.reload_debounce", loaded.Catalog.ReloadDebounce},
-		{"navigation.private_probe_timeout", loaded.Navigation.PrivateProbeTimeout},
-		{"navigation.probe_cache_ttl", loaded.Navigation.ProbeCacheTTL},
-		{"favicon.fetch_timeout", loaded.Favicon.FetchTimeout},
-		{"favicon.refresh_interval", loaded.Favicon.RefreshInterval},
+		{"server.read_header_timeout", c.Server.ReadHeaderTimeout},
+		{"server.read_timeout", c.Server.ReadTimeout},
+		{"server.write_timeout", c.Server.WriteTimeout},
+		{"server.idle_timeout", c.Server.IdleTimeout},
+		{"server.shutdown_timeout", c.Server.ShutdownTimeout},
+		{"catalog.reload_debounce", c.Catalog.ReloadDebounce},
+		{"navigation.private_probe_timeout", c.Navigation.PrivateProbeTimeout},
+		{"navigation.probe_cache_ttl", c.Navigation.ProbeCacheTTL},
+		{"favicon.fetch_timeout", c.Favicon.FetchTimeout},
+		{"favicon.refresh_interval", c.Favicon.RefreshInterval},
 	} {
 		if durationField.duration <= 0 {
 			return fieldError(durationField.path, "must be greater than zero")
 		}
 	}
-	if isReservedHealthURI(loaded.Health.URI) {
-		return fieldError("health.uri", "must be an unreserved absolute path")
-	}
-	if _, ok := loggingLevels[loaded.Logging.Level]; !ok {
+	if _, ok := loggingLevels[c.Logging.Level]; !ok {
 		return fieldError("logging.level", "must be debug, info, warn, or error")
 	}
-	if _, ok := loggingFormats[loaded.Logging.Format]; !ok {
+	if _, ok := loggingFormats[c.Logging.Format]; !ok {
 		return fieldError("logging.format", "must be json or logfmt")
 	}
-	if err := validateCatalogPath(loaded.Catalog.Path); err != nil {
+	if err := validateCatalogPath(c.Catalog.Path); err != nil {
 		return fieldError("catalog.path", err.Error())
 	}
-	if loaded.Navigation.MaxConcurrentProbes < 1 {
-		return fieldError("navigation.max_concurrent_probes", "must be greater than zero")
+	if c.Navigation.MaxConcurrentProbes < 1 || c.Navigation.MaxConcurrentProbes > 256 {
+		return fieldError("navigation.max_concurrent_probes", "must be between 1 and 256")
 	}
-	if loaded.Favicon.MaxFileBytes < 1_024 || loaded.Favicon.MaxFileBytes > 4_194_304 {
+	if c.Favicon.MaxFileBytes < 1_024 || c.Favicon.MaxFileBytes > 4_194_304 {
 		return fieldError("favicon.max_file_bytes", "must be between 1024 and 4194304")
 	}
-	if loaded.Favicon.Workers < 1 || loaded.Favicon.Workers > 16 {
+	if c.Favicon.Workers < 1 || c.Favicon.Workers > 16 {
 		return fieldError("favicon.workers", "must be between 1 and 16")
 	}
 	return nil
@@ -350,17 +381,6 @@ func validateCatalogPath(path string) error {
 	return file.Close()
 }
 
-func isReservedHealthURI(uri string) bool {
-	parsed, err := url.ParseRequestURI(uri)
-	if err != nil || parsed.Path != uri || parsed.RawQuery != "" || parsed.Fragment != "" || path.Clean(uri) != uri || strings.HasPrefix(uri, "//") || strings.ContainsAny(uri, "?#") {
-		return true
-	}
-	if !strings.HasPrefix(uri, "/") || uri == "/" {
-		return true
-	}
-	return uri == "/login" || strings.HasPrefix(uri, "/assets") || uri == "/index.html" || uri == "/api" || strings.HasPrefix(uri, "/api/") || uri == "/go" || strings.HasPrefix(uri, "/go/")
-}
-
 type validationError struct {
 	path    string
 	message string
@@ -373,3 +393,9 @@ func (e validationError) Error() string {
 func fieldError(path, message string) error {
 	return validationError{path: path, message: message}
 }
+
+// String redacts credential material from diagnostics.
+func (a AuthConfig) String() string { return "AuthConfig{credentials: [REDACTED]}" }
+
+// GoString also redacts Go-syntax formatting, including nested Config values.
+func (a AuthConfig) GoString() string { return a.String() }

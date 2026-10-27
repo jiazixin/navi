@@ -2,13 +2,13 @@
   --signal: var(--warning);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px 4px 4px 16px;
+  gap: var(--space-12px);
+  padding: var(--space-4px) var(--space-4px) var(--space-4px) var(--space-16px);
   border: 1px solid color-mix(in srgb, var(--signal) 40%, var(--line));
-  border-radius: 999px;
+  border-radius: var(--radius-999px);
   background: var(--panel);
-  box-shadow: 0 20px 40px -24px var(--shadow);
-  animation: var(--anim-pop) 0.35s var(--ease);
+  box-shadow: var(--shadow-statusbanner-83);
+  animation: var(--anim-pop) var(--motion-0point-35s) var(--ease);
 }
 
 .banner[data-kind='offline'] {
@@ -19,16 +19,16 @@
   width: 8px;
   height: 8px;
   flex: none;
-  border-radius: 50%;
+  border-radius: var(--radius-50percent);
   background: var(--signal);
-  animation: var(--anim-breathe) 1.6s ease-in-out infinite;
+  animation: var(--anim-breathe) var(--motion-1point-6s) ease-in-out infinite;
 }
 
 .label {
   flex: none;
   color: var(--signal);
-  font: 600 10px var(--font-mono);
-  letter-spacing: 0.2em;
+  font: var(--design-font-20);
+  letter-spacing: var(--type-0point-2em);
 }
 
 .message {
@@ -36,7 +36,7 @@
   flex: 1;
   margin: 0;
   color: var(--text-2);
-  font-size: 13px;
+  font-size: var(--type-13px);
 }
 
 .dismiss {
@@ -46,7 +46,7 @@
   flex: none;
   place-items: center;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-50percent);
   background: none;
   color: var(--text-3);
   cursor: pointer;
@@ -58,7 +58,7 @@
 
 @media (max-width: 720px) {
   .banner {
-    border-radius: 18px;
+    border-radius: var(--radius-18px);
   }
 
   .label {

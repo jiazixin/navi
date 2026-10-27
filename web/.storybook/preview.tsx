@@ -1,7 +1,7 @@
-import type { Preview } from '@storybook/react-vite';
-import { AppearanceProvider } from '../src/features/appearance/AppearanceProvider';
-import { paletteIDs, parseThemePreference } from '../src/features/appearance/options';
-import '../src/styles/global.css';
+import type { Preview } from '@storybook/react-vite'
+import { AppearanceProvider } from '../src/app/appearance/AppearanceProvider'
+import { paletteIDs, parseThemePreference } from '../src/app/appearance/options'
+import '../src/styles/global.css'
 
 const preview: Preview = {
   parameters: {
@@ -17,7 +17,10 @@ const preview: Preview = {
   },
   decorators: [
     (Story, context) => (
-      <AppearanceProvider configuredPattern="none" configuredTheme={parseThemePreference(context.globals.palette, 'ink')}>
+      <AppearanceProvider
+        configuredPattern="none"
+        configuredTheme={parseThemePreference(context.globals.palette, 'ink')}
+      >
         <Story />
       </AppearanceProvider>
     ),
@@ -32,6 +35,6 @@ const preview: Preview = {
       },
     },
   },
-};
+}
 
-export default preview;
+export default preview

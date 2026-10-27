@@ -1,55 +1,42 @@
-import { useEffect, useState, type SubmitEvent } from 'react';
-import { ArrowRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
-import { getSession } from '../../app/api/auth';
-import { BrandMark } from '../../components/BrandMark';
-import { Backdrop } from '../appearance/Backdrop';
-import styles from './LoginPage.module.css';
+import { useEffect, useState, type SubmitEvent } from 'react'
+import { ArrowRight, Eye, EyeOff, LockKeyhole } from 'lucide-react'
+import { useLogin } from './useAuthData'
+import { ApiError } from '../../app/api'
+import { errorText, fieldErrorText } from '../../app/errors'
+import { BrandMark } from '../../components/BrandMark'
+import { Backdrop } from '../appearance'
+import { loginErrorTexts } from './loginErrors'
+import styles from './LoginPage.module.css'
 
-type LoginPageProps = { connectionError?: boolean; onRetry?: () => void };
+type LoginPageProps = { isConnectionError?: boolean; onRetry?: () => void }
 
-function loginError(status: number): string {
-  if (status === 429) return '尝试次数过多，请一分钟后重试。';
-  if (status === 401) return '账号或密码不正确，请重新输入。';
-  return '暂时无法登录，请稍后重试。';
-}
-
-export function LoginPage({ connectionError = false, onRetry }: LoginPageProps): React.JSX.Element {
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
+export function LoginPage({
+  isConnectionError = false,
+  onRetry,
+}: LoginPageProps): React.JSX.Element {
+  const [isPasswordVisible, setPasswordVisible] = useState(false)
+  const mutation = useLogin()
+  const isPending = mutation.isPending
+  const usernameError = fieldErrorText(mutation.error, 'username')
+  const passwordError = fieldErrorText(mutation.error, 'password')
+  const error = mutation.isError ? errorText(mutation.error, loginErrorTexts) : ''
+  let passwordDescription: string | undefined
+  if (passwordError) passwordDescription = 'password-error'
+  else if (error) passwordDescription = 'login-error'
 
   useEffect(() => {
-    document.title = '登录 · Navi';
-  }, []);
-
-  async function submit(event: SubmitEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    if (pending) return;
-    const values = new FormData(event.currentTarget);
-    setPending(true);
-    setError('');
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Navi-Request': '1' },
-        body: JSON.stringify({ username: values.get('username'), password: values.get('password') }),
-      });
-      if (!response.ok) {
-        setError(loginError(response.status));
-        return;
-      }
-      // Confirm the browser kept the cookie before navigating (e.g. Secure cookies over HTTP).
-      const session = await getSession();
-      if (!session.authenticated) {
-        setError('无法保存登录状态，请检查浏览器 Cookie 与服务连接设置。');
-        return;
-      }
-      window.location.replace('/');
-    } catch {
-      setError('连接失败，请检查网络后重试。');
-    } finally {
-      setPending(false);
+    const previousTitle = document.title
+    document.title = '登录 · Navi'
+    return () => {
+      document.title = previousTitle
     }
+  }, [])
+
+  function handleSubmit(event: SubmitEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (isPending) return
+    const values = new FormData(event.currentTarget)
+    mutation.mutate({ username: values.get('username'), password: values.get('password') })
   }
 
   return (
@@ -79,18 +66,28 @@ export function LoginPage({ connectionError = false, onRetry }: LoginPageProps):
             登录你的空间
           </h1>
           <p className={styles.hint}>输入账号和密码，继续访问你的导航。</p>
-          {connectionError ? (
+          {isConnectionError ? (
             <div className={styles.notice} role="alert">
-              <p>暂时无法连接服务。</p>
+              <p>
+                {errorText(
+                  new ApiError('session unavailable', {
+                    status: 0,
+                    code: 'network_unavailable',
+                    requestId: '',
+                  }),
+                )}
+              </p>
               <button className={styles.submit} onClick={onRetry} type="button">
                 <span>重新连接</span>
                 <ArrowRight aria-hidden="true" size={18} />
               </button>
             </div>
           ) : (
-            <form aria-busy={pending} onSubmit={(event) => void submit(event)}>
+            <form aria-label="登录" aria-busy={isPending} onSubmit={handleSubmit}>
               <label htmlFor="username">账号</label>
               <input
+                aria-invalid={usernameError !== ''}
+                aria-describedby={usernameError ? 'username-error' : undefined}
                 autoCapitalize="none"
                 autoComplete="username"
                 id="username"
@@ -100,27 +97,42 @@ export function LoginPage({ connectionError = false, onRetry }: LoginPageProps):
                 required
                 spellCheck={false}
               />
+              {usernameError ? (
+                <p id="username-error" role="alert">
+                  {usernameError}
+                </p>
+              ) : null}
               <label htmlFor="password">密码</label>
               <div className={styles.password}>
                 <input
-                  aria-describedby={error ? 'login-error' : undefined}
+                  aria-invalid={passwordError !== ''}
+                  aria-describedby={passwordDescription}
                   autoComplete="current-password"
                   id="password"
-                  maxLength={1024}
+                  maxLength={72}
                   name="password"
                   placeholder="请输入密码"
                   required
-                  type={passwordVisible ? 'text' : 'password'}
+                  type={isPasswordVisible ? 'text' : 'password'}
                 />
                 <button
-                  aria-label={passwordVisible ? '隐藏密码' : '显示密码'}
-                  aria-pressed={passwordVisible}
-                  onClick={() => setPasswordVisible(!passwordVisible)}
+                  aria-label={isPasswordVisible ? '隐藏密码' : '显示密码'}
+                  aria-pressed={isPasswordVisible}
+                  onClick={() => setPasswordVisible(!isPasswordVisible)}
                   type="button"
                 >
-                  {passwordVisible ? <EyeOff aria-hidden="true" size={18} /> : <Eye aria-hidden="true" size={18} />}
+                  {isPasswordVisible ? (
+                    <EyeOff aria-hidden="true" size={18} />
+                  ) : (
+                    <Eye aria-hidden="true" size={18} />
+                  )}
                 </button>
               </div>
+              {passwordError ? (
+                <p id="password-error" role="alert">
+                  {passwordError}
+                </p>
+              ) : null}
               <div aria-live="polite" className={styles.feedback}>
                 {error ? (
                   <p id="login-error" role="alert">
@@ -128,8 +140,8 @@ export function LoginPage({ connectionError = false, onRetry }: LoginPageProps):
                   </p>
                 ) : null}
               </div>
-              <button className={styles.submit} disabled={pending} type="submit">
-                <span>{pending ? '正在登录…' : '登录并进入'}</span>
+              <button className={styles.submit} disabled={isPending} type="submit">
+                <span>{isPending ? '正在登录…' : '登录并进入'}</span>
                 <ArrowRight aria-hidden="true" size={18} />
               </button>
             </form>
@@ -140,5 +152,5 @@ export function LoginPage({ connectionError = false, onRetry }: LoginPageProps):
         </section>
       </main>
     </div>
-  );
+  )
 }

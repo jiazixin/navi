@@ -1,21 +1,21 @@
-import type { WebSearchProviderID } from '../../app/api/webSearch';
+import type { WebSearchProviderID } from '../../app/api/webSearch'
 
 export type SearchProvider = {
-  id: WebSearchProviderID;
-  label: string;
-  shortLabel: string;
-  category: 'web' | 'ai';
-  submission: 'direct' | 'clipboard';
-  homeURL: string;
-  buildURL: (query: string) => string;
-};
+  id: WebSearchProviderID
+  label: string
+  shortLabel: string
+  category: 'web' | 'ai'
+  submission: 'direct' | 'clipboard'
+  homeURL: string
+  buildURL: (query: string) => string
+}
 
 function withQuery(baseURL: string, entries: readonly (readonly [string, string])[]): string {
-  const url = new URL(baseURL);
+  const url = new URL(baseURL)
   for (const [key, value] of entries) {
-    url.searchParams.set(key, value);
+    url.searchParams.set(key, value)
   }
-  return url.toString();
+  return url.toString()
 }
 
 const defaultSearchProvider: SearchProvider = {
@@ -26,7 +26,7 @@ const defaultSearchProvider: SearchProvider = {
   submission: 'direct',
   homeURL: 'https://www.baidu.com/',
   buildURL: (query) => withQuery('https://www.baidu.com/s', [['wd', query]]),
-};
+}
 
 export const searchProviders: readonly SearchProvider[] = [
   defaultSearchProvider,
@@ -102,8 +102,8 @@ export const searchProviders: readonly SearchProvider[] = [
     homeURL: 'https://gemini.google.com/app',
     buildURL: () => 'https://gemini.google.com/app',
   },
-];
+]
 
 export function getSearchProvider(providerID: WebSearchProviderID): SearchProvider {
-  return searchProviders.find((provider) => provider.id === providerID) ?? defaultSearchProvider;
+  return searchProviders.find((provider) => provider.id === providerID) ?? defaultSearchProvider
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,8 +33,8 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 	if err != nil {
 		return nil, fmt.Errorf("create favicon discovery request: %w", err)
 	}
-	if request.URL.Host == "" || (request.URL.Scheme != "http" && request.URL.Scheme != "https") {
-		return nil, fmt.Errorf("invalid favicon discovery URL")
+	if request.URL.User != nil || len(pageURL) > 4096 || request.URL.Host == "" || (request.URL.Scheme != "http" && request.URL.Scheme != "https") {
+		return nil, errors.New("invalid favicon discovery URL")
 	}
 	fallback := func(base *url.URL) ([]string, error) {
 		if ctx.Err() != nil {
@@ -46,7 +47,7 @@ func Discover(ctx context.Context, client *http.Client, pageURL string) ([]strin
 	if err != nil {
 		return fallback(request.URL)
 	}
-	defer response.Body.Close()
+	defer response.Body.Close() // Discovery discards unread bytes; no write or commit to flush.
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return fallback(response.Request.URL)
 	}
@@ -138,7 +139,7 @@ func resolveCandidate(base *url.URL, raw string) (string, bool) {
 		return "", false
 	}
 	resolved := base.ResolveReference(parsed)
-	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+	if resolved.User != nil || len(resolved.String()) > 4096 || resolved.Scheme != "http" && resolved.Scheme != "https" {
 		return "", false
 	}
 	return resolved.String(), true

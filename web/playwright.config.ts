@@ -1,9 +1,10 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
   testIgnore: '**/production/**',
   fullyParallel: true,
+  workers: 2,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -18,22 +19,38 @@ export default defineConfig({
     {
       name: 'chromium',
       testIgnore: [/visual\.spec\.ts/, '**/production/**'],
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' },
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        colorScheme: 'dark',
+      },
     },
     {
       name: 'firefox',
       testIgnore: [/visual\.spec\.ts/, '**/production/**'],
-      use: { ...devices['Desktop Firefox'], viewport: { width: 1024, height: 768 }, colorScheme: 'light' },
+      use: {
+        ...devices['Desktop Firefox'],
+        viewport: { width: 1024, height: 768 },
+        colorScheme: 'light',
+      },
     },
     {
       name: 'webkit',
       testIgnore: [/visual\.spec\.ts/, '**/production/**'],
-      use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' },
+      use: {
+        ...devices['Desktop Safari'],
+        viewport: { width: 1440, height: 900 },
+        colorScheme: 'dark',
+      },
     },
     {
       name: 'visual',
       testMatch: /visual\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, colorScheme: 'dark' },
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+        colorScheme: 'dark',
+      },
     },
   ],
   webServer: {
@@ -41,4 +58,4 @@ export default defineConfig({
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
   },
-});
+})
