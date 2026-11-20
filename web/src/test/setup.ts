@@ -73,16 +73,19 @@ Object.defineProperty(window, 'ResizeObserver', {
   value: ResizeObserverStub,
 })
 
+type MediaQueryListStub = Pick<
+  MediaQueryList,
+  'matches' | 'media' | 'onchange' | 'addEventListener' | 'removeEventListener' | 'dispatchEvent'
+>
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
-  value: (query: string): MediaQueryList => ({
+  value: (query: string): MediaQueryListStub => ({
     matches: query.includes('prefers-reduced-motion: reduce'),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }),
 })

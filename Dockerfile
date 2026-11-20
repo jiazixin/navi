@@ -6,7 +6,7 @@ RUN npm --prefix web ci
 COPY web ./web
 RUN npm --prefix web run build
 
-FROM golang:1.27.3-alpine AS binary-build
+FROM golang:1.27.4-alpine AS binary-build
 
 WORKDIR /src
 COPY go.mod go.sum ./

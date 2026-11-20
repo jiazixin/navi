@@ -35,8 +35,8 @@
     "@axe-core/playwright": "4.12.1",
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.62.1",
-    "@storybook/addon-a11y": "10.6.3",
-    "@storybook/react-vite": "10.6.3",
+    "@storybook/addon-a11y": "10.6.8",
+    "@storybook/react-vite": "10.6.8",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "16.3.2",
     "@testing-library/user-event": "14.6.1",
@@ -50,11 +50,14 @@
     "eslint-plugin-react-refresh": "0.5.2",
     "jsdom": "30.0.1",
     "prettier": "3.9.10",
-    "storybook": "10.6.3",
+    "storybook": "10.6.8",
     "stylelint": "17.16.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.65.0",
+    "typescript-eslint": "8.73.0",
     "vite": "8.3.5",
     "vitest": "4.1.12"
+  },
+  "overrides": {
+    "@joshwooding/vite-plugin-react-docgen-typescript": "0.9.1"
   }
 }
